@@ -1,0 +1,1 @@
+"""LeCrown platform backend package."""
