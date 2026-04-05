@@ -1,0 +1,69 @@
+services:
+  espocrm-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - espocrm-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 20s
+      start_period: 10s
+      timeout: 10s
+      retries: 3
+
+  espocrm:
+    image: espocrm/espocrm:${ESPOCRM_VERSION}
+    restart: unless-stopped
+    environment:
+      ESPOCRM_DATABASE_PLATFORM: Mysql
+      ESPOCRM_DATABASE_HOST: espocrm-db
+      ESPOCRM_DATABASE_NAME: ${MARIADB_DATABASE}
+      ESPOCRM_DATABASE_USER: ${MARIADB_USER}
+      ESPOCRM_DATABASE_PASSWORD: ${MARIADB_PASSWORD}
+      ESPOCRM_ADMIN_USERNAME: ${ESPOCRM_ADMIN_USERNAME}
+      ESPOCRM_ADMIN_PASSWORD: ${ESPOCRM_ADMIN_PASSWORD}
+      ESPOCRM_SITE_URL: ${ESPOCRM_SITE_URL}
+    volumes:
+      - espocrm:/var/www/html
+    depends_on:
+      espocrm-db:
+        condition: service_healthy
+    ports:
+      - "${ESPOCRM_BIND_HOST}:${ESPOCRM_HTTP_PORT}:80"
+
+  espocrm-daemon:
+    image: espocrm/espocrm:${ESPOCRM_VERSION}
+    restart: unless-stopped
+    entrypoint: docker-daemon.sh
+    depends_on:
+      - espocrm
+    volumes:
+      - espocrm:/var/www/html
+
+  espocrm-websocket:
+    image: espocrm/espocrm:${ESPOCRM_VERSION}
+    restart: unless-stopped
+    entrypoint: docker-websocket.sh
+    depends_on:
+      - espocrm
+    environment:
+      ESPOCRM_CONFIG_USE_WEB_SOCKET: "true"
+      ESPOCRM_CONFIG_WEB_SOCKET_URL: ${ESPOCRM_WEB_SOCKET_URL}
+      ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBSCRIBER_DSN: "tcp://*:7777"
+      ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBMISSION_DSN: "tcp://espocrm-websocket:7777"
+    volumes:
+      - espocrm:/var/www/html
+    ports:
+      - "${ESPOCRM_BIND_HOST}:${ESPOCRM_WS_PORT}:8080"
+
+volumes:
+  espocrm:
+  espocrm-db:

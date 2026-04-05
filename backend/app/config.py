@@ -38,12 +38,50 @@ class Settings:
 
     admin_username: str = os.getenv("ADMIN_USERNAME", "admin")
     admin_password: str = os.getenv("ADMIN_PASSWORD", "admin123")
+    intake_api_key: str = os.getenv("INTAKE_API_KEY", "")
+
+    espocrm_base_url: str = os.getenv("ESPOCRM_BASE_URL", "")
+    espocrm_api_key: str = os.getenv("ESPOCRM_API_KEY", "")
+    espocrm_username: str = os.getenv("ESPOCRM_USERNAME", "")
+    espocrm_password: str = os.getenv("ESPOCRM_PASSWORD", "")
+    espocrm_timeout_seconds: int = int(os.getenv("ESPOCRM_TIMEOUT_SECONDS", "15"))
+
+    gov_contract_service_url: str = os.getenv(
+        "GOV_CONTRACT_SERVICE_URL",
+        "https://www.txsmartbuy.gov/app/extensions/CPA/CPAMain/1.0.0/services/ESBD.Service.ss",
+    )
+    gov_contract_source_base_url: str = os.getenv(
+        "GOV_CONTRACT_SOURCE_BASE_URL",
+        "https://www.txsmartbuy.gov/esbd",
+    )
+    gov_contract_request_timeout_seconds: int = int(
+        os.getenv("GOV_CONTRACT_REQUEST_TIMEOUT_SECONDS", "45")
+    )
+    gov_contract_window_days: int = int(os.getenv("GOV_CONTRACT_WINDOW_DAYS", "7"))
+    gov_contract_match_min_score: int = int(os.getenv("GOV_CONTRACT_MATCH_MIN_SCORE", "4"))
+    gov_contract_extra_keywords: list[str] = [
+        keyword.strip()
+        for keyword in os.getenv("GOV_CONTRACT_EXTRA_KEYWORDS", "").split(",")
+        if keyword.strip()
+    ]
+    gmail_rfq_feed_url: str = os.getenv(
+        "GMAIL_RFQ_FEED_URL",
+        "",
+    )
+    gmail_rfq_feed_label: str = os.getenv("GMAIL_RFQ_FEED_LABEL", "RFQs/New")
+    gmail_rfq_feed_timeout_seconds: int = int(os.getenv("GMAIL_RFQ_FEED_TIMEOUT_SECONDS", "20"))
+    gmail_rfq_feed_limit: int = int(os.getenv("GMAIL_RFQ_FEED_LIMIT", "50"))
+    gmail_rfq_match_score_floor: int = int(os.getenv("GMAIL_RFQ_MATCH_SCORE_FLOOR", "6"))
 
     cors_origins: list[str] = [
         origin.strip()
         for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
         if origin.strip()
     ]
+
+    @property
+    def gmail_rfq_feed_enabled(self) -> bool:
+        return bool(self.gmail_rfq_feed_url.strip())
 
 
 @lru_cache

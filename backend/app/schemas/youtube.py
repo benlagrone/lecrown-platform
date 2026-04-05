@@ -1,4 +1,6 @@
-from typing import Literal
+from __future__ import annotations
+
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -8,12 +10,12 @@ YouTubePrivacyStatus = Literal["private", "unlisted", "public"]
 
 
 class YouTubePublishRequest(BaseModel):
-    content_id: str | None = None
-    tenant: TenantName | None = None
-    title: str | None = Field(default=None, min_length=1, max_length=100)
-    description: str | None = Field(default=None, min_length=1, max_length=5000)
-    video_path: str | None = Field(default=None, min_length=1)
-    video_url: str | None = Field(default=None, min_length=1)
+    content_id: Optional[str] = None
+    tenant: Optional[TenantName] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    video_path: Optional[str] = Field(default=None, min_length=1)
+    video_url: Optional[str] = Field(default=None, min_length=1)
     tags: list[str] = Field(default_factory=list)
     privacy_status: YouTubePrivacyStatus = "private"
     category_id: str = "22"
@@ -43,6 +45,6 @@ class YouTubePublishRequest(BaseModel):
 
 class YouTubePublishResponse(BaseModel):
     status: str
-    video_id: str | None = None
-    content_id: str | None = None
+    video_id: Optional[str] = None
+    content_id: Optional[str] = None
     youtube: dict

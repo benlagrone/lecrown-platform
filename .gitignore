@@ -10,6 +10,8 @@ node_modules/
 dist/
 build/
 backend/lecrown.db
+ops/espocrm/.env
+ops/espocrm/backups/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

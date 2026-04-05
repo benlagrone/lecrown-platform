@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: ../../backend
+    restart: unless-stopped
+    env_file:
+      - ${PLATFORM_ENV_FILE:-./.env}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/lecrown.db}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - lecrown-platform-data:/app/data
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: admin/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  lecrown-platform-data:

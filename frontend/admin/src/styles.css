@@ -28,23 +28,29 @@ body {
 }
 
 button,
+.button-link,
 input,
 textarea,
 select {
   font: inherit;
 }
 
-button {
+button,
+.button-link {
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
   border: 0;
   border-radius: 999px;
   background: var(--accent);
   color: white;
   padding: 0.8rem 1.2rem;
+  text-decoration: none;
   transition: background 120ms ease, transform 120ms ease;
 }
 
-button:hover {
+button:hover,
+.button-link:hover {
   background: var(--accent-strong);
   transform: translateY(-1px);
 }
@@ -75,6 +81,29 @@ textarea {
   padding: 2rem 1.2rem 3rem;
 }
 
+.view-nav {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.nav-pill {
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--text);
+  border: 1px solid rgba(23, 33, 43, 0.1);
+}
+
+.nav-pill:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.nav-pill-active,
+.nav-pill-active:hover {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
 .hero-card,
 .panel,
 .message-banner {
@@ -103,6 +132,29 @@ textarea {
   color: var(--muted);
 }
 
+.hero-side {
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-end;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  background: rgba(23, 33, 43, 0.08);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .tenant-picker {
   width: 220px;
   display: flex;
@@ -115,6 +167,11 @@ textarea {
   padding: 0.9rem 1rem;
   border-radius: 18px;
   color: var(--success);
+}
+
+.auth-banner {
+  color: #8a2415;
+  background: rgba(156, 61, 36, 0.08);
 }
 
 .grid {
@@ -134,6 +191,17 @@ textarea {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.panel-subcopy {
+  margin: 0;
+  color: var(--muted);
+  max-width: 68ch;
+}
+
+.contract-toolbar {
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .eyebrow {
@@ -190,15 +258,54 @@ textarea {
 .content-footer,
 .tag-row,
 .action-row,
-.status-stack {
+.status-stack,
+.contract-detail-grid,
+.metric-row,
+.score-matrix {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
 }
 
+.contract-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.contract-score-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.auth-panel {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.auth-form {
+  max-width: 420px;
+}
+
+.auth-actions {
+  justify-content: flex-start;
+}
+
+.opportunity-grid {
+  align-items: start;
+}
+
 .content-meta {
   justify-content: space-between;
+}
+
+.content-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .content-footer {
@@ -213,6 +320,26 @@ textarea {
 
 .action-row {
   justify-content: flex-end;
+}
+
+.contract-detail-grid {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.score-matrix {
+  margin-top: -0.2rem;
+}
+
+.opportunity-filter-row {
+  margin-bottom: 1rem;
+}
+
+.priority-filter-field {
+  max-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .tag {
@@ -250,6 +377,117 @@ td span {
   color: var(--muted);
 }
 
+.metric-row {
+  margin-bottom: 1rem;
+}
+
+.metric-pill {
+  min-width: 150px;
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  border-radius: 18px;
+  padding: 0.75rem 0.9rem;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.metric-pill strong,
+.metric-pill span {
+  display: block;
+}
+
+.metric-pill span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.fit-tag {
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  text-transform: capitalize;
+}
+
+.fit-tag-high {
+  background: rgba(47, 111, 69, 0.16);
+  color: var(--success);
+}
+
+.fit-tag-medium {
+  background: rgba(156, 61, 36, 0.12);
+  color: var(--accent-strong);
+}
+
+.fit-tag-low,
+.fit-tag-none {
+  background: rgba(23, 33, 43, 0.08);
+  color: var(--muted);
+}
+
+.secondary-link {
+  background: rgba(23, 33, 43, 0.08);
+  color: var(--text);
+}
+
+.secondary-link:hover {
+  background: rgba(23, 33, 43, 0.16);
+}
+
+.keyword-form,
+.keyword-rule-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.keyword-form label,
+.keyword-rule-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.keyword-rule-stack {
+  margin-top: 1rem;
+}
+
+.keyword-weight-field {
+  max-width: 140px;
+}
+
+.keyword-rule-card {
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  border-radius: 20px;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.keyword-rule-form {
+  margin: 0;
+}
+
+.keyword-rule-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.keyword-rule-copy span {
+  color: var(--muted);
+}
+
+.keyword-form-actions,
+.keyword-rule-actions {
+  align-self: end;
+}
+
+.destructive-button {
+  color: #8a2415;
+}
+
+.destructive-button:hover {
+  background: rgba(138, 36, 21, 0.12);
+}
+
 @media (max-width: 900px) {
   .hero-card,
   .grid {
@@ -263,5 +501,23 @@ td span {
 
   .tenant-picker {
     width: 100%;
+  }
+
+  .hero-side {
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  .hero-badge {
+    align-self: flex-start;
+  }
+
+  .action-row {
+    justify-content: flex-start;
+  }
+
+  .keyword-form,
+  .keyword-rule-card {
+    grid-template-columns: 1fr;
   }
 }

@@ -5,7 +5,7 @@ Multi-tenant backend and admin surface for:
 - `lecrowndevelopment.com`
 - `lecrownproperties.com`
 
-The platform keeps content, transformation, distribution, and inquiry handling inside one codebase with a required tenant value of `development` or `properties`.
+The platform keeps content, transformation, distribution, tenant-scoped inquiry handling, and cross-site intake inside one codebase. The current tenant-scoped paths still use `development` or `properties`, while generalized lead ingestion starts at `POST /intake/lead`.
 
 ## Structure
 
@@ -13,25 +13,37 @@ The platform keeps content, transformation, distribution, and inquiry handling i
 backend/
 docs/
 frontend/
+ops/
 docker-compose.yml
 .env.example
+Makefile
 README.md
 ```
 
 ## What is implemented
 
-- FastAPI backend with tenant-aware `content`, `inquiry`, `linkedin`, `youtube`, `distribution`, and `auth` routes
+- FastAPI backend with tenant-aware `content`, `inquiry`, `linkedin`, `youtube`, `distribution`, `intake`, and `auth` routes
 - SQLite persistence through SQLAlchemy
 - Minimal React admin for creating canonical content, choosing output channels, and viewing property inquiries
 - Transform layer that adapts one content record into channel-specific payloads
 - LinkedIn publish service wired to tenant-specific organization IDs
 - YouTube upload service wired for per-tenant OAuth access or refresh tokens
+- Intake pipeline that stores inbound site leads and forwards them to `EspoCRM`
 - Video worker client that can call a separate render server over HTTP or run in stub mode
 
 ## API overview
 
 - `POST /content/create`
 - `GET /content/list?tenant=development|properties`
+- `POST /contracts/refresh`
+- `POST /contracts/{id}/funnel`
+- `GET /contracts/list`
+- `GET /contracts/runs`
+- `GET /contracts/export.csv`
+- `GET|POST|PATCH|DELETE /contracts/keywords`
+- `GET|POST|PATCH|DELETE /contracts/agency-preferences`
+- `POST /intake/lead`
+- `GET /intake/list`
 - `POST /inquiry/create`
 - `GET /inquiry/list`
 - `POST /linkedin/publish`
@@ -64,6 +76,13 @@ npm run dev
 The admin app defaults to `http://localhost:8000` for the API.
 
 Copy `.env.example` to `.env` before running the stack locally.
+
+For production:
+
+- set `VITE_API_BASE_URL` to the public API origin
+- set `CORS_ORIGINS` to the public admin origin
+- replace the default `SECRET_KEY` and `ADMIN_PASSWORD`
+- leave `GMAIL_RFQ_FEED_URL` blank unless the Gmail RFQ sidecar service exists in that environment
 
 ## Content model shape
 
@@ -104,6 +123,8 @@ Backend: [http://localhost:8000](http://localhost:8000)
 
 Frontend: [http://localhost:3000](http://localhost:3000)
 
+The Docker frontend image now builds static assets and serves them through `nginx`, which is suitable for production-style deployments.
+
 ## Distribution flow
 
 The platform now follows:
@@ -139,6 +160,120 @@ Current stance:
 - faster all-in-one media backend: `video-gen`
 - supporting narration backend: `audio_xtts`
 - supporting music backend: `musicService`
+
+## Intake Hub
+
+`lecrown-platform` now includes the first platform-owned cross-site intake route:
+
+- `POST /intake/lead`
+
+Current behavior:
+
+- accepts a source-aware lead payload from an external site
+- stores the raw submission in the platform database
+- stores a normalized internal representation
+- forwards the mapped lead to `EspoCRM`
+- stores downstream delivery status and response metadata
+
+Current first target:
+
+- `AskMortgageAuthority`
+
+## Feature Roadmap
+
+Product direction:
+
+- `lecrown-platform` should become the internet publishing focal point
+- the publishing surface should cover blogs, `Twitter/X`, and other social sites
+- multi-account publishing should be a first-class capability across brands, pages, sites, and operator accounts
+- it should also act as the capture point for forms across different sites and funnel those submissions into the CRM
+
+See:
+
+- [docs/feature-roadmap.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/feature-roadmap.md)
+
+## CRM Direction
+
+`lecrown-platform` should not be treated as the final cross-business CRM.
+
+Current position:
+
+- keep the built-in `/inquiry` flow narrow and tenant-specific
+- use `EspoCRM` as the shared operational CRM across businesses
+- integrate with CRM over API boundaries instead of rebuilding everything in this repo too early
+
+See:
+
+- [docs/espocrm-strategy.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/espocrm-strategy.md)
+
+This is especially important because the current inquiry model is still `properties`-specific, while the CRM direction now spans:
+
+- `LeCrown Properties`
+- `AskMortgageAuthority`
+- future businesses
+
+## Site Integration References
+
+Other sites should integrate against shared APIs, not shared folders or direct code imports.
+
+Reference docs:
+
+- [Site Integration Overview](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/site-integration-overview.md)
+- [Site API Reference](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/site-api-reference.md)
+- [Site Integration Checklist](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/site-integration-checklist.md)
+- [AskMortgageAuthority Integration](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/askmortgageauthority-integration.md)
+- [Intake Architecture](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/intake-architecture.md)
+
+## CRM Ops Stack
+
+This repo now includes a dedicated EspoCRM deployment stack under:
+
+- [ops/espocrm](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/ops/espocrm)
+
+Use it as:
+
+- same repository
+- separate service
+
+## Government Contracts
+
+`lecrown-platform` can now ingest Texas ESBD opportunities, score likely-fit government work, and expose both ranked matches and a weekly CSV export through the admin surface and backend API.
+
+The opportunities page now supports:
+
+- admin auth
+- keyword rule management
+- agency preference management
+- complete-list storage with view-only filters
+- a score matrix built from closeness, timing, competition edge, and agency affinity
+
+See:
+
+- [docs/gov-contracts.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/gov-contracts.md)
+- separate runtime boundary
+
+Repo-level commands:
+
+```bash
+make crm-init-env
+make crm-up
+make crm-pull
+make crm-build
+make crm-upgrade
+make crm-logs
+make crm-ps
+make crm-down
+```
+
+Direct script entrypoint:
+
+```bash
+./ops/espocrm/crm.sh help
+```
+
+Recommended production subdomain:
+
+- `crm.lecrowndevelopment.com`
 
 ## First milestone flow
 
@@ -250,9 +385,52 @@ Notes:
 }
 ```
 
+### Intake lead
+
+```json
+{
+  "source_site": "askmortgageauthority.com",
+  "source_type": "wordpress",
+  "form_provider": "WPForms",
+  "form_id": "12",
+  "external_entry_id": "481",
+  "page_url": "https://askmortgageauthority.com/get-pre-qualified/",
+  "business_context": "AskMortgageAuthority",
+  "product_context": "Mortgage",
+  "metadata": {
+    "campaign": "spring-search"
+  },
+  "lead": {
+    "firstName": "Jordan",
+    "lastName": "Smith",
+    "emailAddress": "jordan@example.com",
+    "phoneNumber": "713-555-0199",
+    "description": "Looking to get pre-qualified.",
+    "source": "Website"
+  }
+}
+```
+
+If `INTAKE_API_KEY` is configured, send:
+
+- header `X-Intake-Key: <INTAKE_API_KEY>`
+
+Relevant environment variables:
+
+```dotenv
+INTAKE_API_KEY=
+ESPOCRM_BASE_URL=https://crm.lecrowndevelopment.com
+ESPOCRM_API_KEY=
+ESPOCRM_USERNAME=
+ESPOCRM_PASSWORD=
+ESPOCRM_TIMEOUT_SECONDS=15
+```
+
 ## Notes
 
 - Inquiry capture is restricted to the `properties` tenant.
+- `POST /intake/lead` is the cross-site intake boundary; `/inquiry` is still the older tenant-specific path.
 - Auth exists as a thin admin stub. Content and inquiry routes are not gated yet.
+- `GET /intake/list` is gated through the current admin bearer token flow.
 - `ai_video_service.py` now orchestrates remote rendering through `video_client.py` instead of assuming the API renders media itself.
 - In `stub` mode, you still need to provide a usable `VIDEO_STUB_VIDEO_PATH`, `VIDEO_STUB_VIDEO_URL`, or a manual `youtube_video_path` if you want YouTube upload to succeed end-to-end.
