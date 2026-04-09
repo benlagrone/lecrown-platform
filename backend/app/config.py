@@ -57,6 +57,37 @@ class Settings:
     gov_contract_request_timeout_seconds: int = int(
         os.getenv("GOV_CONTRACT_REQUEST_TIMEOUT_SECONDS", "45")
     )
+    federal_contract_service_url: str = os.getenv(
+        "FEDERAL_CONTRACT_SERVICE_URL",
+        "https://ag-dashboard.acquisitiongateway.gov/api/v3.0/resources/forecast",
+    )
+    federal_contract_source_base_url: str = os.getenv(
+        "FEDERAL_CONTRACT_SOURCE_BASE_URL",
+        "https://acquisitiongateway.gov/forecast",
+    )
+    federal_contract_request_timeout_seconds: int = int(
+        os.getenv("FEDERAL_CONTRACT_REQUEST_TIMEOUT_SECONDS", "45")
+    )
+    federal_contract_page_size: int = int(os.getenv("FEDERAL_CONTRACT_PAGE_SIZE", "500"))
+    grants_contract_export_url: str = os.getenv(
+        "GRANTS_CONTRACT_EXPORT_URL",
+        "https://simpler.grants.gov/api/search/export",
+    )
+    grants_contract_source_base_url: str = os.getenv(
+        "GRANTS_CONTRACT_SOURCE_BASE_URL",
+        "https://simpler.grants.gov/search",
+    )
+    grants_contract_request_timeout_seconds: int = int(
+        os.getenv("GRANTS_CONTRACT_REQUEST_TIMEOUT_SECONDS", "60")
+    )
+    sba_subnet_source_url: str = os.getenv(
+        "SBA_SUBNET_SOURCE_URL",
+        "https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting/subcontracting-opportunities",
+    )
+    sba_subnet_request_timeout_seconds: int = int(
+        os.getenv("SBA_SUBNET_REQUEST_TIMEOUT_SECONDS", "45")
+    )
+    sba_subnet_max_pages: int = int(os.getenv("SBA_SUBNET_MAX_PAGES", "100"))
     gov_contract_window_days: int = int(os.getenv("GOV_CONTRACT_WINDOW_DAYS", "7"))
     gov_contract_match_min_score: int = int(os.getenv("GOV_CONTRACT_MATCH_MIN_SCORE", "4"))
     gov_contract_extra_keywords: list[str] = [

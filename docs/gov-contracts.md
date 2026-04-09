@@ -1,21 +1,31 @@
 # Government Contracts
 
-The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, rank them against LeCrown-relevant work, and surface the strongest matches in the admin app.
+The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federal forecast opportunities from `acquisitiongateway.gov`, grant opportunities from `simpler.grants.gov`, and SBA SUBNet subcontracting opportunities from `sba.gov`, rank them against LeCrown-relevant work, and surface the strongest matches in the admin app.
 
 ## Source
 
 - public ESBD page: `https://www.txsmartbuy.gov/esbd`
 - ESBD service used by the site export: `https://www.txsmartbuy.gov/app/extensions/CPA/CPAMain/1.0.0/services/ESBD.Service.ss`
+- public federal forecast page: `https://acquisitiongateway.gov/forecast`
+- federal forecast JSON feed used by the site listing and CSV export batching: `https://ag-dashboard.acquisitiongateway.gov/api/v3.0/resources/forecast?_format=json`
+- public grants search page: `https://simpler.grants.gov/search`
+- Grants.gov CSV export used by the page download button: `https://simpler.grants.gov/api/search/export`
+- SBA SUBNet opportunities page: `https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting/subcontracting-opportunities`
 
-The backend uses the same `POST` flow the site uses for `Export to CSV`, bounded to a weekly window by default.
+The backend uses the same `POST` flow the ESBD site uses for `Export to CSV`, bounded to a weekly window by default. For the federal source, the backend uses the same public JSON listing feed the Acquisition Gateway page and its client-side export use. For Grants.gov, the backend uses the same public CSV export endpoint triggered by the page's `Download all` button. For SBA SUBNet, the backend walks the public paginated HTML table because the page exposes server-rendered opportunity rows rather than a documented download endpoint.
 
 ## Backend API
 
 - `POST /contracts/refresh`
+- `POST /contracts/refresh-federal`
+- `POST /contracts/refresh-grants`
+- `POST /contracts/refresh-sba-subnet`
 - `POST /contracts/{id}/funnel`
 - `GET /contracts/list?limit=12&matches_only=true&open_only=true&min_priority_score=0`
 - `GET /contracts/runs?limit=5`
 - `GET /contracts/export.csv?window_days=7`
+- `GET /contracts/export-federal.csv`
+- `GET /contracts/export-grants.csv`
 - `GET /contracts/keywords`
 - `POST /contracts/keywords`
 - `PATCH /contracts/keywords/{id}`
@@ -42,6 +52,12 @@ Optional exact dates:
 }
 ```
 
+`POST /contracts/refresh-federal` refreshes the current federal forecast snapshot. It does not take a window payload because the upstream source is a live nationwide forecast list rather than a date-bounded posting feed.
+
+`POST /contracts/refresh-grants` refreshes the current Grants.gov export snapshot. It does not take a window payload because the upstream source is a live nationwide opportunities list rather than a date-bounded posting feed.
+
+`POST /contracts/refresh-sba-subnet` refreshes the current SBA SUBNet paginated listing. It does not take a window payload because the upstream source is a live subcontracting board rather than a date-bounded posting feed.
+
 Promote one matched contract into the CRM lead funnel:
 
 ```json
@@ -66,11 +82,22 @@ From the repo root:
 make gov-contracts-refresh
 ```
 
+That command now refreshes Texas ESBD, the federal forecast source, Grants.gov, and SBA SUBNet in one run.
+
 Direct command:
 
 ```bash
 cd backend
 python3 -m app.jobs.refresh_gov_contracts --window-days 7
+```
+
+Useful variants:
+
+```bash
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-federal
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-grants
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-sba
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --include-gmail --gmail-limit 50
 ```
 
 Example cron entry for every Monday at 8:00 AM server local time:
@@ -87,13 +114,17 @@ The stored opportunity list stays complete. The admin UI filters what is shown i
 - `Open only`
 - `Min priority`
 
-Keyword rules control fit matching and can be managed directly from the opportunities page. The default rules are tuned for LeCrown-style work, with heavier weight on:
+Keyword rules control fit matching and can be managed directly from the opportunities page. The default rules are tuned for LeCrown-style work across state, federal, grant, and subcontracting sources, with heavier weight on:
 
 - property management
 - real estate
 - building or facility maintenance
 - construction, renovation, demolition, paving, concrete
 - HVAC, electrical, plumbing, landscaping, janitorial
+- information technology, managed IT services, cybersecurity
+- software development, systems integration, cloud services, network infrastructure
+
+On a fresh install, the platform now seeds those default keyword rules automatically the first time the keyword list is loaded, so the matcher is usable before any manual tuning.
 
 You can still extend the starting keyword set with `GOV_CONTRACT_EXTRA_KEYWORDS` in the environment, but the primary control surface is now the admin-managed keyword rule list.
 

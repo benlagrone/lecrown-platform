@@ -7,7 +7,9 @@ import {
   createGovContractKeywordRule,
   deleteGovContractAgencyPreference,
   deleteGovContractKeywordRule,
+  downloadFederalContractsExport,
   downloadGovContractsExport,
+  downloadGrantsContractsExport,
   funnelGovContract,
   getCurrentAdmin,
   getGovContractCapabilities,
@@ -21,8 +23,11 @@ import {
   login,
   publishDistribution,
   publishToLinkedIn,
+  refreshFederalContracts,
   refreshGmailRfqs,
   refreshGovContracts,
+  refreshGrantsContracts,
+  refreshSbaSubnetContracts,
   storeAuthToken,
   updateGovContractAgencyPreference,
   updateGovContractKeywordRule,
@@ -42,9 +47,74 @@ import type {
 
 type AdminView = "dashboard" | "opportunities";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
+type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
+type OpportunityTagFilterKind = "source" | "keyword" | "preferred_agency";
+type OpportunityTagFilter = {
+  kind: OpportunityTagFilterKind;
+  value: string;
+  label: string;
+};
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
 const OPPORTUNITY_LIST_LIMIT = 200;
+const IT_OPPORTUNITY_RULES: Array<{ phrase: string; weight: number }> = [
+  { phrase: "information technology", weight: 7 },
+  { phrase: "cybersecurity", weight: 6 },
+  { phrase: "managed it services", weight: 6 },
+  { phrase: "software development", weight: 6 },
+  { phrase: "systems integration", weight: 6 },
+  { phrase: "artificial intelligence", weight: 5 },
+  { phrase: "application development", weight: 5 },
+  { phrase: "cloud services", weight: 5 },
+  { phrase: "cloud migration", weight: 5 },
+  { phrase: "machine learning", weight: 5 },
+  { phrase: "network infrastructure", weight: 5 },
+  { phrase: "data center", weight: 4 },
+  { phrase: "help desk", weight: 4 },
+  { phrase: "service desk", weight: 4 },
+  { phrase: "technical support", weight: 4 },
+  { phrase: "ai", weight: 4 },
+];
+const PROPERTY_OPPORTUNITY_RULES: Array<{ phrase: string; weight: number }> = [
+  { phrase: "property management", weight: 9 },
+  { phrase: "real estate", weight: 8 },
+  { phrase: "building maintenance", weight: 7 },
+  { phrase: "facility maintenance", weight: 7 },
+  { phrase: "facilities maintenance", weight: 7 },
+  { phrase: "facility management", weight: 6 },
+  { phrase: "facilities management", weight: 6 },
+  { phrase: "construction", weight: 6 },
+  { phrase: "site development", weight: 6 },
+  { phrase: "site work", weight: 6 },
+  { phrase: "renovation", weight: 6 },
+  { phrase: "rehabilitation", weight: 6 },
+  { phrase: "general contractor", weight: 6 },
+  { phrase: "appraisal", weight: 5 },
+  { phrase: "demolition", weight: 5 },
+  { phrase: "roofing", weight: 5 },
+  { phrase: "concrete", weight: 5 },
+  { phrase: "asphalt", weight: 5 },
+  { phrase: "paving", weight: 5 },
+  { phrase: "hvac", weight: 4 },
+  { phrase: "electrical", weight: 4 },
+  { phrase: "plumbing", weight: 4 },
+  { phrase: "landscaping", weight: 4 },
+  { phrase: "janitorial", weight: 4 },
+  { phrase: "custodial", weight: 4 },
+  { phrase: "painting", weight: 4 },
+  { phrase: "fencing", weight: 4 },
+  { phrase: "flooring", weight: 4 },
+  { phrase: "maintenance and repair", weight: 4 },
+  { phrase: "surveying", weight: 4 },
+  { phrase: "mowing", weight: 3 },
+  { phrase: "grounds maintenance", weight: 3 },
+];
+const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
+  { id: "all", label: "All opportunities" },
+  { id: "it_services", label: "IT services" },
+  { id: "property_services", label: "Real estate / property" },
+  { id: "other", label: "Other" },
+];
 
 function buildInitialForm(tenant: Tenant = "development"): ContentCreate {
   return {
@@ -91,6 +161,9 @@ export default function App() {
   const [contentItems, setContentItems] = useState<Content[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [gmailContracts, setGmailContracts] = useState<GovContractOpportunity[]>([]);
+  const [federalContracts, setFederalContracts] = useState<GovContractOpportunity[]>([]);
+  const [grantsContracts, setGrantsContracts] = useState<GovContractOpportunity[]>([]);
+  const [sbaSubnetContracts, setSbaSubnetContracts] = useState<GovContractOpportunity[]>([]);
   const [esbdContracts, setEsbdContracts] = useState<GovContractOpportunity[]>([]);
   const [contractRuns, setContractRuns] = useState<GovContractImportRun[]>([]);
   const [contractCapabilities, setContractCapabilities] = useState<GovContractCapabilities>({
@@ -102,11 +175,18 @@ export default function App() {
   const [message, setMessage] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [refreshingContracts, setRefreshingContracts] = useState(false);
+  const [refreshingFederalContracts, setRefreshingFederalContracts] = useState(false);
+  const [refreshingGrantsContracts, setRefreshingGrantsContracts] = useState(false);
+  const [refreshingSbaSubnetContracts, setRefreshingSbaSubnetContracts] = useState(false);
   const [refreshingGmailContracts, setRefreshingGmailContracts] = useState(false);
   const [downloadingExport, setDownloadingExport] = useState(false);
+  const [downloadingFederalExport, setDownloadingFederalExport] = useState(false);
+  const [downloadingGrantsExport, setDownloadingGrantsExport] = useState(false);
   const [funnelingContractId, setFunnelingContractId] = useState<string | null>(null);
   const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
     useState<OpportunitiesAuthStatus>("unauthenticated");
+  const [opportunityCategoryTab, setOpportunityCategoryTab] = useState<OpportunityCategoryTab>("all");
+  const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
   const [loginUsername, setLoginUsername] = useState("admin");
   const [loginPassword, setLoginPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
@@ -201,7 +281,7 @@ export default function App() {
   async function refreshContractsView(capabilitiesOverride?: GovContractCapabilities) {
     try {
       const capabilities = capabilitiesOverride ?? contractCapabilities;
-      const [gmailItems, esbdItems, runs, keywords, agencyPrefs] = await Promise.all([
+      const [gmailItems, federalItems, grantsItems, sbaSubnetItems, esbdItems, runs, keywords, agencyPrefs] = await Promise.all([
         capabilities.gmail_rfq_sync_enabled
           ? listGovContracts(OPPORTUNITY_LIST_LIMIT, "gmail_rfqs", {
               matchesOnly: matchesOnlyFilter,
@@ -209,6 +289,21 @@ export default function App() {
               openOnly: openOnlyFilter,
             })
           : Promise.resolve([]),
+        listGovContracts(OPPORTUNITY_LIST_LIMIT, "federal_forecast", {
+          matchesOnly: matchesOnlyFilter,
+          minPriorityScore: minPriorityScoreFilter,
+          openOnly: openOnlyFilter,
+        }),
+        listGovContracts(OPPORTUNITY_LIST_LIMIT, "grants_gov", {
+          matchesOnly: matchesOnlyFilter,
+          minPriorityScore: minPriorityScoreFilter,
+          openOnly: openOnlyFilter,
+        }),
+        listGovContracts(OPPORTUNITY_LIST_LIMIT, "sba_subnet", {
+          matchesOnly: matchesOnlyFilter,
+          minPriorityScore: minPriorityScoreFilter,
+          openOnly: openOnlyFilter,
+        }),
         listGovContracts(OPPORTUNITY_LIST_LIMIT, "txsmartbuy_esbd", {
           matchesOnly: matchesOnlyFilter,
           minPriorityScore: minPriorityScoreFilter,
@@ -219,6 +314,9 @@ export default function App() {
         listGovContractAgencyPreferences(),
       ]);
       setGmailContracts(gmailItems);
+      setFederalContracts(federalItems);
+      setGrantsContracts(grantsItems);
+      setSbaSubnetContracts(sbaSubnetItems);
       setEsbdContracts(esbdItems);
       setContractRuns(runs);
       setKeywordRules(keywords);
@@ -298,6 +396,50 @@ export default function App() {
     }
   }
 
+  async function handleFederalContractRefresh() {
+    setRefreshingFederalContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshFederalContracts();
+      await refreshContractsView();
+      setMessage(
+        `Federal forecast refreshed. ${run.matched_records} matches from ${run.total_records} opportunities.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingFederalContracts(false);
+    }
+  }
+
+  async function handleGrantsContractRefresh() {
+    setRefreshingGrantsContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshGrantsContracts();
+      await refreshContractsView();
+      setMessage(`Grants.gov refreshed. ${run.matched_records} matches from ${run.total_records} opportunities.`);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingGrantsContracts(false);
+    }
+  }
+
+  async function handleSbaSubnetContractRefresh() {
+    setRefreshingSbaSubnetContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshSbaSubnetContracts();
+      await refreshContractsView();
+      setMessage(`SBA SUBNet refreshed. ${run.matched_records} matches from ${run.total_records} opportunities.`);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingSbaSubnetContracts(false);
+    }
+  }
+
   async function handleGmailContractRefresh() {
     setRefreshingGmailContracts(true);
     setMessage("");
@@ -309,6 +451,32 @@ export default function App() {
       setMessage(getErrorMessage(error));
     } finally {
       setRefreshingGmailContracts(false);
+    }
+  }
+
+  async function handleFederalContractExport() {
+    setDownloadingFederalExport(true);
+    setMessage("");
+    try {
+      await downloadFederalContractsExport();
+      setMessage("Federal forecast CSV download started.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDownloadingFederalExport(false);
+    }
+  }
+
+  async function handleGrantsContractExport() {
+    setDownloadingGrantsExport(true);
+    setMessage("");
+    try {
+      await downloadGrantsContractsExport();
+      setMessage("Grants.gov CSV download started.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDownloadingGrantsExport(false);
     }
   }
 
@@ -372,6 +540,9 @@ export default function App() {
     setOpportunitiesAuthStatus("unauthenticated");
     setAuthMessage("");
     setGmailContracts([]);
+    setFederalContracts([]);
+    setGrantsContracts([]);
+    setSbaSubnetContracts([]);
     setEsbdContracts([]);
     setContractRuns([]);
     setAgencyPreferences([]);
@@ -380,6 +551,8 @@ export default function App() {
       gmail_rfq_sync_enabled: false,
       gmail_rfq_feed_label: null,
     });
+    setOpportunityCategoryTab("all");
+    setSelectedOpportunityTagFilter(null);
     setMinPriorityScoreFilter(0);
     setEditingKeywordId(null);
     setEditingKeywordPhrase("");
@@ -546,8 +719,12 @@ export default function App() {
   }
 
   const latestContractRun = contractRuns[0];
-  const hasAnyContracts =
-    esbdContracts.length > 0 || (contractCapabilities.gmail_rfq_sync_enabled && gmailContracts.length > 0);
+
+  function handleOpportunityTagFilterClick(filter: OpportunityTagFilter) {
+    setSelectedOpportunityTagFilter((current) =>
+      current && current.kind === filter.kind && current.value === filter.value ? null : filter,
+    );
+  }
 
   function renderContractCard(contract: GovContractOpportunity) {
     return (
@@ -566,7 +743,7 @@ export default function App() {
         </div>
 
         <div className="contract-detail-grid">
-          <span>Solicitation: {contract.solicitation_id}</span>
+          <span>Reference: {contract.solicitation_id}</span>
           <span>Status: {contract.status_name ?? "Unknown"}</span>
           <span>Due: {formatDateLabel(contract.due_date, contract.due_time)}</span>
           <span>Posted: {formatDateLabel(contract.posting_date)}</span>
@@ -582,19 +759,92 @@ export default function App() {
         {getMatchedAgencyPreferences(contract).length > 0 ? (
           <div className="tag-row">
             {getMatchedAgencyPreferences(contract).map((agencyName) => (
-              <span className="tag" key={agencyName}>
+              <button
+                type="button"
+                className={`tag filter-tag-button${
+                  isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                    kind: "preferred_agency",
+                    value: agencyName,
+                    label: `Preferred agency: ${agencyName}`,
+                  })
+                    ? " filter-tag-button-active"
+                    : ""
+                }`}
+                key={agencyName}
+                aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                  kind: "preferred_agency",
+                  value: agencyName,
+                  label: `Preferred agency: ${agencyName}`,
+                })}
+                onClick={() =>
+                  handleOpportunityTagFilterClick({
+                    kind: "preferred_agency",
+                    value: agencyName,
+                    label: `Preferred agency: ${agencyName}`,
+                  })
+                }
+              >
                 Preferred agency: {agencyName}
-              </span>
+              </button>
             ))}
           </div>
         ) : null}
 
         <div className="tag-row">
-          <span className="tag">{formatContractSource(contract.source)}</span>
+          <button
+            type="button"
+            className={`tag filter-tag-button${
+              isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                kind: "source",
+                value: contract.source,
+                label: formatContractSource(contract.source),
+              })
+                ? " filter-tag-button-active"
+                : ""
+            }`}
+            aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+              kind: "source",
+              value: contract.source,
+              label: formatContractSource(contract.source),
+            })}
+            onClick={() =>
+              handleOpportunityTagFilterClick({
+                kind: "source",
+                value: contract.source,
+                label: formatContractSource(contract.source),
+              })
+            }
+          >
+            {formatContractSource(contract.source)}
+          </button>
           {contract.matched_keywords.map((keyword) => (
-            <span className="tag" key={keyword}>
+            <button
+              type="button"
+              className={`tag filter-tag-button${
+                isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                  kind: "keyword",
+                  value: keyword,
+                  label: keyword,
+                })
+                  ? " filter-tag-button-active"
+                  : ""
+              }`}
+              key={keyword}
+              aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                kind: "keyword",
+                value: keyword,
+                label: keyword,
+              })}
+              onClick={() =>
+                handleOpportunityTagFilterClick({
+                  kind: "keyword",
+                  value: keyword,
+                  label: keyword,
+                })
+              }
+            >
               {keyword}
-            </span>
+            </button>
           ))}
         </div>
 
@@ -862,7 +1112,7 @@ export default function App() {
             </div>
           </div>
           <p className="panel-subcopy">
-            ESBD opportunities and Gmail RFQs now live on a separate page and require admin sign-in.
+            Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs now live on a separate page and require admin sign-in.
           </p>
         </section>
       </>
@@ -922,16 +1172,112 @@ export default function App() {
       );
     }
 
+    const sourcePanels = [
+      ...(contractCapabilities.gmail_rfq_sync_enabled
+        ? [
+            {
+              key: "gmail_rfqs",
+              label: "Gmail RFQs",
+              emptyState: "No open Gmail RFQs are synced yet.",
+              contracts: gmailContracts,
+            },
+          ]
+        : []),
+      {
+        key: "federal_forecast",
+        label: "Federal Forecast",
+        emptyState: "No federal forecast opportunities match the current view.",
+        contracts: federalContracts,
+      },
+      {
+        key: "grants_gov",
+        label: "Grants.gov",
+        emptyState: "No Grants.gov opportunities match the current view.",
+        contracts: grantsContracts,
+      },
+      {
+        key: "sba_subnet",
+        label: "SBA SUBNet",
+        emptyState: "No SBA SUBNet opportunities match the current view.",
+        contracts: sbaSubnetContracts,
+      },
+      {
+        key: "txsmartbuy_esbd",
+        label: "Texas ESBD",
+        emptyState: "No matched ESBD opportunities are stored yet.",
+        contracts: esbdContracts,
+      },
+    ];
+    const tagFilteredSourcePanels = sourcePanels.map((panel) => ({
+      ...panel,
+      contracts: filterContractsByOpportunityTag(panel.contracts, selectedOpportunityTagFilter),
+    }));
+    const categoryCounts = {
+      all: tagFilteredSourcePanels.reduce((total, panel) => total + panel.contracts.length, 0),
+      it_services: tagFilteredSourcePanels.reduce(
+        (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "it_services").length,
+        0,
+      ),
+      property_services: tagFilteredSourcePanels.reduce(
+        (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "property_services").length,
+        0,
+      ),
+      other: tagFilteredSourcePanels.reduce(
+        (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "other").length,
+        0,
+      ),
+    };
+    const filteredSourcePanels = tagFilteredSourcePanels.map((panel) => ({
+      ...panel,
+      contracts: filterContractsByOpportunityCategory(panel.contracts, opportunityCategoryTab),
+    }));
+    const hasVisibleContracts = filteredSourcePanels.some((panel) => panel.contracts.length > 0);
+
     return (
       <>
         <section className="panel">
           <div className="panel-heading contract-toolbar">
             <div>
               <p className="eyebrow">Government Work Finder</p>
-              <h2>ESBD + Gmail RFQs for LeCrown</h2>
+              <h2>Federal Forecast + Grants.gov + SBA SUBNet + ESBD + Gmail RFQs for LeCrown</h2>
             </div>
 
             <div className="action-row">
+              <button
+                type="button"
+                onClick={() => void handleFederalContractExport()}
+                disabled={downloadingFederalExport}
+              >
+                {downloadingFederalExport ? "Downloading..." : "Download Federal CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleGrantsContractExport()}
+                disabled={downloadingGrantsExport}
+              >
+                {downloadingGrantsExport ? "Downloading..." : "Download Grants CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleFederalContractRefresh()}
+                disabled={refreshingFederalContracts}
+              >
+                {refreshingFederalContracts ? "Refreshing..." : "Refresh Federal"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleGrantsContractRefresh()}
+                disabled={refreshingGrantsContracts}
+              >
+                {refreshingGrantsContracts ? "Refreshing..." : "Refresh Grants"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSbaSubnetContractRefresh()}
+                disabled={refreshingSbaSubnetContracts}
+              >
+                {refreshingSbaSubnetContracts ? "Refreshing..." : "Refresh SBA SUBNet"}
+              </button>
               <button type="button" onClick={() => void handleContractExport()} disabled={downloadingExport}>
                 {downloadingExport ? "Downloading..." : "Download ESBD CSV"}
               </button>
@@ -952,7 +1298,7 @@ export default function App() {
 
           {!contractCapabilities.gmail_rfq_sync_enabled ? (
             <p className="panel-subcopy">
-              Gmail RFQ sync is not configured in this environment. ESBD imports remain available.
+              Gmail RFQ sync is not configured in this environment. Federal forecast, Grants.gov, SBA SUBNet, and ESBD imports remain available.
             </p>
           ) : null}
 
@@ -1008,9 +1354,50 @@ export default function App() {
             </div>
           ) : (
             <p className="empty-state">
-              No opportunity sync has run yet. Refresh ESBD or sync Gmail RFQs to pull current bid opportunities.
+              No opportunity sync has run yet. Refresh federal forecast, Grants.gov, SBA SUBNet, ESBD, or Gmail RFQs to pull current opportunities.
             </p>
           )}
+
+          <div className="opportunity-tab-row" role="tablist" aria-label="Opportunity category tabs">
+            {OPPORTUNITY_CATEGORY_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={opportunityCategoryTab === tab.id}
+                className={`opportunity-tab${opportunityCategoryTab === tab.id ? " opportunity-tab-active" : ""}`}
+                onClick={() => setOpportunityCategoryTab(tab.id)}
+              >
+                <span>{tab.label}</span>
+                <strong>{categoryCounts[tab.id]}</strong>
+              </button>
+            ))}
+          </div>
+
+          {selectedOpportunityTagFilter ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Filtering by tag:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => setSelectedOpportunityTagFilter(null)}
+              >
+                {selectedOpportunityTagFilter.label}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => setSelectedOpportunityTagFilter(null)}
+              >
+                Clear tag filter
+              </button>
+            </div>
+          ) : null}
+
+          <p className="panel-subcopy opportunity-tab-copy">
+            Tabs group opportunities by matched keywords, title, and scope text so you can jump between IT services,
+            real estate / property work, and everything else without losing the source breakdown.
+          </p>
         </section>
 
         <section className="panel">
@@ -1126,8 +1513,8 @@ export default function App() {
           </div>
 
           <p className="panel-subcopy">
-            Add, edit, or remove the keyword rules that score ESBD opportunities. Changes rescore the stored list
-            immediately.
+            Add, edit, or remove the keyword rules that score federal forecast, Grants.gov, SBA SUBNet, ESBD, and Gmail opportunities.
+            Changes rescore the stored list immediately.
           </p>
 
           <form className="keyword-form" onSubmit={handleCreateKeyword}>
@@ -1217,47 +1604,39 @@ export default function App() {
           </div>
         </section>
 
-        {!hasAnyContracts ? (
+        {!hasVisibleContracts ? (
           <section className="panel">
-            <p className="empty-state">No opportunities match the current view filters.</p>
+            <p className="empty-state">
+              {buildOpportunityEmptyStateMessage(opportunityCategoryTab, selectedOpportunityTagFilter)}
+            </p>
           </section>
         ) : (
           <section className="grid opportunity-grid">
-            {contractCapabilities.gmail_rfq_sync_enabled ? (
-              <article className="panel">
+            {filteredSourcePanels.map((panel) => (
+              <article className="panel" key={panel.key}>
                 <div className="panel-heading">
                   <div>
                     <p className="eyebrow">Source</p>
-                    <h2>Gmail RFQs</h2>
+                    <h2>{panel.label}</h2>
                   </div>
-                  <span>{gmailContracts.length} shown</span>
+                  <span>{panel.contracts.length} shown</span>
                 </div>
                 <div className="stack">
-                  {gmailContracts.length === 0 ? (
-                    <p className="empty-state">No open Gmail RFQs are synced yet.</p>
+                  {panel.contracts.length === 0 ? (
+                    <p className="empty-state">
+                      {getOpportunityCategoryEmptyState(
+                        panel.emptyState,
+                        panel.label,
+                        opportunityCategoryTab,
+                        selectedOpportunityTagFilter,
+                      )}
+                    </p>
                   ) : (
-                    gmailContracts.map(renderContractCard)
+                    panel.contracts.map(renderContractCard)
                   )}
                 </div>
               </article>
-            ) : null}
-
-            <article className="panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">Source</p>
-                  <h2>Texas ESBD</h2>
-                </div>
-                <span>{esbdContracts.length} shown</span>
-              </div>
-              <div className="stack">
-                {esbdContracts.length === 0 ? (
-                  <p className="empty-state">No matched ESBD opportunities are stored yet.</p>
-                ) : (
-                  esbdContracts.map(renderContractCard)
-                )}
-              </div>
-            </article>
+            ))}
           </section>
         )}
       </>
@@ -1294,7 +1673,7 @@ export default function App() {
           <p className="hero-copy">
             {view === "dashboard"
               ? "One backend, two business surfaces. Switch tenants, create content, and push live when the publishing path is ready."
-              : "Review matched ESBD opportunities and Gmail RFQs, then push strong fits into the CRM lead funnel."}
+              : "Review matched federal forecast opportunities, Grants.gov opportunities, SBA SUBNet subcontracting opportunities, ESBD opportunities, and Gmail RFQs, then push strong fits into the CRM lead funnel."}
           </p>
         </div>
 
@@ -1376,7 +1755,7 @@ function formatTimestamp(value: string): string {
 function formatNigpPreview(value: string): string {
   return value
     .replace(/\s+/g, " ")
-    .split(";")
+    .split(/[;|]/)
     .map((part) => part.trim())
     .filter(Boolean)
     .slice(0, 3)
@@ -1401,6 +1780,15 @@ function formatContractSource(source: string): string {
   if (source === "gmail_rfqs") {
     return "Gmail RFQs";
   }
+  if (source === "federal_forecast") {
+    return "Federal Forecast";
+  }
+  if (source === "grants_gov") {
+    return "Grants.gov";
+  }
+  if (source === "sba_subnet") {
+    return "SBA SUBNet";
+  }
   if (source === "txsmartbuy_esbd") {
     return "Texas ESBD";
   }
@@ -1415,4 +1803,160 @@ function formatFunnelLabel(contract: GovContractOpportunity): string {
     return "CRM sync failed";
   }
   return contract.funnel_status;
+}
+
+function normalizeOpportunityCategoryText(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  return value.replace(/[^a-z0-9]+/gi, " ").trim().toLowerCase();
+}
+
+function normalizeOpportunityTagFilterValue(value: string): string {
+  return normalizeOpportunityCategoryText(value);
+}
+
+function isOpportunityTagFilterActive(
+  currentFilter: OpportunityTagFilter | null,
+  candidate: OpportunityTagFilter,
+): boolean {
+  return (
+    currentFilter?.kind === candidate.kind &&
+    normalizeOpportunityTagFilterValue(currentFilter.value) === normalizeOpportunityTagFilterValue(candidate.value)
+  );
+}
+
+function scoreOpportunityCategory(
+  contract: GovContractOpportunity,
+  rules: Array<{ phrase: string; weight: number }>,
+): number {
+  const haystack = normalizeOpportunityCategoryText(
+    [contract.title, contract.nigp_codes, ...contract.matched_keywords].filter(Boolean).join(" "),
+  );
+  const paddedHaystack = haystack ? ` ${haystack} ` : " ";
+  const seenPhrases = new Set<string>();
+  let score = 0;
+
+  for (const rule of rules) {
+    const normalizedPhrase = normalizeOpportunityCategoryText(rule.phrase);
+    if (!normalizedPhrase || seenPhrases.has(normalizedPhrase)) {
+      continue;
+    }
+    if (paddedHaystack.includes(` ${normalizedPhrase} `)) {
+      score += rule.weight;
+      seenPhrases.add(normalizedPhrase);
+    }
+  }
+
+  return score;
+}
+
+function matchesOpportunityCategoryTab(
+  contract: GovContractOpportunity,
+  tab: OpportunityCategoryTab,
+): boolean {
+  if (tab === "all") {
+    return true;
+  }
+
+  const itScore = scoreOpportunityCategory(contract, IT_OPPORTUNITY_RULES);
+  const propertyScore = scoreOpportunityCategory(contract, PROPERTY_OPPORTUNITY_RULES);
+
+  if (tab === "it_services") {
+    return itScore > 0;
+  }
+  if (tab === "property_services") {
+    return propertyScore > 0;
+  }
+  return itScore === 0 && propertyScore === 0;
+}
+
+function filterContractsByOpportunityCategory(
+  contracts: GovContractOpportunity[],
+  tab: OpportunityCategoryTab,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunityCategoryTab(contract, tab));
+}
+
+function matchesOpportunityTagFilter(
+  contract: GovContractOpportunity,
+  filter: OpportunityTagFilter | null,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+
+  const normalizedValue = normalizeOpportunityTagFilterValue(filter.value);
+  if (!normalizedValue) {
+    return true;
+  }
+
+  if (filter.kind === "source") {
+    return normalizeOpportunityTagFilterValue(contract.source) === normalizedValue;
+  }
+  if (filter.kind === "keyword") {
+    return contract.matched_keywords.some(
+      (keyword) => normalizeOpportunityTagFilterValue(keyword) === normalizedValue,
+    );
+  }
+  return getMatchedAgencyPreferences(contract).some(
+    (agencyName) => normalizeOpportunityTagFilterValue(agencyName) === normalizedValue,
+  );
+}
+
+function filterContractsByOpportunityTag(
+  contracts: GovContractOpportunity[],
+  filter: OpportunityTagFilter | null,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunityTagFilter(contract, filter));
+}
+
+function formatOpportunityCategoryTabLabel(tab: OpportunityCategoryTab): string {
+  if (tab === "all") {
+    return "All opportunities";
+  }
+  if (tab === "it_services") {
+    return "IT services";
+  }
+  if (tab === "property_services") {
+    return "Real estate / property";
+  }
+  return "Other opportunities";
+}
+
+function getOpportunityCategoryEmptyState(
+  defaultMessage: string,
+  sourceLabel: string,
+  tab: OpportunityCategoryTab,
+  tagFilter: OpportunityTagFilter | null,
+): string {
+  if (tab === "all" && !tagFilter) {
+    return defaultMessage;
+  }
+  const pieces = [`No ${sourceLabel.toLowerCase()} opportunities match`];
+  if (tab !== "all") {
+    pieces.push(`the ${formatOpportunityCategoryTabLabel(tab).toLowerCase()} tab`);
+  }
+  if (tagFilter) {
+    pieces.push(tab === "all" ? `the "${tagFilter.label}" tag` : `and the "${tagFilter.label}" tag`);
+  }
+  return `${pieces.join(" ")}.`;
+}
+
+function buildOpportunityEmptyStateMessage(
+  tab: OpportunityCategoryTab,
+  tagFilter: OpportunityTagFilter | null,
+): string {
+  if (tab === "all" && !tagFilter) {
+    return "No opportunities match the current view filters.";
+  }
+
+  const pieces = ["No opportunities match"];
+  if (tab !== "all") {
+    pieces.push(`the ${formatOpportunityCategoryTabLabel(tab).toLowerCase()} tab`);
+  }
+  if (tagFilter) {
+    pieces.push(tab === "all" ? `the "${tagFilter.label}" tag` : `and the "${tagFilter.label}" tag`);
+  }
+  return `${pieces.join(" ")}.`;
 }

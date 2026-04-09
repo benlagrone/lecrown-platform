@@ -335,6 +335,49 @@ textarea {
   margin-bottom: 1rem;
 }
 
+.opportunity-tab-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.opportunity-tab {
+  justify-content: space-between;
+  min-width: 180px;
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+}
+
+.opportunity-tab:hover {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.opportunity-tab strong {
+  margin-left: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.opportunity-tab-active,
+.opportunity-tab-active:hover {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
+.opportunity-tab-copy {
+  margin-top: 0.15rem;
+}
+
+.active-tag-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
 .priority-filter-field {
   max-width: 150px;
   display: flex;
@@ -348,6 +391,28 @@ textarea {
   background: rgba(23, 33, 43, 0.08);
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.filter-tag-button {
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  background: rgba(23, 33, 43, 0.08);
+  color: var(--muted);
+  padding: 0.25rem 0.7rem;
+}
+
+.filter-tag-button:hover {
+  background: rgba(23, 33, 43, 0.16);
+}
+
+.filter-tag-button-active,
+.filter-tag-button-active:hover {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
+.tag-filter-clear-button {
+  padding: 0.4rem 0.85rem;
 }
 
 .table-shell {

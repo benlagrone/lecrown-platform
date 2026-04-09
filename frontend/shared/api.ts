@@ -186,6 +186,24 @@ export async function refreshGovContracts(windowDays = 7): Promise<GovContractIm
   });
 }
 
+export async function refreshFederalContracts(): Promise<GovContractImportRun> {
+  return request<GovContractImportRun>("/contracts/refresh-federal", {
+    method: "POST",
+  });
+}
+
+export async function refreshGrantsContracts(): Promise<GovContractImportRun> {
+  return request<GovContractImportRun>("/contracts/refresh-grants", {
+    method: "POST",
+  });
+}
+
+export async function refreshSbaSubnetContracts(): Promise<GovContractImportRun> {
+  return request<GovContractImportRun>("/contracts/refresh-sba-subnet", {
+    method: "POST",
+  });
+}
+
 export async function refreshGmailRfqs(limit = 50): Promise<GovContractImportRun> {
   const query = new URLSearchParams({ limit: String(limit) });
   return request<GovContractImportRun>(`/contracts/refresh-gmail?${query.toString()}`, {
@@ -235,6 +253,70 @@ export async function downloadGovContractsExport(windowDays = 7): Promise<void> 
   const link = document.createElement("a");
   link.href = url;
   link.download = `txsmartbuy-esbd-${windowDays}-day-export.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadFederalContractsExport(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/contracts/export-federal.csv`, {
+    headers: buildHeaders(),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    if (body) {
+      let detail: string | undefined;
+      try {
+        const parsed = JSON.parse(body) as { detail?: string };
+        detail = parsed.detail;
+      } catch {}
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw new Error(body);
+    }
+    throw new Error(`Request failed with ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "federal-forecast-export.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadGrantsContractsExport(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/contracts/export-grants.csv`, {
+    headers: buildHeaders(),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    if (body) {
+      let detail: string | undefined;
+      try {
+        const parsed = JSON.parse(body) as { detail?: string };
+        detail = parsed.detail;
+      } catch {}
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw new Error(body);
+    }
+    throw new Error(`Request failed with ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "grants-gov-export.csv";
   document.body.appendChild(link);
   link.click();
   link.remove();

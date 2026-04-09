@@ -166,6 +166,39 @@ def refresh_contracts(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@router.post("/refresh-federal", response_model=GovContractImportRunRead)
+def refresh_federal_contracts(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> GovContractImportRunRead:
+    try:
+        return gov_contract_service.refresh_federal_contracts(db)
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/refresh-grants", response_model=GovContractImportRunRead)
+def refresh_grants_contracts(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> GovContractImportRunRead:
+    try:
+        return gov_contract_service.refresh_grants_contracts(db)
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/refresh-sba-subnet", response_model=GovContractImportRunRead)
+def refresh_sba_subnet_contracts(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> GovContractImportRunRead:
+    try:
+        return gov_contract_service.refresh_sba_subnet_contracts(db)
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.post("/refresh-gmail", response_model=GovContractImportRunRead)
 def refresh_gmail_contracts(
     limit: int = Query(default=50, ge=1, le=200),
@@ -243,6 +276,36 @@ def export_contracts_csv(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     filename = f"txsmartbuy-esbd-{resolved_start.isoformat()}-to-{resolved_end.isoformat()}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export-federal.csv")
+def export_federal_contracts_csv(_: dict = Depends(get_current_admin)) -> Response:
+    try:
+        csv_text, exported_at = gov_contract_service.export_federal_contracts_csv()
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    filename = f"federal-forecast-{exported_at.isoformat()}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export-grants.csv")
+def export_grants_contracts_csv(_: dict = Depends(get_current_admin)) -> Response:
+    try:
+        csv_text, exported_at = gov_contract_service.export_grants_contracts_csv()
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    filename = f"grants-gov-{exported_at.isoformat()}.csv"
     return Response(
         content=csv_text,
         media_type="text/csv",
