@@ -1421,6 +1421,18 @@ def _get_opportunity_by_source_key(db: Session, source_key: str) -> GovContractO
     return db.scalars(statement).first()
 
 
+def _dedupe_source_records(records: list[GovContractSourceRecord]) -> list[GovContractSourceRecord]:
+    deduped_records: dict[str, GovContractSourceRecord] = {}
+    ordered_source_keys: list[str] = []
+
+    for record in records:
+        if record.source_key not in deduped_records:
+            ordered_source_keys.append(record.source_key)
+        deduped_records[record.source_key] = record
+
+    return [deduped_records[source_key] for source_key in ordered_source_keys]
+
+
 def get_contract_by_id(db: Session, contract_id: str) -> GovContractOpportunity | None:
     return db.get(GovContractOpportunity, contract_id)
 
@@ -1613,17 +1625,19 @@ def _persist_source_records(
 ) -> GovContractImportRun:
     match_rules = _load_match_rules(db)
     agency_preferences = _load_agency_preferences(db)
+    source_records = _dedupe_source_records(fetched.records)
     run.request_payload = fetched.request_payload
     run.source_total_records = fetched.source_total_records
-    run.total_records = len(fetched.records)
+    run.total_records = len(source_records)
     run.csv_bytes = len(fetched.csv_text.encode("utf-8"))
 
     now = datetime.now(timezone.utc)
     today = date.today()
     matched_records = 0
     open_records = 0
+    opportunities_by_source_key: dict[str, GovContractOpportunity] = {}
 
-    for record in fetched.records:
+    for record in source_records:
         score_parts = _record_score_parts(record)
         score, matched_keywords = _score_record(record, match_rules)
         is_match = score >= settings.gov_contract_match_min_score
@@ -1637,7 +1651,9 @@ def _persist_source_records(
             today=today,
         )
 
-        opportunity = _get_opportunity_by_source_key(db, record.source_key)
+        opportunity = opportunities_by_source_key.get(record.source_key)
+        if opportunity is None:
+            opportunity = _get_opportunity_by_source_key(db, record.source_key)
         if opportunity is None:
             opportunity = GovContractOpportunity(
                 id=new_uuid(),
@@ -1645,6 +1661,7 @@ def _persist_source_records(
                 source_key=record.source_key,
                 first_seen_at=now,
             )
+        opportunities_by_source_key[record.source_key] = opportunity
 
         opportunity.source_url = record.source_url
         opportunity.title = record.title

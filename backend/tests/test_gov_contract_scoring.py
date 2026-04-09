@@ -7,9 +7,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.models.gov_contract import GovContractKeywordRule, GovContractOpportunity
+from app.models.gov_contract import GovContractImportRun, GovContractKeywordRule, GovContractOpportunity
 from app.services.gov_contract_service import (
+    GovContractFetchResult,
+    GovContractSourceRecord,
     SOURCE_NAME,
+    _persist_source_records,
     create_agency_preference,
     delete_agency_preference,
     list_agency_preferences,
@@ -215,6 +218,76 @@ class GovContractScoringTest(unittest.TestCase):
             self.assertTrue(ai_match.is_match)
             self.assertEqual([], grounds_only.matched_keywords)
             self.assertFalse(grounds_only.is_match)
+
+    def test_persist_source_records_deduplicates_duplicate_source_keys(self) -> None:
+        with self.Session() as db:
+            run = GovContractImportRun(
+                id=new_uuid(),
+                source="federal_forecast",
+                status="running",
+                window_start=date.today(),
+                window_end=date.today(),
+            )
+            db.add(run)
+            db.commit()
+            db.refresh(run)
+
+            fetched = GovContractFetchResult(
+                request_payload={"source": "federal_forecast"},
+                source_total_records=2,
+                csv_text="source_key,title\nfederal_forecast:1,first\nfederal_forecast:1,second\n",
+                records=[
+                    GovContractSourceRecord(
+                        source_key="federal_forecast:1",
+                        solicitation_id="FED-1",
+                        source_url="https://example.com/first",
+                        title="First federal record",
+                        agency_name="Federal Agency",
+                        agency_number=None,
+                        status_code=None,
+                        status_name="Forecasted",
+                        due_date=date.today() + timedelta(days=45),
+                        due_time=None,
+                        posting_date=date.today(),
+                        source_created_at=None,
+                        source_last_modified_at=None,
+                        nigp_codes=None,
+                        raw_payload={"nid": "1"},
+                    ),
+                    GovContractSourceRecord(
+                        source_key="federal_forecast:1",
+                        solicitation_id="FED-1",
+                        source_url="https://example.com/second",
+                        title="Second federal record",
+                        agency_name="Federal Agency",
+                        agency_number=None,
+                        status_code=None,
+                        status_name="Forecasted",
+                        due_date=date.today() + timedelta(days=60),
+                        due_time=None,
+                        posting_date=date.today(),
+                        source_created_at=None,
+                        source_last_modified_at=None,
+                        nigp_codes=None,
+                        raw_payload={"nid": "1", "version": "second"},
+                    ),
+                ],
+            )
+
+            persisted_run = _persist_source_records(
+                db,
+                run=run,
+                source_name="federal_forecast",
+                fetched=fetched,
+                is_open_resolver=lambda record, *, today: True,
+            )
+
+            opportunities = list_contracts(db, limit=10, matches_only=False, open_only=False, source="federal_forecast")
+            self.assertEqual(1, len(opportunities))
+            self.assertEqual("federal_forecast:1", opportunities[0].source_key)
+            self.assertEqual("Second federal record", opportunities[0].title)
+            self.assertEqual(1, persisted_run.total_records)
+            self.assertEqual(1, persisted_run.open_records)
 
 
 if __name__ == "__main__":
