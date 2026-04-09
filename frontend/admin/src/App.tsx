@@ -1439,7 +1439,7 @@ export default function App() {
             </div>
           </form>
 
-          <div className="stack keyword-rule-stack">
+          <div className="keyword-rule-stack keyword-rule-chip-list">
             {agencyPreferences.length === 0 ? (
               <p className="empty-state">No preferred agencies are configured yet.</p>
             ) : (
@@ -1479,18 +1479,22 @@ export default function App() {
                     </div>
                   </form>
                 ) : (
-                  <div className="keyword-rule-card" key={preference.id}>
-                    <div className="keyword-rule-copy">
-                      <strong>{preference.agency_name}</strong>
-                      <span>Affinity: {preference.weight}/10</span>
+                  <div className="keyword-rule-chip" key={preference.id}>
+                    <div className="keyword-rule-chip-copy">
+                      <strong title={preference.agency_name}>{preference.agency_name}</strong>
+                      <span className="keyword-rule-chip-score">A{preference.weight}</span>
                     </div>
-                    <div className="action-row keyword-rule-actions">
-                      <button type="button" className="secondary-link" onClick={() => startEditingAgency(preference)}>
+                    <div className="keyword-rule-chip-actions">
+                      <button
+                        type="button"
+                        className="secondary-link chip-action-button"
+                        onClick={() => startEditingAgency(preference)}
+                      >
                         Edit
                       </button>
                       <button
                         type="button"
-                        className="secondary-link destructive-button"
+                        className="secondary-link destructive-button chip-action-button"
                         onClick={() => void handleDeleteAgencyPreference(preference)}
                         disabled={deletingAgencyId === preference.id}
                       >
@@ -1543,7 +1547,7 @@ export default function App() {
             </div>
           </form>
 
-          <div className="stack keyword-rule-stack">
+          <div className="keyword-rule-stack keyword-rule-chip-list">
             {keywordRules.length === 0 ? (
               <p className="empty-state">No keyword rules are configured yet.</p>
             ) : (
@@ -1579,18 +1583,22 @@ export default function App() {
                     </div>
                   </form>
                 ) : (
-                  <div className="keyword-rule-card" key={rule.id}>
-                    <div className="keyword-rule-copy">
-                      <strong>{rule.phrase}</strong>
-                      <span>Score: {rule.weight}</span>
+                  <div className="keyword-rule-chip" key={rule.id}>
+                    <div className="keyword-rule-chip-copy">
+                      <strong title={rule.phrase}>{rule.phrase}</strong>
+                      <span className="keyword-rule-chip-score">+{rule.weight}</span>
                     </div>
-                    <div className="action-row keyword-rule-actions">
-                      <button type="button" className="secondary-link" onClick={() => startEditingKeyword(rule)}>
+                    <div className="keyword-rule-chip-actions">
+                      <button
+                        type="button"
+                        className="secondary-link chip-action-button"
+                        onClick={() => startEditingKeyword(rule)}
+                      >
                         Edit
                       </button>
                       <button
                         type="button"
-                        className="secondary-link destructive-button"
+                        className="secondary-link destructive-button chip-action-button"
                         onClick={() => void handleDeleteKeyword(rule)}
                         disabled={deletingKeywordId === rule.id}
                       >
