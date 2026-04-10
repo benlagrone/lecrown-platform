@@ -5,6 +5,24 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Fortress deploy environment
+        required: true
+        default: prod
+        type: choice
+        options:
+          - prod
+      run_public_smoke:
+        description: Run fortress public smoke after deploy
+        required: true
+        default: false
+        type: boolean
+      dispatch_fortress_deploy:
+        description: Dispatch fortress deploy after image publish
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -63,3 +81,41 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.build_args }}
+
+  dispatch_fortress_deploy:
+    needs: publish
+    if: ${{ github.event_name == 'push' || inputs.dispatch_fortress_deploy }}
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
+      RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}
+    steps:
+      - name: Dispatch Fortress Deploy
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.FORTRESS_REPO_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "FORTRESS_REPO_DISPATCH_TOKEN is required to dispatch fortress deploys" >&2
+            exit 1
+          fi
+
+          gh api repos/benlagrone/fortress-phronesis/dispatches \
+            -f event_type=deploy-lecrown-platform \
+            -F client_payload[source_sha]="${GITHUB_SHA}" \
+            -F client_payload[environment]="${DEPLOY_ENVIRONMENT}" \
+            -F client_payload[run_public_smoke]="${RUN_PUBLIC_SMOKE}"
+
+      - name: Deployment Summary
+        shell: bash
+        run: |
+          {
+            echo "## Fortress Deploy Dispatch"
+            echo ""
+            echo "- Source SHA: \`${GITHUB_SHA}\`"
+            echo "- Environment: \`${DEPLOY_ENVIRONMENT}\`"
+            echo "- Public smoke: \`${RUN_PUBLIC_SMOKE}\`"
+            echo "- Event type: \`deploy-lecrown-platform\`"
+          } >> "$GITHUB_STEP_SUMMARY"
