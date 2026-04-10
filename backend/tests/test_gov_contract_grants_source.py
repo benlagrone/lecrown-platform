@@ -236,6 +236,42 @@ class GovContractGrantsSourceTest(unittest.TestCase):
             self.assertFalse(closed_item.is_open)
             self.assertFalse(closed_item.is_match)
 
+    def test_serialized_grants_opportunity_uses_summary_for_it_category_and_auto_tags(self) -> None:
+        csv_text = build_grants_csv(
+            build_grants_row(
+                "grant-3001",
+                opportunity_number="GRANT-3001",
+                title="Small business modernization accelerator",
+                summary_description=(
+                    "Cybersecurity modernization, cloud services migration, and help desk support "
+                    "for small businesses."
+                ),
+                agency_name="Department of Commerce",
+                top_level_agency_name="Department of Commerce",
+                close_date="2030-07-01",
+            )
+        )
+
+        with self.Session() as db:
+            with patch("app.services.gov_contract_service.requests.get", return_value=mock_csv_response(csv_text)):
+                gov_contract_service.refresh_grants_contracts(db)
+
+            all_items = gov_contract_service.list_contracts(
+                db,
+                limit=10,
+                matches_only=False,
+                open_only=False,
+                source=gov_contract_service.GRANTS_GOV_SOURCE_NAME,
+            )
+            self.assertEqual(1, len(all_items))
+
+            serialized_item = gov_contract_service.serialize_opportunity(all_items[0])
+            self.assertEqual(["it_services"], serialized_item.opportunity_categories)
+            self.assertIn("Grant", serialized_item.auto_tags)
+            self.assertIn("IT services", serialized_item.auto_tags)
+            self.assertIn("Cybersecurity", serialized_item.auto_tags)
+            self.assertIn("Cloud services", serialized_item.auto_tags)
+
 
 if __name__ == "__main__":
     unittest.main()

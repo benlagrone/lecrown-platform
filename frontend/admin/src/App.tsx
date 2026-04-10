@@ -48,7 +48,7 @@ import type {
 type AdminView = "dashboard" | "opportunities";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
 type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
-type OpportunityTagFilterKind = "source" | "keyword" | "preferred_agency";
+type OpportunityTagFilterKind = "source" | "tag" | "preferred_agency";
 type OpportunityTagFilter = {
   kind: OpportunityTagFilterKind;
   value: string;
@@ -57,58 +57,6 @@ type OpportunityTagFilter = {
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
 const OPPORTUNITY_LIST_LIMIT = 200;
-const IT_OPPORTUNITY_RULES: Array<{ phrase: string; weight: number }> = [
-  { phrase: "information technology", weight: 7 },
-  { phrase: "cybersecurity", weight: 6 },
-  { phrase: "managed it services", weight: 6 },
-  { phrase: "software development", weight: 6 },
-  { phrase: "systems integration", weight: 6 },
-  { phrase: "artificial intelligence", weight: 5 },
-  { phrase: "application development", weight: 5 },
-  { phrase: "cloud services", weight: 5 },
-  { phrase: "cloud migration", weight: 5 },
-  { phrase: "machine learning", weight: 5 },
-  { phrase: "network infrastructure", weight: 5 },
-  { phrase: "data center", weight: 4 },
-  { phrase: "help desk", weight: 4 },
-  { phrase: "service desk", weight: 4 },
-  { phrase: "technical support", weight: 4 },
-  { phrase: "ai", weight: 4 },
-];
-const PROPERTY_OPPORTUNITY_RULES: Array<{ phrase: string; weight: number }> = [
-  { phrase: "property management", weight: 9 },
-  { phrase: "real estate", weight: 8 },
-  { phrase: "building maintenance", weight: 7 },
-  { phrase: "facility maintenance", weight: 7 },
-  { phrase: "facilities maintenance", weight: 7 },
-  { phrase: "facility management", weight: 6 },
-  { phrase: "facilities management", weight: 6 },
-  { phrase: "construction", weight: 6 },
-  { phrase: "site development", weight: 6 },
-  { phrase: "site work", weight: 6 },
-  { phrase: "renovation", weight: 6 },
-  { phrase: "rehabilitation", weight: 6 },
-  { phrase: "general contractor", weight: 6 },
-  { phrase: "appraisal", weight: 5 },
-  { phrase: "demolition", weight: 5 },
-  { phrase: "roofing", weight: 5 },
-  { phrase: "concrete", weight: 5 },
-  { phrase: "asphalt", weight: 5 },
-  { phrase: "paving", weight: 5 },
-  { phrase: "hvac", weight: 4 },
-  { phrase: "electrical", weight: 4 },
-  { phrase: "plumbing", weight: 4 },
-  { phrase: "landscaping", weight: 4 },
-  { phrase: "janitorial", weight: 4 },
-  { phrase: "custodial", weight: 4 },
-  { phrase: "painting", weight: 4 },
-  { phrase: "fencing", weight: 4 },
-  { phrase: "flooring", weight: 4 },
-  { phrase: "maintenance and repair", weight: 4 },
-  { phrase: "surveying", weight: 4 },
-  { phrase: "mowing", weight: 3 },
-  { phrase: "grounds maintenance", weight: 3 },
-];
 const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
   { id: "all", label: "All opportunities" },
   { id: "it_services", label: "IT services" },
@@ -187,6 +135,7 @@ export default function App() {
     useState<OpportunitiesAuthStatus>("unauthenticated");
   const [opportunityCategoryTab, setOpportunityCategoryTab] = useState<OpportunityCategoryTab>("all");
   const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
+  const [opportunityKeywordFilter, setOpportunityKeywordFilter] = useState("");
   const [loginUsername, setLoginUsername] = useState("admin");
   const [loginPassword, setLoginPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
@@ -553,6 +502,7 @@ export default function App() {
     });
     setOpportunityCategoryTab("all");
     setSelectedOpportunityTagFilter(null);
+    setOpportunityKeywordFilter("");
     setMinPriorityScoreFilter(0);
     setEditingKeywordId(null);
     setEditingKeywordPhrase("");
@@ -817,33 +767,33 @@ export default function App() {
           >
             {formatContractSource(contract.source)}
           </button>
-          {contract.matched_keywords.map((keyword) => (
+          {getOpportunityDisplayTags(contract).map((tag) => (
             <button
               type="button"
               className={`tag filter-tag-button${
                 isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
-                  kind: "keyword",
-                  value: keyword,
-                  label: keyword,
+                  kind: "tag",
+                  value: tag,
+                  label: tag,
                 })
                   ? " filter-tag-button-active"
                   : ""
               }`}
-              key={keyword}
+              key={tag}
               aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
-                kind: "keyword",
-                value: keyword,
-                label: keyword,
+                kind: "tag",
+                value: tag,
+                label: tag,
               })}
               onClick={() =>
                 handleOpportunityTagFilterClick({
-                  kind: "keyword",
-                  value: keyword,
-                  label: keyword,
+                  kind: "tag",
+                  value: tag,
+                  label: tag,
                 })
               }
             >
-              {keyword}
+              {tag}
             </button>
           ))}
         </div>
@@ -1212,22 +1162,26 @@ export default function App() {
       ...panel,
       contracts: filterContractsByOpportunityTag(panel.contracts, selectedOpportunityTagFilter),
     }));
+    const keywordFilteredSourcePanels = tagFilteredSourcePanels.map((panel) => ({
+      ...panel,
+      contracts: filterContractsByOpportunityKeyword(panel.contracts, opportunityKeywordFilter),
+    }));
     const categoryCounts = {
-      all: tagFilteredSourcePanels.reduce((total, panel) => total + panel.contracts.length, 0),
-      it_services: tagFilteredSourcePanels.reduce(
+      all: keywordFilteredSourcePanels.reduce((total, panel) => total + panel.contracts.length, 0),
+      it_services: keywordFilteredSourcePanels.reduce(
         (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "it_services").length,
         0,
       ),
-      property_services: tagFilteredSourcePanels.reduce(
+      property_services: keywordFilteredSourcePanels.reduce(
         (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "property_services").length,
         0,
       ),
-      other: tagFilteredSourcePanels.reduce(
+      other: keywordFilteredSourcePanels.reduce(
         (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "other").length,
         0,
       ),
     };
-    const filteredSourcePanels = tagFilteredSourcePanels.map((panel) => ({
+    const filteredSourcePanels = keywordFilteredSourcePanels.map((panel) => ({
       ...panel,
       contracts: filterContractsByOpportunityCategory(panel.contracts, opportunityCategoryTab),
     }));
@@ -1325,6 +1279,23 @@ export default function App() {
                 onChange={(event) => setMinPriorityScoreFilter(Number(event.target.value) || 0)}
               />
             </label>
+            <label className="keyword-search-field">
+              <span>Keyword filter</span>
+              <input
+                value={opportunityKeywordFilter}
+                onChange={(event) => setOpportunityKeywordFilter(event.target.value)}
+                placeholder="AI, roofing, HUD, cybersecurity"
+              />
+            </label>
+            {opportunityKeywordFilter.trim() ? (
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => setOpportunityKeywordFilter("")}
+              >
+                Clear keyword
+              </button>
+            ) : null}
           </div>
 
           {latestContractRun ? (
@@ -1390,6 +1361,26 @@ export default function App() {
                 onClick={() => setSelectedOpportunityTagFilter(null)}
               >
                 Clear tag filter
+              </button>
+            </div>
+          ) : null}
+
+          {opportunityKeywordFilter.trim() ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Filtering by keyword:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => setOpportunityKeywordFilter("")}
+              >
+                {opportunityKeywordFilter.trim()}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => setOpportunityKeywordFilter("")}
+              >
+                Clear keyword
               </button>
             </div>
           ) : null}
@@ -1615,7 +1606,11 @@ export default function App() {
         {!hasVisibleContracts ? (
           <section className="panel">
             <p className="empty-state">
-              {buildOpportunityEmptyStateMessage(opportunityCategoryTab, selectedOpportunityTagFilter)}
+              {buildOpportunityEmptyStateMessage(
+                opportunityCategoryTab,
+                selectedOpportunityTagFilter,
+                opportunityKeywordFilter,
+              )}
             </p>
           </section>
         ) : (
@@ -1637,6 +1632,7 @@ export default function App() {
                         panel.label,
                         opportunityCategoryTab,
                         selectedOpportunityTagFilter,
+                        opportunityKeywordFilter,
                       )}
                     </p>
                   ) : (
@@ -1824,6 +1820,13 @@ function normalizeOpportunityTagFilterValue(value: string): string {
   return normalizeOpportunityCategoryText(value);
 }
 
+function buildOpportunityKeywordTerms(value: string): string[] {
+  return normalizeOpportunityCategoryText(value)
+    .split(" ")
+    .map((term) => term.trim())
+    .filter(Boolean);
+}
+
 function isOpportunityTagFilterActive(
   currentFilter: OpportunityTagFilter | null,
   candidate: OpportunityTagFilter,
@@ -1834,29 +1837,39 @@ function isOpportunityTagFilterActive(
   );
 }
 
-function scoreOpportunityCategory(
-  contract: GovContractOpportunity,
-  rules: Array<{ phrase: string; weight: number }>,
-): number {
-  const haystack = normalizeOpportunityCategoryText(
-    [contract.title, contract.nigp_codes, ...contract.matched_keywords].filter(Boolean).join(" "),
-  );
-  const paddedHaystack = haystack ? ` ${haystack} ` : " ";
-  const seenPhrases = new Set<string>();
-  let score = 0;
+function getOpportunityCategories(contract: GovContractOpportunity): OpportunityCategoryTab[] {
+  const opportunityCategories = contract.opportunity_categories ?? [];
+  if (opportunityCategories.length > 0) {
+    return opportunityCategories.filter(
+      (category): category is OpportunityCategoryTab =>
+        category === "it_services" || category === "property_services" || category === "other",
+    );
+  }
+  return ["other"];
+}
 
-  for (const rule of rules) {
-    const normalizedPhrase = normalizeOpportunityCategoryText(rule.phrase);
-    if (!normalizedPhrase || seenPhrases.has(normalizedPhrase)) {
+function getOpportunityDisplayTags(contract: GovContractOpportunity): string[] {
+  const autoTags = contract.auto_tags ?? [];
+  const tags = new Set<string>();
+
+  for (const value of [...autoTags, ...contract.matched_keywords]) {
+    const normalizedValue = normalizeOpportunityTagFilterValue(value);
+    if (!normalizedValue || tags.has(normalizedValue)) {
       continue;
     }
-    if (paddedHaystack.includes(` ${normalizedPhrase} `)) {
-      score += rule.weight;
-      seenPhrases.add(normalizedPhrase);
-    }
+    tags.add(normalizedValue);
   }
 
-  return score;
+  return [...tags].map((normalizedTag) => {
+    const exactAutoTag = autoTags.find((tag) => normalizeOpportunityTagFilterValue(tag) === normalizedTag);
+    if (exactAutoTag) {
+      return exactAutoTag;
+    }
+    return (
+      contract.matched_keywords.find((keyword) => normalizeOpportunityTagFilterValue(keyword) === normalizedTag) ??
+      normalizedTag
+    );
+  });
 }
 
 function matchesOpportunityCategoryTab(
@@ -1866,17 +1879,7 @@ function matchesOpportunityCategoryTab(
   if (tab === "all") {
     return true;
   }
-
-  const itScore = scoreOpportunityCategory(contract, IT_OPPORTUNITY_RULES);
-  const propertyScore = scoreOpportunityCategory(contract, PROPERTY_OPPORTUNITY_RULES);
-
-  if (tab === "it_services") {
-    return itScore > 0;
-  }
-  if (tab === "property_services") {
-    return propertyScore > 0;
-  }
-  return itScore === 0 && propertyScore === 0;
+  return getOpportunityCategories(contract).includes(tab);
 }
 
 function filterContractsByOpportunityCategory(
@@ -1902,9 +1905,9 @@ function matchesOpportunityTagFilter(
   if (filter.kind === "source") {
     return normalizeOpportunityTagFilterValue(contract.source) === normalizedValue;
   }
-  if (filter.kind === "keyword") {
-    return contract.matched_keywords.some(
-      (keyword) => normalizeOpportunityTagFilterValue(keyword) === normalizedValue,
+  if (filter.kind === "tag") {
+    return getOpportunityDisplayTags(contract).some(
+      (tag) => normalizeOpportunityTagFilterValue(tag) === normalizedValue,
     );
   }
   return getMatchedAgencyPreferences(contract).some(
@@ -1917,6 +1920,44 @@ function filterContractsByOpportunityTag(
   filter: OpportunityTagFilter | null,
 ): GovContractOpportunity[] {
   return contracts.filter((contract) => matchesOpportunityTagFilter(contract, filter));
+}
+
+function matchesOpportunityKeywordFilter(
+  contract: GovContractOpportunity,
+  keywordFilter: string,
+): boolean {
+  const filterTerms = buildOpportunityKeywordTerms(keywordFilter);
+  if (filterTerms.length === 0) {
+    return true;
+  }
+
+  const haystackWords = normalizeOpportunityCategoryText(
+    [
+      contract.title,
+      contract.agency_name,
+      contract.agency_number,
+      contract.solicitation_id,
+      contract.nigp_codes,
+      formatContractSource(contract.source),
+      ...getOpportunityDisplayTags(contract),
+      ...getMatchedAgencyPreferences(contract),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  )
+    .split(" ")
+    .filter(Boolean);
+
+  return filterTerms.every((term) =>
+    haystackWords.some((word) => word === term || (term.length >= 4 && word.startsWith(term))),
+  );
+}
+
+function filterContractsByOpportunityKeyword(
+  contracts: GovContractOpportunity[],
+  keywordFilter: string,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunityKeywordFilter(contract, keywordFilter));
 }
 
 function formatOpportunityCategoryTabLabel(tab: OpportunityCategoryTab): string {
@@ -1937,8 +1978,10 @@ function getOpportunityCategoryEmptyState(
   sourceLabel: string,
   tab: OpportunityCategoryTab,
   tagFilter: OpportunityTagFilter | null,
+  keywordFilter: string,
 ): string {
-  if (tab === "all" && !tagFilter) {
+  const normalizedKeywordFilter = keywordFilter.trim();
+  if (tab === "all" && !tagFilter && !normalizedKeywordFilter) {
     return defaultMessage;
   }
   const pieces = [`No ${sourceLabel.toLowerCase()} opportunities match`];
@@ -1948,14 +1991,23 @@ function getOpportunityCategoryEmptyState(
   if (tagFilter) {
     pieces.push(tab === "all" ? `the "${tagFilter.label}" tag` : `and the "${tagFilter.label}" tag`);
   }
+  if (normalizedKeywordFilter) {
+    pieces.push(
+      tab === "all" && !tagFilter
+        ? `the keyword "${normalizedKeywordFilter}"`
+        : `and the keyword "${normalizedKeywordFilter}"`,
+    );
+  }
   return `${pieces.join(" ")}.`;
 }
 
 function buildOpportunityEmptyStateMessage(
   tab: OpportunityCategoryTab,
   tagFilter: OpportunityTagFilter | null,
+  keywordFilter: string,
 ): string {
-  if (tab === "all" && !tagFilter) {
+  const normalizedKeywordFilter = keywordFilter.trim();
+  if (tab === "all" && !tagFilter && !normalizedKeywordFilter) {
     return "No opportunities match the current view filters.";
   }
 
@@ -1965,6 +2017,13 @@ function buildOpportunityEmptyStateMessage(
   }
   if (tagFilter) {
     pieces.push(tab === "all" ? `the "${tagFilter.label}" tag` : `and the "${tagFilter.label}" tag`);
+  }
+  if (normalizedKeywordFilter) {
+    pieces.push(
+      tab === "all" && !tagFilter
+        ? `the keyword "${normalizedKeywordFilter}"`
+        : `and the keyword "${normalizedKeywordFilter}"`,
+    );
   }
   return `${pieces.join(" ")}.`;
 }

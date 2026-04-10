@@ -19,6 +19,7 @@ from app.services.gov_contract_service import (
     list_keyword_rules,
     list_contracts,
     rescore_stored_opportunities,
+    serialize_opportunity,
 )
 from app.utils.helpers import new_uuid
 
@@ -218,6 +219,40 @@ class GovContractScoringTest(unittest.TestCase):
             self.assertTrue(ai_match.is_match)
             self.assertEqual([], grounds_only.matched_keywords)
             self.assertFalse(grounds_only.is_match)
+
+    def test_serialize_opportunity_assigns_other_category_and_source_tag_when_no_service_match(self) -> None:
+        with self.Session() as db:
+            opportunity = GovContractOpportunity(
+                id=new_uuid(),
+                source=SOURCE_NAME,
+                source_key="general-supplies",
+                source_url="https://example.com/general-supplies",
+                title="General office supplies procurement",
+                solicitation_id="GEN-100",
+                agency_name="City of Austin",
+                status_code="1",
+                status_name="Posted",
+                due_date=date.today() + timedelta(days=10),
+                posting_date=date.today(),
+                nigp_codes="office supplies",
+                score=0,
+                priority_score=0,
+                fit_bucket="none",
+                is_match=False,
+                is_open=True,
+                matched_keywords=[],
+                score_breakdown={},
+                raw_payload={},
+                funnel_status="discovered",
+                first_seen_at=datetime.now(timezone.utc),
+                last_seen_at=datetime.now(timezone.utc),
+            )
+            db.add(opportunity)
+            db.commit()
+
+            serialized = serialize_opportunity(opportunity)
+            self.assertEqual(["other"], serialized.opportunity_categories)
+            self.assertIn("Bid", serialized.auto_tags)
 
     def test_persist_source_records_deduplicates_duplicate_source_keys(self) -> None:
         with self.Session() as db:

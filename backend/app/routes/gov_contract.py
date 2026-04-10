@@ -221,13 +221,15 @@ def list_contracts(
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_admin),
 ) -> list[GovContractOpportunityRead]:
-    return gov_contract_service.list_contracts(
-        db,
-        limit=limit,
-        matches_only=matches_only,
-        open_only=open_only,
-        min_priority_score=min_priority_score,
-        source=source,
+    return gov_contract_service.serialize_opportunities(
+        gov_contract_service.list_contracts(
+            db,
+            limit=limit,
+            matches_only=matches_only,
+            open_only=open_only,
+            min_priority_score=min_priority_score,
+            source=source,
+        )
     )
 
 
@@ -240,11 +242,13 @@ def funnel_contract(
 ) -> GovContractOpportunityRead:
     request = payload or GovContractFunnelRequest()
     try:
-        return gov_contract_service.funnel_contract_to_crm(
-            db,
-            contract_id,
-            notes=request.notes,
-            force=request.force,
+        return gov_contract_service.serialize_opportunity(
+            gov_contract_service.funnel_contract_to_crm(
+                db,
+                contract_id,
+                notes=request.notes,
+                force=request.force,
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

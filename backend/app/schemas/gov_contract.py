@@ -81,6 +81,8 @@ class GovContractOpportunityRead(BaseModel):
     is_match: bool
     is_open: bool
     matched_keywords: list[str] = Field(default_factory=list)
+    opportunity_categories: list[str] = Field(default_factory=list)
+    auto_tags: list[str] = Field(default_factory=list)
     score_breakdown: Optional[dict[str, Any]] = None
     funnel_status: str
     funnel_submission_id: Optional[str] = None

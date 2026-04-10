@@ -97,6 +97,8 @@ export interface GovContractOpportunity {
   is_match: boolean;
   is_open: boolean;
   matched_keywords: string[];
+  opportunity_categories: string[];
+  auto_tags: string[];
   score_breakdown?: Record<string, unknown> | null;
   funnel_status: string;
   funnel_submission_id?: string | null;

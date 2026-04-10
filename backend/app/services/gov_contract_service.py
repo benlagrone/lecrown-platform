@@ -21,6 +21,7 @@ from app.models.gov_contract import (
     GovContractKeywordRule,
     GovContractOpportunity,
 )
+from app.schemas.gov_contract import GovContractOpportunityRead
 from app.schemas.intake import IntakeLeadCreate
 from app.services import intake_service
 from app.utils.helpers import new_uuid
@@ -143,6 +144,88 @@ COMPETITION_SIGNAL_RULES: tuple[tuple[str, int], ...] = (
 )
 DEFAULT_BUSINESS_CONTEXT = "LeCrown Development"
 DEFAULT_PRODUCT_CONTEXT = "Government Contract"
+IT_SERVICES_CATEGORY = "it_services"
+PROPERTY_SERVICES_CATEGORY = "property_services"
+OTHER_OPPORTUNITIES_CATEGORY = "other"
+OPPORTUNITY_CATEGORY_LABELS = {
+    IT_SERVICES_CATEGORY: "IT services",
+    PROPERTY_SERVICES_CATEGORY: "Real estate / property",
+    OTHER_OPPORTUNITIES_CATEGORY: "Other",
+}
+OPPORTUNITY_SOURCE_TYPE_TAGS = {
+    SOURCE_NAME: "Bid",
+    FEDERAL_FORECAST_SOURCE_NAME: "Forecast",
+    GRANTS_GOV_SOURCE_NAME: "Grant",
+    SBA_SUBNET_SOURCE_NAME: "Subcontract",
+    GMAIL_RFQ_SOURCE_NAME: "RFQ",
+}
+IT_OPPORTUNITY_RULES: tuple[tuple[str, int], ...] = (
+    ("Information Technology", 8),
+    ("IT services", 7),
+    ("Managed IT services", 7),
+    ("IT support", 6),
+    ("IT modernization", 6),
+    ("Technology modernization", 6),
+    ("Digital modernization", 5),
+    ("Cybersecurity", 7),
+    ("Software development", 7),
+    ("Application development", 6),
+    ("Systems integration", 6),
+    ("Cloud services", 6),
+    ("Cloud migration", 6),
+    ("Enterprise software", 5),
+    ("Software licenses", 5),
+    ("Artificial intelligence", 5),
+    ("AI", 4),
+    ("Machine learning", 5),
+    ("Network infrastructure", 5),
+    ("Data center", 4),
+    ("Help desk", 4),
+    ("Service desk", 4),
+    ("Technical support", 4),
+    ("Computer related services", 4),
+)
+PROPERTY_OPPORTUNITY_RULES: tuple[tuple[str, int], ...] = (
+    ("Property management", 9),
+    ("Real estate", 8),
+    ("Real property", 8),
+    ("Property rehabilitation", 8),
+    ("Property preservation", 7),
+    ("Building maintenance", 7),
+    ("Facility maintenance", 7),
+    ("Facilities maintenance", 7),
+    ("Facility management", 6),
+    ("Facilities management", 6),
+    ("Building construction", 6),
+    ("Construction", 6),
+    ("Site development", 6),
+    ("Site work", 6),
+    ("Renovation", 6),
+    ("Rehabilitation", 6),
+    ("General contractor", 6),
+    ("Lease", 5),
+    ("Leasing", 5),
+    ("Housing", 5),
+    ("Appraisal", 5),
+    ("Demolition", 5),
+    ("Roofing", 5),
+    ("Concrete", 5),
+    ("Asphalt", 5),
+    ("Paving", 5),
+    ("HVAC", 4),
+    ("Electrical", 4),
+    ("Plumbing", 4),
+    ("Landscaping", 4),
+    ("Janitorial", 4),
+    ("Custodial", 4),
+    ("Painting", 4),
+    ("Fencing", 4),
+    ("Flooring", 4),
+    ("Maintenance and repair", 4),
+    ("Surveying", 4),
+    ("Grounds maintenance", 3),
+    ("Mowing", 3),
+)
 
 
 class GovContractSourceError(RuntimeError):
@@ -192,6 +275,19 @@ def _strip_html(value: object | None) -> str | None:
     text = HTML_TAG_RE.sub(" ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text or None
+
+
+def _append_unique_tag(tags: list[str], value: str | None, *, seen: set[str]) -> None:
+    cleaned = _clean(value)
+    if not cleaned:
+        return
+
+    normalized = _normalize_text(cleaned)
+    if not normalized or normalized in seen:
+        return
+
+    tags.append(cleaned)
+    seen.add(normalized)
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -492,6 +588,81 @@ def _payload_score_parts(raw_payload: dict[str, object] | dict[str, str] | None)
         "award_ceiling",
     )
     return [_clean(_strip_html(raw_payload.get(key))) for key in ordered_keys]
+
+
+def _payload_classification_parts(raw_payload: dict[str, object] | dict[str, str] | None) -> list[str | None]:
+    if not isinstance(raw_payload, dict):
+        return []
+
+    ordered_keys = (
+        "body",
+        "description",
+        "summary_description",
+        "category",
+        "category_explanation",
+        "organization",
+        "department",
+        "top_level_agency_name",
+        "place_of_performance",
+        "naics",
+        "acquisition_strategy",
+        "contract_type",
+        "estimated_contract_value",
+        "funding_instruments",
+        "funding_categories",
+        "funding_category_description",
+        "applicant_types",
+        "applicant_eligibility_description",
+        "agency_contact_description",
+        "additional_info_url_description",
+        "opportunity_assistance_listings",
+        "performance_start_date",
+    )
+    return [_clean(_strip_html(raw_payload.get(key))) for key in ordered_keys]
+
+
+def _opportunity_classification_parts(opportunity: GovContractOpportunity) -> list[str | None]:
+    return [
+        opportunity.title,
+        opportunity.agency_name,
+        opportunity.agency_number,
+        opportunity.solicitation_id,
+        opportunity.nigp_codes,
+        *(opportunity.matched_keywords or []),
+        *_payload_classification_parts(opportunity.raw_payload),
+    ]
+
+
+def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, list[str]]:
+    parts = _opportunity_classification_parts(opportunity)
+    it_score, it_tags = _score_text_parts(parts, list(IT_OPPORTUNITY_RULES))
+    property_score, property_tags = _score_text_parts(parts, list(PROPERTY_OPPORTUNITY_RULES))
+
+    categories: list[str] = []
+    if it_score > 0:
+        categories.append(IT_SERVICES_CATEGORY)
+    if property_score > 0:
+        categories.append(PROPERTY_SERVICES_CATEGORY)
+    if not categories:
+        categories.append(OTHER_OPPORTUNITIES_CATEGORY)
+
+    auto_tags: list[str] = []
+    seen_tags: set[str] = set()
+
+    _append_unique_tag(auto_tags, OPPORTUNITY_SOURCE_TYPE_TAGS.get(opportunity.source), seen=seen_tags)
+    for category in categories:
+        if category == OTHER_OPPORTUNITIES_CATEGORY:
+            continue
+        _append_unique_tag(auto_tags, OPPORTUNITY_CATEGORY_LABELS.get(category), seen=seen_tags)
+    for tag in [*it_tags, *property_tags, *(opportunity.matched_keywords or [])]:
+        _append_unique_tag(auto_tags, tag, seen=seen_tags)
+    if not auto_tags:
+        _append_unique_tag(auto_tags, "Opportunity", seen=seen_tags)
+
+    return {
+        "opportunity_categories": categories,
+        "auto_tags": auto_tags,
+    }
 
 
 def _record_score_parts(record: GovContractSourceRecord) -> list[str | None]:
@@ -1969,6 +2140,16 @@ def list_contracts(
     return list(db.scalars(statement).all())
 
 
+def serialize_opportunity(opportunity: GovContractOpportunity) -> GovContractOpportunityRead:
+    return GovContractOpportunityRead.model_validate(opportunity).model_copy(
+        update=_classify_opportunity(opportunity),
+    )
+
+
+def serialize_opportunities(opportunities: list[GovContractOpportunity]) -> list[GovContractOpportunityRead]:
+    return [serialize_opportunity(opportunity) for opportunity in opportunities]
+
+
 def list_import_runs(db: Session, *, limit: int = 10) -> list[GovContractImportRun]:
     statement = select(GovContractImportRun).order_by(desc(GovContractImportRun.created_at)).limit(limit)
     return list(db.scalars(statement).all())
@@ -2046,6 +2227,7 @@ def funnel_contract_to_crm(
             "lead_source": "SBA SUBNet Opportunities",
         }
 
+    opportunity_classification = _classify_opportunity(contract)
     payload = IntakeLeadCreate(
         source_site=source_context["source_site"],
         source_type="government_contract",
@@ -2069,6 +2251,8 @@ def funnel_contract_to_crm(
             "score": contract.score,
             "fit_bucket": contract.fit_bucket,
             "matched_keywords": list(contract.matched_keywords or []),
+            "opportunity_categories": opportunity_classification["opportunity_categories"],
+            "auto_tags": opportunity_classification["auto_tags"],
             "notes": _clean(notes),
         },
         lead={

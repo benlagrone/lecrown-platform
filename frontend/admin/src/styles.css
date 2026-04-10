@@ -378,6 +378,14 @@ textarea {
   margin-bottom: 0.85rem;
 }
 
+.keyword-search-field {
+  min-width: 260px;
+  flex: 1 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
 .priority-filter-field {
   max-width: 150px;
   display: flex;
