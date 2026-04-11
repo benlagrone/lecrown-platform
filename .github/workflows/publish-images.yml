@@ -82,9 +82,107 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.build_args }}
 
-  deploy_prod:
+  resolve_deploy_path:
     needs: publish
     if: ${{ github.event_name == 'push' || inputs.deploy_to_prod }}
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_path: ${{ steps.resolve.outputs.deploy_path }}
+      credential_source: ${{ steps.resolve.outputs.credential_source }}
+    steps:
+      - name: Resolve Deploy Path
+        id: resolve
+        shell: bash
+        env:
+          PRIMARY_DEPLOY_HOST: ${{ secrets.LECROWNPLATFORM_DEPLOY_HOST }}
+          PRIMARY_DEPLOY_USER: ${{ secrets.LECROWNPLATFORM_DEPLOY_USER }}
+          PRIMARY_DEPLOY_ROOT: ${{ secrets.LECROWNPLATFORM_DEPLOY_ROOT }}
+          PRIMARY_DEPLOY_SSH_KEY: ${{ secrets.LECROWNPLATFORM_DEPLOY_SSH_KEY }}
+          PRIMARY_DEPLOY_KNOWN_HOSTS: ${{ secrets.LECROWNPLATFORM_DEPLOY_KNOWN_HOSTS }}
+          FALLBACK_DEPLOY_HOST: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_HOST }}
+          FALLBACK_DEPLOY_USER: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_USER }}
+          FALLBACK_DEPLOY_ROOT: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_ROOT }}
+          FALLBACK_DEPLOY_SSH_KEY: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_SSH_KEY }}
+          FALLBACK_DEPLOY_KNOWN_HOSTS: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_KNOWN_HOSTS }}
+          FORTRESS_REPO_DISPATCH_TOKEN: ${{ secrets.FORTRESS_REPO_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          pick() {
+            if [ -n "${1:-}" ]; then
+              printf '%s' "${1}"
+            else
+              printf '%s' "${2:-}"
+            fi
+          }
+
+          DEPLOY_HOST="$(pick "${PRIMARY_DEPLOY_HOST:-}" "${FALLBACK_DEPLOY_HOST:-}")"
+          DEPLOY_USER="$(pick "${PRIMARY_DEPLOY_USER:-}" "${FALLBACK_DEPLOY_USER:-}")"
+          DEPLOY_ROOT="$(pick "${PRIMARY_DEPLOY_ROOT:-}" "${FALLBACK_DEPLOY_ROOT:-}")"
+          DEPLOY_SSH_KEY="$(pick "${PRIMARY_DEPLOY_SSH_KEY:-}" "${FALLBACK_DEPLOY_SSH_KEY:-}")"
+          DEPLOY_KNOWN_HOSTS="$(pick "${PRIMARY_DEPLOY_KNOWN_HOSTS:-}" "${FALLBACK_DEPLOY_KNOWN_HOSTS:-}")"
+
+          direct_ready=true
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_ROOT DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name:-}" ]; then
+              direct_ready=false
+              break
+            fi
+          done
+
+          primary_all_set=true
+          for name in \
+            PRIMARY_DEPLOY_HOST \
+            PRIMARY_DEPLOY_USER \
+            PRIMARY_DEPLOY_ROOT \
+            PRIMARY_DEPLOY_SSH_KEY \
+            PRIMARY_DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name:-}" ]; then
+              primary_all_set=false
+              break
+            fi
+          done
+
+          primary_any_set=false
+          for name in \
+            PRIMARY_DEPLOY_HOST \
+            PRIMARY_DEPLOY_USER \
+            PRIMARY_DEPLOY_ROOT \
+            PRIMARY_DEPLOY_SSH_KEY \
+            PRIMARY_DEPLOY_KNOWN_HOSTS; do
+            if [ -n "${!name:-}" ]; then
+              primary_any_set=true
+              break
+            fi
+          done
+
+          if [ "${direct_ready}" = "true" ]; then
+            if [ "${primary_all_set}" = "true" ]; then
+              CREDENTIAL_SOURCE="lecrownplatform-dedicated"
+            elif [ "${primary_any_set}" = "true" ]; then
+              CREDENTIAL_SOURCE="mixed-dedicated-and-shared"
+            else
+              CREDENTIAL_SOURCE="solomonic-clock-shared"
+            fi
+            DEPLOY_PATH="direct"
+          elif [ -n "${FORTRESS_REPO_DISPATCH_TOKEN:-}" ]; then
+            CREDENTIAL_SOURCE="fortress-repo-dispatch-token"
+            DEPLOY_PATH="fortress-dispatch"
+          else
+            CREDENTIAL_SOURCE="missing-source-deploy-config"
+            DEPLOY_PATH="missing"
+          fi
+
+          {
+            echo "deploy_path=${DEPLOY_PATH}"
+            echo "credential_source=${CREDENTIAL_SOURCE}"
+          } >> "$GITHUB_OUTPUT"
+
+  deploy_prod:
+    needs:
+      - publish
+      - resolve_deploy_path
+    if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'direct' }}
     runs-on: ubuntu-latest
     env:
       DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
@@ -326,3 +424,62 @@ jobs:
             echo "- App URL: https://app.lecrowndevelopment.com/"
             echo "- API URL: https://api.lecrowndevelopment.com/healthz"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  dispatch_fortress_deploy:
+    needs:
+      - publish
+      - resolve_deploy_path
+    if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'fortress-dispatch' }}
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
+      RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}
+    steps:
+      - name: Dispatch Fortress Deploy
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.FORTRESS_REPO_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/benlagrone/fortress-phronesis/dispatches \
+            -d @- <<EOF
+          {
+            "event_type": "deploy-lecrown-platform",
+            "client_payload": {
+              "source_sha": "${GITHUB_SHA}",
+              "environment": "${DEPLOY_ENVIRONMENT}",
+              "run_public_smoke": ${RUN_PUBLIC_SMOKE}
+            }
+          }
+          EOF
+
+      - name: Deployment Summary
+        shell: bash
+        run: |
+          {
+            echo "## Fortress Deploy Dispatch"
+            echo ""
+            echo "- Source SHA: \`${GITHUB_SHA}\`"
+            echo "- Environment: \`${DEPLOY_ENVIRONMENT}\`"
+            echo "- Public smoke: \`${RUN_PUBLIC_SMOKE}\`"
+            echo "- Deploy path: \`fortress-dispatch\`"
+            echo "- Credential source: \`${{ needs.resolve_deploy_path.outputs.credential_source }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  fail_missing_deploy_path:
+    needs:
+      - publish
+      - resolve_deploy_path
+    if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'missing' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Missing Deploy Configuration
+        shell: bash
+        run: |
+          echo "Missing deploy configuration in benlagrone/lecrown-platform." >&2
+          echo "Provide either direct source-repo deploy secrets (LECROWNPLATFORM_* or SOLOMONIC_CLOCK_*) or FORTRESS_REPO_DISPATCH_TOKEN." >&2
+          exit 1

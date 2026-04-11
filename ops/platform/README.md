@@ -86,9 +86,12 @@ against:
 The Git-driven path depends on:
 
 - `.github/workflows/publish-images.yml`
-- source repo deploy secrets `LECROWNPLATFORM_*` or fallback `SOLOMONIC_CLOCK_*`
+- either source repo deploy secrets `LECROWNPLATFORM_*` or fallback `SOLOMONIC_CLOCK_*`
+- or `FORTRESS_REPO_DISPATCH_TOKEN` for fortress-side dispatch fallback
 
-It no longer depends on a cross-repo dispatch token to reach production.
+When source-side SSH deploy secrets are present, the workflow deploys directly
+from this repo. When they are absent but `FORTRESS_REPO_DISPATCH_TOKEN` exists,
+the workflow falls back to dispatching the fortress deploy workflow.
 
 
 ## TLS
