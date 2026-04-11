@@ -1,5 +1,6 @@
 services:
   backend:
+    image: ${LECROWNPLATFORM_API_IMAGE:-ghcr.io/benlagrone/lecrown-platform-api:latest}
     build:
       context: ../../backend
     restart: unless-stopped
@@ -13,6 +14,7 @@ services:
       - lecrown-platform-data:/app/data
 
   frontend:
+    image: ${LECROWNPLATFORM_ADMIN_IMAGE:-ghcr.io/benlagrone/lecrown-platform-admin:latest}
     build:
       context: ../../frontend
       dockerfile: admin/Dockerfile

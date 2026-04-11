@@ -7,19 +7,19 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Fortress deploy environment
+        description: Deploy environment
         required: true
         default: prod
         type: choice
         options:
           - prod
       run_public_smoke:
-        description: Run fortress public smoke after deploy
+        description: Run public smoke after deploy
         required: true
         default: false
         type: boolean
-      dispatch_fortress_deploy:
-        description: Dispatch fortress deploy after image publish
+      deploy_to_prod:
+        description: Deploy to production after image publish
         required: true
         default: true
         type: boolean
@@ -82,40 +82,247 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.build_args }}
 
-  dispatch_fortress_deploy:
+  deploy_prod:
     needs: publish
-    if: ${{ github.event_name == 'push' || inputs.dispatch_fortress_deploy }}
+    if: ${{ github.event_name == 'push' || inputs.deploy_to_prod }}
     runs-on: ubuntu-latest
     env:
       DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
       RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}
     steps:
-      - name: Dispatch Fortress Deploy
+      - name: Resolve Deploy Credentials
+        id: resolve_deploy
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.FORTRESS_REPO_DISPATCH_TOKEN }}
+          PRIMARY_DEPLOY_HOST: ${{ secrets.LECROWNPLATFORM_DEPLOY_HOST }}
+          PRIMARY_DEPLOY_USER: ${{ secrets.LECROWNPLATFORM_DEPLOY_USER }}
+          PRIMARY_DEPLOY_ROOT: ${{ secrets.LECROWNPLATFORM_DEPLOY_ROOT }}
+          PRIMARY_DEPLOY_SSH_KEY: ${{ secrets.LECROWNPLATFORM_DEPLOY_SSH_KEY }}
+          PRIMARY_DEPLOY_KNOWN_HOSTS: ${{ secrets.LECROWNPLATFORM_DEPLOY_KNOWN_HOSTS }}
+          FALLBACK_DEPLOY_HOST: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_HOST }}
+          FALLBACK_DEPLOY_USER: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_USER }}
+          FALLBACK_DEPLOY_ROOT: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_ROOT }}
+          FALLBACK_DEPLOY_SSH_KEY: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_SSH_KEY }}
+          FALLBACK_DEPLOY_KNOWN_HOSTS: ${{ secrets.SOLOMONIC_CLOCK_DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
 
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "FORTRESS_REPO_DISPATCH_TOKEN is required to dispatch fortress deploys" >&2
+          pick() {
+            if [ -n "${1:-}" ]; then
+              printf '%s' "${1}"
+            else
+              printf '%s' "${2:-}"
+            fi
+          }
+
+          DEPLOY_HOST="$(pick "${PRIMARY_DEPLOY_HOST:-}" "${FALLBACK_DEPLOY_HOST:-}")"
+          DEPLOY_USER="$(pick "${PRIMARY_DEPLOY_USER:-}" "${FALLBACK_DEPLOY_USER:-}")"
+          DEPLOY_ROOT="$(pick "${PRIMARY_DEPLOY_ROOT:-}" "${FALLBACK_DEPLOY_ROOT:-}")"
+          DEPLOY_SSH_KEY="$(pick "${PRIMARY_DEPLOY_SSH_KEY:-}" "${FALLBACK_DEPLOY_SSH_KEY:-}")"
+          DEPLOY_KNOWN_HOSTS="$(pick "${PRIMARY_DEPLOY_KNOWN_HOSTS:-}" "${FALLBACK_DEPLOY_KNOWN_HOSTS:-}")"
+
+          required=(DEPLOY_HOST DEPLOY_USER DEPLOY_ROOT DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS)
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing LeCrown Platform deploy configuration after fallback: %s\n' "${missing[*]}" >&2
             exit 1
           fi
 
-          gh api repos/benlagrone/fortress-phronesis/dispatches \
-            -f event_type=deploy-lecrown-platform \
-            -F client_payload[source_sha]="${GITHUB_SHA}" \
-            -F client_payload[environment]="${DEPLOY_ENVIRONMENT}" \
-            -F client_payload[run_public_smoke]="${RUN_PUBLIC_SMOKE}"
+          primary_all_set=true
+          for name in \
+            PRIMARY_DEPLOY_HOST \
+            PRIMARY_DEPLOY_USER \
+            PRIMARY_DEPLOY_ROOT \
+            PRIMARY_DEPLOY_SSH_KEY \
+            PRIMARY_DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name:-}" ]; then
+              primary_all_set=false
+              break
+            fi
+          done
+
+          primary_any_set=false
+          for name in \
+            PRIMARY_DEPLOY_HOST \
+            PRIMARY_DEPLOY_USER \
+            PRIMARY_DEPLOY_ROOT \
+            PRIMARY_DEPLOY_SSH_KEY \
+            PRIMARY_DEPLOY_KNOWN_HOSTS; do
+            if [ -n "${!name:-}" ]; then
+              primary_any_set=true
+              break
+            fi
+          done
+
+          if [ "${primary_all_set}" = "true" ]; then
+            CREDENTIAL_SOURCE="lecrownplatform-dedicated"
+          elif [ "${primary_any_set}" = "true" ]; then
+            CREDENTIAL_SOURCE="mixed-dedicated-and-shared"
+          else
+            CREDENTIAL_SOURCE="solomonic-clock-shared"
+          fi
+
+          {
+            echo "DEPLOY_HOST<<EOF"
+            echo "${DEPLOY_HOST}"
+            echo "EOF"
+            echo "DEPLOY_USER<<EOF"
+            echo "${DEPLOY_USER}"
+            echo "EOF"
+            echo "DEPLOY_ROOT<<EOF"
+            echo "${DEPLOY_ROOT}"
+            echo "EOF"
+            echo "DEPLOY_SSH_KEY<<EOF"
+            echo "${DEPLOY_SSH_KEY}"
+            echo "EOF"
+            echo "DEPLOY_KNOWN_HOSTS<<EOF"
+            echo "${DEPLOY_KNOWN_HOSTS}"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+          echo "credential_source=${CREDENTIAL_SOURCE}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy To Production
+        shell: bash
+        env:
+          WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "DEPLOY_ROOT='${DEPLOY_ROOT}' REPO_URL='https://github.com/${GITHUB_REPOSITORY}.git' REPO_SLUG='${GITHUB_REPOSITORY}' SOURCE_SHA='${GITHUB_SHA}' REPO_TOKEN='${WORKFLOW_TOKEN}' GHCR_TOKEN='${WORKFLOW_TOKEN}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          fail_repo() {
+            echo "FAIL: $1" >&2
+            exit 1
+          }
+
+          require_clean_repo() {
+            local repo_path="$1"
+            if [[ -n "$(git -C "$repo_path" status --porcelain --untracked-files=all)" ]]; then
+              fail_repo "deploy checkout is dirty at ${repo_path}"
+            fi
+          }
+
+          assert_expected_origin() {
+            local repo_path="$1"
+            local repo_slug="$2"
+            local origin_url=""
+
+            if ! origin_url="$(git -C "$repo_path" remote get-url origin 2>/dev/null)"; then
+              fail_repo "deploy checkout at ${repo_path} has no origin remote"
+            fi
+
+            case "${origin_url}" in
+              "https://github.com/${repo_slug}.git"|"https://github.com/${repo_slug}"|"git@github.com:${repo_slug}.git"|"ssh://git@github.com/${repo_slug}.git")
+                ;;
+              *)
+                fail_repo "deploy checkout origin ${origin_url} does not match expected repo ${repo_slug}"
+                ;;
+            esac
+          }
+
+          ASKPASS_SCRIPT="$(mktemp)"
+          trap 'rm -f "${ASKPASS_SCRIPT}"' EXIT
+          cat > "${ASKPASS_SCRIPT}" <<'EOF'
+          #!/usr/bin/env bash
+          case "${1:-}" in
+            *Username*)
+              printf '%s\n' 'x-access-token'
+              ;;
+            *Password*)
+              printf '%s\n' "${REPO_TOKEN}"
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+          EOF
+          chmod 700 "${ASKPASS_SCRIPT}"
+          export GIT_ASKPASS="${ASKPASS_SCRIPT}"
+          export GIT_TERMINAL_PROMPT=0
+
+          if [[ ! -d "${DEPLOY_ROOT}/.git" ]]; then
+            install -d "$(dirname "${DEPLOY_ROOT}")"
+            git clone "${REPO_URL}" "${DEPLOY_ROOT}"
+          fi
+
+          assert_expected_origin "${DEPLOY_ROOT}" "${REPO_SLUG}"
+          require_clean_repo "${DEPLOY_ROOT}"
+
+          git -C "${DEPLOY_ROOT}" fetch origin --tags
+          git -C "${DEPLOY_ROOT}" checkout main
+          git -C "${DEPLOY_ROOT}" merge --ff-only origin/main
+
+          if [[ "$(git -C "${DEPLOY_ROOT}" rev-parse HEAD)" != "${SOURCE_SHA}" ]]; then
+            fail_repo "server checkout head does not match expected source sha ${SOURCE_SHA}"
+          fi
+
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u x-access-token --password-stdin
+
+          cd "${DEPLOY_ROOT}"
+
+          COMPOSE=(docker compose -f ops/platform/docker-compose.prod.yml --env-file ops/platform/.env)
+          LECROWNPLATFORM_API_IMAGE="ghcr.io/benlagrone/lecrown-platform-api:sha-${SOURCE_SHA}" \
+          LECROWNPLATFORM_ADMIN_IMAGE="ghcr.io/benlagrone/lecrown-platform-admin:sha-${SOURCE_SHA}" \
+          "${COMPOSE[@]}" pull backend frontend
+
+          LECROWNPLATFORM_API_IMAGE="ghcr.io/benlagrone/lecrown-platform-api:sha-${SOURCE_SHA}" \
+          LECROWNPLATFORM_ADMIN_IMAGE="ghcr.io/benlagrone/lecrown-platform-admin:sha-${SOURCE_SHA}" \
+          "${COMPOSE[@]}" up -d backend frontend
+
+          "${COMPOSE[@]}" ps
+
+          for url in \
+            http://127.0.0.1:8000/healthz \
+            http://127.0.0.1:3000/; do
+            for attempt in $(seq 1 20); do
+              if curl -fsS "$url" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+            curl -fsS "$url" >/dev/null
+          done
+
+          require_clean_repo "${DEPLOY_ROOT}"
+          REMOTE
+
+      - name: Public Smoke
+        if: ${{ env.RUN_PUBLIC_SMOKE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://api.lecrowndevelopment.com/healthz >/dev/null
+          curl -fsSIL https://app.lecrowndevelopment.com/ >/dev/null
 
       - name: Deployment Summary
         shell: bash
         run: |
           {
-            echo "## Fortress Deploy Dispatch"
+            echo "## Production Deploy"
             echo ""
             echo "- Source SHA: \`${GITHUB_SHA}\`"
             echo "- Environment: \`${DEPLOY_ENVIRONMENT}\`"
             echo "- Public smoke: \`${RUN_PUBLIC_SMOKE}\`"
-            echo "- Event type: \`deploy-lecrown-platform\`"
+            echo "- Deploy credential source: \`${{ steps.resolve_deploy.outputs.credential_source }}\`"
+            echo "- App URL: https://app.lecrowndevelopment.com/"
+            echo "- API URL: https://api.lecrowndevelopment.com/healthz"
           } >> "$GITHUB_STEP_SUMMARY"

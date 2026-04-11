@@ -69,6 +69,28 @@ From the repository root on the server:
 docker compose -f ops/platform/docker-compose.prod.yml --env-file ops/platform/.env up -d --build
 ```
 
+## Git-To-Prod Path
+
+The repo now has two distinct deployment paths:
+
+- local/server-side manual path: use `ops/platform/docker-compose.prod.yml`
+- Git-driven production path: push to `main`, publish GHCR images, then deploy
+  the pinned `sha-...` images to production from this repo's workflow
+
+For pushes to `main`, this path now targets `prod` and runs public smoke checks
+against:
+
+- `https://app.lecrowndevelopment.com/`
+- `https://api.lecrowndevelopment.com/healthz`
+
+The Git-driven path depends on:
+
+- `.github/workflows/publish-images.yml`
+- source repo deploy secrets `LECROWNPLATFORM_*` or fallback `SOLOMONIC_CLOCK_*`
+
+It no longer depends on a cross-repo dispatch token to reach production.
+
+
 ## TLS
 
 The nginx configs in this folder expose `/.well-known/acme-challenge/` for certificate issuance.
