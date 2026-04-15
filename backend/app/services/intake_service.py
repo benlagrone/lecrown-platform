@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.intake import IntakeLeadSubmission
 from app.schemas.intake import IntakeLeadCreate
 from app.services import espocrm_service
 from app.utils.helpers import new_uuid
+
+settings = get_settings()
 
 
 def _clean(value: Any) -> str | None:
@@ -138,6 +142,155 @@ def create_lead_submission(db: Session, payload: IntakeLeadCreate) -> IntakeLead
     db.commit()
     db.refresh(submission)
     return submission
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def get_dashboard(
+    db: Session,
+    *,
+    source_limit: int = 12,
+    recent_limit: int = 12,
+) -> dict[str, Any]:
+    submissions = list(
+        db.scalars(select(IntakeLeadSubmission).order_by(desc(IntakeLeadSubmission.created_at))).all()
+    )
+    now = datetime.now(timezone.utc)
+    today_cutoff = now - timedelta(days=1)
+    week_cutoff = now - timedelta(days=7)
+
+    overview = {
+        "observed_source_sites": 0,
+        "total_submissions": 0,
+        "new_contacts_today": 0,
+        "new_contacts_7d": 0,
+        "delivered_submissions": 0,
+        "failed_submissions": 0,
+    }
+    recent_contacts: list[dict[str, Any]] = []
+    source_summaries: dict[str, dict[str, Any]] = {}
+
+    for submission in submissions:
+        created_at = _as_utc(submission.created_at)
+        is_today = created_at >= today_cutoff
+        is_week = created_at >= week_cutoff
+
+        overview["total_submissions"] += 1
+        if is_today:
+            overview["new_contacts_today"] += 1
+        if is_week:
+            overview["new_contacts_7d"] += 1
+        if submission.delivery_status == "delivered":
+            overview["delivered_submissions"] += 1
+        elif submission.delivery_status == "failed":
+            overview["failed_submissions"] += 1
+
+        if len(recent_contacts) < recent_limit:
+            recent_contacts.append(
+                {
+                    "id": submission.id,
+                    "source_site": submission.source_site,
+                    "contact_name": submission.contact_name,
+                    "email": submission.email,
+                    "phone": submission.phone,
+                    "business_context": submission.business_context,
+                    "product_context": submission.product_context,
+                    "page_url": submission.page_url,
+                    "campaign": submission.campaign,
+                    "status": submission.status,
+                    "delivery_status": submission.delivery_status,
+                    "delivery_record_id": submission.delivery_record_id,
+                    "created_at": submission.created_at,
+                }
+            )
+
+        summary = source_summaries.get(submission.source_site)
+        if summary is None:
+            summary = {
+                "source_site": submission.source_site,
+                "source_type": submission.source_type,
+                "business_contexts": set(),
+                "form_providers": set(),
+                "form_names": set(),
+                "total_submissions": 0,
+                "delivered_submissions": 0,
+                "failed_submissions": 0,
+                "new_contacts_today": 0,
+                "new_contacts_7d": 0,
+                "last_submission_at": created_at,
+                "last_contact_name": submission.contact_name,
+                "last_page_url": submission.page_url,
+                "last_delivery_status": submission.delivery_status,
+            }
+            source_summaries[submission.source_site] = summary
+
+        summary["total_submissions"] += 1
+        if submission.business_context:
+            summary["business_contexts"].add(submission.business_context)
+        if submission.form_provider:
+            summary["form_providers"].add(submission.form_provider)
+        if submission.form_name:
+            summary["form_names"].add(submission.form_name)
+        if submission.delivery_status == "delivered":
+            summary["delivered_submissions"] += 1
+        elif submission.delivery_status == "failed":
+            summary["failed_submissions"] += 1
+        if is_today:
+            summary["new_contacts_today"] += 1
+        if is_week:
+            summary["new_contacts_7d"] += 1
+        if created_at >= summary["last_submission_at"]:
+            summary["last_submission_at"] = created_at
+            summary["last_contact_name"] = submission.contact_name
+            summary["last_page_url"] = submission.page_url
+            summary["last_delivery_status"] = submission.delivery_status
+
+    overview["observed_source_sites"] = len(source_summaries)
+
+    sorted_sources = sorted(
+        source_summaries.values(),
+        key=lambda summary: summary["last_submission_at"],
+        reverse=True,
+    )[:source_limit]
+
+    normalized_sources = [
+        {
+            **summary,
+            "business_contexts": sorted(summary["business_contexts"]),
+            "form_providers": sorted(summary["form_providers"]),
+            "form_names": sorted(summary["form_names"]),
+        }
+        for summary in sorted_sources
+    ]
+
+    crm_is_configured = espocrm_service.is_configured()
+    connections = [
+        {
+            "key": "intake_api",
+            "label": "Intake API",
+            "status": "protected" if settings.intake_api_key else "open",
+            "detail": "Public sites can post new marketing leads to POST /intake/lead.",
+            "value": "X-Intake-Key required" if settings.intake_api_key else "No intake key configured",
+        },
+        {
+            "key": "espocrm",
+            "label": "EspoCRM delivery",
+            "status": "configured" if crm_is_configured else "attention",
+            "detail": "Lead submissions are forwarded to EspoCRM after local intake storage.",
+            "value": "Ready to deliver" if crm_is_configured else "CRM credentials or base URL missing",
+        },
+    ]
+
+    return {
+        "overview": overview,
+        "connections": connections,
+        "source_sites": normalized_sources,
+        "recent_contacts": recent_contacts,
+    }
 
 
 def list_submissions(

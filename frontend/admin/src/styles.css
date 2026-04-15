@@ -155,6 +155,18 @@ textarea {
   text-transform: uppercase;
 }
 
+.hero-account-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.hero-account-copy span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .tenant-picker {
   width: 220px;
   display: flex;
@@ -286,12 +298,85 @@ textarea {
   margin: 0 auto;
 }
 
+.auth-grid,
+.profile-grid,
+.intake-grid {
+  align-items: start;
+}
+
 .auth-form {
   max-width: 420px;
 }
 
 .auth-actions {
   justify-content: flex-start;
+}
+
+.profile-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.invite-code-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  border-radius: 20px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.invite-code-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.invite-code-card-copy span {
+  color: var(--muted);
+}
+
+.invite-code {
+  display: block;
+  overflow-wrap: anywhere;
+  border-radius: 16px;
+  padding: 0.8rem 0.9rem;
+  background: rgba(23, 33, 43, 0.08);
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.invite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.invite-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  border-radius: 20px;
+  padding: 0.95rem 1rem;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.invite-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.invite-row-meta span {
+  color: var(--muted);
+  font-size: 0.92rem;
 }
 
 .opportunity-grid {
@@ -368,6 +453,37 @@ textarea {
 
 .opportunity-tab-copy {
   margin-top: 0.15rem;
+}
+
+.source-filter-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.source-filter-button {
+  justify-content: space-between;
+  min-width: 170px;
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+}
+
+.source-filter-button:hover {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.source-filter-button strong {
+  margin-left: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.source-filter-button-active,
+.source-filter-button-active:hover {
+  background: rgba(23, 33, 43, 0.86);
+  color: white;
+  border-color: transparent;
 }
 
 .active-tag-filter-row {
@@ -454,6 +570,10 @@ td span {
   margin-bottom: 1rem;
 }
 
+.combined-feed-copy {
+  margin-bottom: 1rem;
+}
+
 .metric-pill {
   min-width: 150px;
   border: 1px solid rgba(23, 33, 43, 0.08);
@@ -470,6 +590,36 @@ td span {
 .metric-pill span {
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-badge-good {
+  background: rgba(47, 111, 69, 0.14);
+  color: var(--success);
+}
+
+.status-badge-warn {
+  background: rgba(156, 61, 36, 0.12);
+  color: var(--accent-strong);
+}
+
+.status-badge-bad {
+  background: rgba(138, 36, 21, 0.14);
+  color: #8a2415;
+}
+
+.status-badge-neutral {
+  background: rgba(23, 33, 43, 0.08);
+  color: var(--muted);
 }
 
 .fit-tag {
@@ -628,6 +778,138 @@ td span {
   background: rgba(138, 36, 21, 0.12);
 }
 
+.billing-grid {
+  align-items: start;
+}
+
+.billing-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.billing-section,
+.billing-preview-card,
+.billing-success-card {
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.billing-section,
+.billing-preview-card {
+  padding: 1rem;
+}
+
+.billing-actions {
+  flex-wrap: wrap;
+}
+
+.billing-line-item-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.billing-line-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(23, 33, 43, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.billing-line-item-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.billing-remove-line-item {
+  align-self: end;
+}
+
+.billing-preview-meta,
+.billing-success-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.billing-preview-meta {
+  margin-bottom: 1rem;
+}
+
+.billing-preview-meta strong,
+.billing-success-grid strong {
+  display: block;
+}
+
+.billing-preview-label,
+.billing-success-grid span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.billing-stat-grid {
+  margin-bottom: 1rem;
+}
+
+.billing-preview-routing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  color: var(--muted);
+}
+
+.billing-preview-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+.billing-preview-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid rgba(23, 33, 43, 0.08);
+}
+
+.billing-preview-line:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.billing-preview-line:last-child {
+  padding-bottom: 0;
+}
+
+.billing-preview-line div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.billing-preview-line span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.billing-success-card {
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
 @media (max-width: 900px) {
   .hero-card,
   .grid {
@@ -652,12 +934,27 @@ td span {
     align-self: flex-start;
   }
 
+  .hero-account-copy {
+    align-items: flex-start;
+  }
+
   .action-row {
     justify-content: flex-start;
   }
 
+  .profile-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
   .keyword-form,
   .keyword-rule-card {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-field-grid,
+  .billing-preview-meta,
+  .billing-success-grid,
+  .billing-line-item-row {
     grid-template-columns: 1fr;
   }
 
@@ -668,5 +965,9 @@ td span {
   .keyword-rule-chip-copy strong {
     max-width: none;
     white-space: normal;
+  }
+
+  .invite-row {
+    flex-direction: column;
   }
 }

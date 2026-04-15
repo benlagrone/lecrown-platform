@@ -1,0 +1,26 @@
+{
+  "company_name": "LeCrown Development Corp",
+  "invoice_title": "INVOICE",
+  "due_text": "Due April 14, 2026",
+  "email_to": "vendors@revolutiontechnologies.com",
+  "from": {
+    "name": "LeCrown Development Corp",
+    "address_lines": [
+      "12518 Boheme Drive",
+      "Houston, TX 77024"
+    ],
+    "phone": "+1 832-798-3991"
+  },
+  "to": {
+    "name": "Revolution Technologies",
+    "address_lines": [
+      "1000 Revolution Technologies",
+      "Melbourne, FL 32901"
+    ],
+    "email": "vendors@revolutiontechnologies.com"
+  },
+  "memo_title": "Description",
+  "currency": "USD",
+  "accent_color": "#1f4b6e",
+  "footer_note": "Thank you for your business."
+}

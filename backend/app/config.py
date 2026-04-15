@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -12,6 +13,23 @@ class Settings:
     secret_key: str = os.getenv("SECRET_KEY", "change-me-in-production")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+    stripe_secret_key: str = os.getenv("STRIPE_SECRET_KEY", "")
+    stripe_publishable_key: str = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+    stripe_webhook_secret: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    stripe_api_version: str = os.getenv("STRIPE_API_VERSION", "2026-02-25.clover")
+    stripe_portal_configuration_id: str = os.getenv("STRIPE_PORTAL_CONFIGURATION_ID", "")
+    billing_service_keys: str = os.getenv("BILLING_SERVICE_KEYS", "")
+    google_oauth_client_id: str = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+    google_oauth_client_secret: str = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    gmail_refresh_token_benjaminlagrone_gmail_com: str = os.getenv(
+        "GMAIL_REFRESH_TOKEN_BENJAMINLAGRONE_GMAIL_COM",
+        "",
+    )
+    gmail_refresh_token_benjamin_lecrownproperties_com: str = os.getenv(
+        "GMAIL_REFRESH_TOKEN_BENJAMIN_LECROWNPROPERTIES_COM",
+        "",
+    )
+    invoice_output_dir: str = os.getenv("INVOICE_OUTPUT_DIR", "./invoice-output")
 
     linkedin_token: str = os.getenv("LINKEDIN_TOKEN", "")
     linkedin_org_id_dev: str = os.getenv("LINKEDIN_ORG_ID_DEV", "")
@@ -38,6 +56,8 @@ class Settings:
 
     admin_username: str = os.getenv("ADMIN_USERNAME", "admin")
     admin_password: str = os.getenv("ADMIN_PASSWORD", "admin123")
+    admin_email: str = os.getenv("ADMIN_EMAIL", "")
+    user_invite_expire_days: int = int(os.getenv("USER_INVITE_EXPIRE_DAYS", "7"))
     intake_api_key: str = os.getenv("INTAKE_API_KEY", "")
 
     espocrm_base_url: str = os.getenv("ESPOCRM_BASE_URL", "")
@@ -113,6 +133,28 @@ class Settings:
     @property
     def gmail_rfq_feed_enabled(self) -> bool:
         return bool(self.gmail_rfq_feed_url.strip())
+
+    @property
+    def billing_service_key_map(self) -> dict[str, str]:
+        pairs: dict[str, str] = {}
+        for raw_pair in self.billing_service_keys.split(","):
+            app_key, separator, secret = raw_pair.partition(":")
+            cleaned_app_key = app_key.strip()
+            cleaned_secret = secret.strip()
+            if separator and cleaned_app_key and cleaned_secret:
+                pairs[cleaned_app_key] = cleaned_secret
+        return pairs
+
+    @property
+    def gmail_refresh_tokens(self) -> dict[str, str]:
+        return {
+            "benjaminlagrone@gmail.com": self.gmail_refresh_token_benjaminlagrone_gmail_com,
+            "benjamin@lecrownproperties.com": self.gmail_refresh_token_benjamin_lecrownproperties_com,
+        }
+
+    @property
+    def invoice_output_path(self) -> Path:
+        return Path(self.invoice_output_dir).expanduser()
 
 
 @lru_cache

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.core.database import init_db
-from app.routes import auth, content, distribution, gov_contract, intake, inquiry, linkedin, youtube
+from app.routes import auth, billing, content, distribution, gov_contract, intake, inquiry, invoice, linkedin, youtube
 
 settings = get_settings()
 
@@ -29,6 +29,8 @@ def healthcheck() -> dict[str, str]:
 
 
 app.include_router(content.router, prefix="/content", tags=["content"])
+app.include_router(billing.router, prefix="/billing", tags=["billing"])
+app.include_router(invoice.router, prefix="/invoice", tags=["invoice"])
 app.include_router(gov_contract.router, prefix="/contracts", tags=["contracts"])
 app.include_router(intake.router, prefix="/intake", tags=["intake"])
 app.include_router(inquiry.router, prefix="/inquiry", tags=["inquiry"])

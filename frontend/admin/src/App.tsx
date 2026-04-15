@@ -1,16 +1,21 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+import BillingPage from "./BillingPage";
 import {
+  acceptInvite,
+  changePassword,
   clearAuthToken,
   createContent,
   createGovContractAgencyPreference,
   createGovContractKeywordRule,
+  createUserInvite,
   deleteGovContractAgencyPreference,
   deleteGovContractKeywordRule,
   downloadFederalContractsExport,
   downloadGovContractsExport,
   downloadGrantsContractsExport,
   funnelGovContract,
+  getIntakeDashboard,
   getCurrentAdmin,
   getGovContractCapabilities,
   hasStoredAuthToken,
@@ -20,6 +25,7 @@ import {
   listGovContractRuns,
   listGovContracts,
   listInquiries,
+  listUserInvites,
   login,
   publishDistribution,
   publishToLinkedIn,
@@ -28,11 +34,13 @@ import {
   refreshGovContracts,
   refreshGrantsContracts,
   refreshSbaSubnetContracts,
+  revokeUserInvite,
   storeAuthToken,
   updateGovContractAgencyPreference,
   updateGovContractKeywordRule,
 } from "../../shared/api";
 import type {
+  AuthUser,
   Content,
   ContentCreate,
   DistributionChannel,
@@ -41,11 +49,14 @@ import type {
   GovContractOpportunity,
   GovContractCapabilities,
   GovContractKeywordRule,
+  IntakeDashboard,
   Inquiry,
   Tenant,
+  UserInvite,
+  UserInviteCreateResponse,
 } from "../../shared/types";
 
-type AdminView = "dashboard" | "opportunities";
+type AdminView = "dashboard" | "intake" | "opportunities" | "billing" | "profile";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
 type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
 type OpportunityTagFilterKind = "source" | "tag" | "preferred_agency";
@@ -92,6 +103,15 @@ function getCurrentView(): AdminView {
   if (typeof window === "undefined") {
     return "dashboard";
   }
+  if (window.location.hash.startsWith("#/intake")) {
+    return "intake";
+  }
+  if (window.location.hash.startsWith("#/profile")) {
+    return "profile";
+  }
+  if (window.location.hash.startsWith("#/billing")) {
+    return "billing";
+  }
   return window.location.hash.startsWith("#/opportunities") ? "opportunities" : "dashboard";
 }
 
@@ -99,7 +119,23 @@ function navigateToView(view: AdminView): void {
   if (typeof window === "undefined") {
     return;
   }
-  window.location.hash = view === "opportunities" ? "#/opportunities" : "#/";
+  if (view === "opportunities") {
+    window.location.hash = "#/opportunities";
+    return;
+  }
+  if (view === "intake") {
+    window.location.hash = "#/intake";
+    return;
+  }
+  if (view === "profile") {
+    window.location.hash = "#/profile";
+    return;
+  }
+  if (view === "billing") {
+    window.location.hash = "#/billing";
+    return;
+  }
+  window.location.hash = "#/";
 }
 
 export default function App() {
@@ -108,6 +144,7 @@ export default function App() {
   const [form, setForm] = useState<ContentCreate>(buildInitialForm());
   const [contentItems, setContentItems] = useState<Content[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [intakeDashboard, setIntakeDashboard] = useState<IntakeDashboard | null>(null);
   const [gmailContracts, setGmailContracts] = useState<GovContractOpportunity[]>([]);
   const [federalContracts, setFederalContracts] = useState<GovContractOpportunity[]>([]);
   const [grantsContracts, setGrantsContracts] = useState<GovContractOpportunity[]>([]);
@@ -118,10 +155,14 @@ export default function App() {
     gmail_rfq_sync_enabled: false,
     gmail_rfq_feed_label: null,
   });
+  const [currentAdmin, setCurrentAdmin] = useState<AuthUser | null>(null);
+  const [userInvites, setUserInvites] = useState<UserInvite[]>([]);
+  const [latestInvite, setLatestInvite] = useState<UserInviteCreateResponse | null>(null);
   const [agencyPreferences, setAgencyPreferences] = useState<GovContractAgencyPreference[]>([]);
   const [keywordRules, setKeywordRules] = useState<GovContractKeywordRule[]>([]);
   const [message, setMessage] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const [refreshingIntakeDashboard, setRefreshingIntakeDashboard] = useState(false);
   const [refreshingContracts, setRefreshingContracts] = useState(false);
   const [refreshingFederalContracts, setRefreshingFederalContracts] = useState(false);
   const [refreshingGrantsContracts, setRefreshingGrantsContracts] = useState(false);
@@ -134,12 +175,25 @@ export default function App() {
   const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
     useState<OpportunitiesAuthStatus>("unauthenticated");
   const [opportunityCategoryTab, setOpportunityCategoryTab] = useState<OpportunityCategoryTab>("all");
+  const [selectedOpportunitySourceFilter, setSelectedOpportunitySourceFilter] = useState<string | null>(null);
   const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
   const [opportunityKeywordFilter, setOpportunityKeywordFilter] = useState("");
   const [loginUsername, setLoginUsername] = useState("admin");
   const [loginPassword, setLoginPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const [acceptingInvite, setAcceptingInvite] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteUsername, setInviteUsername] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [invitePasswordConfirm, setInvitePasswordConfirm] = useState("");
   const [authMessage, setAuthMessage] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [minPriorityScoreFilter, setMinPriorityScoreFilter] = useState(0);
   const [matchesOnlyFilter, setMatchesOnlyFilter] = useState(true);
   const [openOnlyFilter, setOpenOnlyFilter] = useState(true);
@@ -175,10 +229,10 @@ export default function App() {
   }, [tenant]);
 
   useEffect(() => {
-    if (view !== "opportunities") {
+    if (view !== "opportunities" && view !== "profile" && view !== "intake" && view !== "billing") {
       return;
     }
-    void ensureOpportunitiesAccess();
+    void ensureProtectedAccess();
   }, [view]);
 
   useEffect(() => {
@@ -188,24 +242,37 @@ export default function App() {
     void refreshContractsView();
   }, [matchesOnlyFilter, minPriorityScoreFilter, openOnlyFilter]);
 
-  async function ensureOpportunitiesAccess() {
+  useEffect(() => {
+    if (view !== "intake" || opportunitiesAuthStatus !== "authenticated") {
+      return;
+    }
+    void refreshIntakeDashboard();
+  }, [view, opportunitiesAuthStatus]);
+
+  async function ensureProtectedAccess() {
     if (!hasStoredAuthToken()) {
       setOpportunitiesAuthStatus("unauthenticated");
+      setCurrentAdmin(null);
       return;
     }
 
     setOpportunitiesAuthStatus("checking");
     try {
-      await getCurrentAdmin();
+      const currentUser = await getCurrentAdmin();
+      setCurrentAdmin(currentUser);
       const capabilities = await getGovContractCapabilities();
       setContractCapabilities(capabilities);
       setAuthMessage("");
       setOpportunitiesAuthStatus("authenticated");
-      await refreshContractsView(capabilities);
+      if (view === "opportunities") {
+        await refreshContractsView(capabilities);
+      }
     } catch {
       clearAuthToken();
+      setCurrentAdmin(null);
+      setIntakeDashboard(null);
       setOpportunitiesAuthStatus("unauthenticated");
-      setAuthMessage("Sign in to view opportunities.");
+      setAuthMessage("Sign in to continue.");
     }
   }
 
@@ -227,41 +294,57 @@ export default function App() {
     }
   }
 
+  async function refreshIntakeDashboard() {
+    setRefreshingIntakeDashboard(true);
+    try {
+      const dashboard = await getIntakeDashboard();
+      setIntakeDashboard(dashboard);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingIntakeDashboard(false);
+    }
+  }
+
   async function refreshContractsView(capabilitiesOverride?: GovContractCapabilities) {
     try {
       const capabilities = capabilitiesOverride ?? contractCapabilities;
-      const [gmailItems, federalItems, grantsItems, sbaSubnetItems, esbdItems, runs, keywords, agencyPrefs] = await Promise.all([
-        capabilities.gmail_rfq_sync_enabled
-          ? listGovContracts(OPPORTUNITY_LIST_LIMIT, "gmail_rfqs", {
-              matchesOnly: matchesOnlyFilter,
-              minPriorityScore: minPriorityScoreFilter,
-              openOnly: openOnlyFilter,
-            })
-          : Promise.resolve([]),
-        listGovContracts(OPPORTUNITY_LIST_LIMIT, "federal_forecast", {
-          matchesOnly: matchesOnlyFilter,
-          minPriorityScore: minPriorityScoreFilter,
-          openOnly: openOnlyFilter,
-        }),
-        listGovContracts(OPPORTUNITY_LIST_LIMIT, "grants_gov", {
-          matchesOnly: matchesOnlyFilter,
-          minPriorityScore: minPriorityScoreFilter,
-          openOnly: openOnlyFilter,
-        }),
-        listGovContracts(OPPORTUNITY_LIST_LIMIT, "sba_subnet", {
-          matchesOnly: matchesOnlyFilter,
-          minPriorityScore: minPriorityScoreFilter,
-          openOnly: openOnlyFilter,
-        }),
-        listGovContracts(OPPORTUNITY_LIST_LIMIT, "txsmartbuy_esbd", {
-          matchesOnly: matchesOnlyFilter,
-          minPriorityScore: minPriorityScoreFilter,
-          openOnly: openOnlyFilter,
-        }),
-        listGovContractRuns(10),
-        listGovContractKeywordRules(),
-        listGovContractAgencyPreferences(),
-      ]);
+      const currentUser = currentAdmin ?? (await getCurrentAdmin());
+      setCurrentAdmin(currentUser);
+      const [gmailItems, federalItems, grantsItems, sbaSubnetItems, esbdItems, runs, keywords, agencyPrefs, invites] =
+        await Promise.all([
+          capabilities.gmail_rfq_sync_enabled
+            ? listGovContracts(OPPORTUNITY_LIST_LIMIT, "gmail_rfqs", {
+                matchesOnly: matchesOnlyFilter,
+                minPriorityScore: minPriorityScoreFilter,
+                openOnly: openOnlyFilter,
+              })
+            : Promise.resolve([]),
+          listGovContracts(OPPORTUNITY_LIST_LIMIT, "federal_forecast", {
+            matchesOnly: matchesOnlyFilter,
+            minPriorityScore: minPriorityScoreFilter,
+            openOnly: openOnlyFilter,
+          }),
+          listGovContracts(OPPORTUNITY_LIST_LIMIT, "grants_gov", {
+            matchesOnly: matchesOnlyFilter,
+            minPriorityScore: minPriorityScoreFilter,
+            openOnly: openOnlyFilter,
+          }),
+          listGovContracts(OPPORTUNITY_LIST_LIMIT, "sba_subnet", {
+            matchesOnly: matchesOnlyFilter,
+            minPriorityScore: minPriorityScoreFilter,
+            openOnly: openOnlyFilter,
+          }),
+          listGovContracts(OPPORTUNITY_LIST_LIMIT, "txsmartbuy_esbd", {
+            matchesOnly: matchesOnlyFilter,
+            minPriorityScore: minPriorityScoreFilter,
+            openOnly: openOnlyFilter,
+          }),
+          listGovContractRuns(10),
+          listGovContractKeywordRules(),
+          listGovContractAgencyPreferences(),
+          currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
+        ]);
       setGmailContracts(gmailItems);
       setFederalContracts(federalItems);
       setGrantsContracts(grantsItems);
@@ -270,6 +353,7 @@ export default function App() {
       setContractRuns(runs);
       setKeywordRules(keywords);
       setAgencyPreferences(agencyPrefs);
+      setUserInvites(invites);
     } catch (error) {
       setMessage(getErrorMessage(error));
     }
@@ -469,11 +553,13 @@ export default function App() {
     try {
       const token = await login({ username: loginUsername, password: loginPassword });
       storeAuthToken(token.access_token);
-      await getCurrentAdmin();
+      setCurrentAdmin(token.user);
       const capabilities = await getGovContractCapabilities();
       setContractCapabilities(capabilities);
       setOpportunitiesAuthStatus("authenticated");
-      await refreshContractsView(capabilities);
+      if (view === "opportunities") {
+        await refreshContractsView(capabilities);
+      }
       setMessage("Signed in.");
     } catch (error) {
       clearAuthToken();
@@ -484,8 +570,51 @@ export default function App() {
     }
   }
 
+  async function handleAcceptInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (invitePassword !== invitePasswordConfirm) {
+      setAuthMessage("Invite passwords do not match.");
+      return;
+    }
+
+    setAcceptingInvite(true);
+    setAuthMessage("");
+    setMessage("");
+
+    try {
+      const token = await acceptInvite({
+        invite_code: inviteCode,
+        username: inviteUsername,
+        password: invitePassword,
+      });
+      storeAuthToken(token.access_token);
+      setCurrentAdmin(token.user);
+      const capabilities = await getGovContractCapabilities();
+      setContractCapabilities(capabilities);
+      setOpportunitiesAuthStatus("authenticated");
+      setInviteCode("");
+      setInviteUsername("");
+      setInvitePassword("");
+      setInvitePasswordConfirm("");
+      if (view === "opportunities") {
+        await refreshContractsView(capabilities);
+      }
+      setMessage("Invite accepted. Your account is ready.");
+      navigateToView("profile");
+    } catch (error) {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setAcceptingInvite(false);
+    }
+  }
+
   function handleLogout() {
     clearAuthToken();
+    setCurrentAdmin(null);
+    setIntakeDashboard(null);
     setOpportunitiesAuthStatus("unauthenticated");
     setAuthMessage("");
     setGmailContracts([]);
@@ -496,11 +625,14 @@ export default function App() {
     setContractRuns([]);
     setAgencyPreferences([]);
     setKeywordRules([]);
+    setUserInvites([]);
+    setLatestInvite(null);
     setContractCapabilities({
       gmail_rfq_sync_enabled: false,
       gmail_rfq_feed_label: null,
     });
     setOpportunityCategoryTab("all");
+    setSelectedOpportunitySourceFilter(null);
     setSelectedOpportunityTagFilter(null);
     setOpportunityKeywordFilter("");
     setMinPriorityScoreFilter(0);
@@ -512,10 +644,87 @@ export default function App() {
     setEditingAgencyWeight(DEFAULT_AGENCY_WEIGHT);
     setAgencyName("");
     setAgencyWeight(DEFAULT_AGENCY_WEIGHT);
+    setInviteEmail("");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
     setKeywordPhrase("");
     setKeywordWeight(DEFAULT_KEYWORD_WEIGHT);
     setDeletingAgencyId(null);
     setDeletingKeywordId(null);
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (newPassword !== confirmNewPassword) {
+      setMessage("New passwords do not match.");
+      return;
+    }
+
+    setChangingPassword(true);
+    setMessage("");
+    try {
+      const user = await changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      setCurrentAdmin(user);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setMessage("Password changed.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  async function handleCreateInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingInvite(true);
+    setMessage("");
+    try {
+      const invite = await createUserInvite({ email: inviteEmail });
+      setInviteEmail("");
+      setLatestInvite(invite);
+      await refreshContractsView();
+      setMessage("Invite created.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleRevokeInvite(invite: UserInvite) {
+    setRevokingInviteId(invite.id);
+    setMessage("");
+    try {
+      await revokeUserInvite(invite.id);
+      if (latestInvite?.id === invite.id) {
+        setLatestInvite(null);
+      }
+      await refreshContractsView();
+      setMessage("Invite revoked.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRevokingInviteId(null);
+    }
+  }
+
+  async function handleCopyInviteCode(invite: UserInviteCreateResponse) {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(invite.invite_code);
+        setMessage("Invite code copied.");
+        return;
+      }
+      setMessage(`Copy this invite code manually: ${invite.invite_code}`);
+    } catch {
+      setMessage(`Copy this invite code manually: ${invite.invite_code}`);
+    }
   }
 
   function startEditingKeyword(rule: GovContractKeywordRule) {
@@ -669,10 +878,130 @@ export default function App() {
   }
 
   const latestContractRun = contractRuns[0];
+  const isAdminUser = currentAdmin?.is_admin ?? false;
 
   function handleOpportunityTagFilterClick(filter: OpportunityTagFilter) {
     setSelectedOpportunityTagFilter((current) =>
       current && current.kind === filter.kind && current.value === filter.value ? null : filter,
+    );
+  }
+
+  function renderProtectedAuthPanel({
+    eyebrow,
+    title,
+    subcopy,
+  }: {
+    eyebrow: string;
+    title: string;
+    subcopy: string;
+  }) {
+    return (
+      <>
+        {authMessage ? <div className="message-banner auth-banner">{authMessage}</div> : null}
+
+        <section className="grid auth-grid">
+          <article className="panel auth-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">{eyebrow}</p>
+                <h2>{title}</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">{subcopy}</p>
+
+            <form className="content-form auth-form" onSubmit={handleOpportunitiesLogin}>
+              <label>
+                <span>Username or email</span>
+                <input
+                  value={loginUsername}
+                  onChange={(event) => setLoginUsername(event.target.value)}
+                  placeholder="admin or you@example.com"
+                />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  placeholder="Enter your password"
+                />
+              </label>
+
+              <div className="action-row auth-actions">
+                <button type="submit" disabled={loggingIn}>
+                  {loggingIn ? "Signing in..." : "Sign in"}
+                </button>
+                <button type="button" className="secondary-link" onClick={() => navigateToView("dashboard")}>
+                  Back to dashboard
+                </button>
+              </div>
+            </form>
+          </article>
+
+          <article className="panel auth-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Invite Only</p>
+                <h2>Activate an invited account</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">
+              This workspace does not allow open signups. Enter the invite code an admin sent you, choose a username,
+              and set your password.
+            </p>
+
+            <form className="content-form auth-form" onSubmit={handleAcceptInvite}>
+              <label>
+                <span>Invite code</span>
+                <input
+                  value={inviteCode}
+                  onChange={(event) => setInviteCode(event.target.value)}
+                  placeholder="Paste your invite code"
+                />
+              </label>
+
+              <label>
+                <span>Username</span>
+                <input
+                  value={inviteUsername}
+                  onChange={(event) => setInviteUsername(event.target.value)}
+                  placeholder="Choose a username"
+                />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={invitePassword}
+                  onChange={(event) => setInvitePassword(event.target.value)}
+                  placeholder="Create a password"
+                />
+              </label>
+
+              <label>
+                <span>Confirm password</span>
+                <input
+                  type="password"
+                  value={invitePasswordConfirm}
+                  onChange={(event) => setInvitePasswordConfirm(event.target.value)}
+                  placeholder="Repeat your password"
+                />
+              </label>
+
+              <div className="action-row auth-actions">
+                <button type="submit" disabled={acceptingInvite}>
+                  {acceptingInvite ? "Activating..." : "Accept invite"}
+                </button>
+              </div>
+            </form>
+          </article>
+        </section>
+      </>
     );
   }
 
@@ -744,25 +1073,15 @@ export default function App() {
           <button
             type="button"
             className={`tag filter-tag-button${
-              isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
-                kind: "source",
-                value: contract.source,
-                label: formatContractSource(contract.source),
-              })
+              selectedOpportunitySourceFilter === contract.source
                 ? " filter-tag-button-active"
                 : ""
             }`}
-            aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
-              kind: "source",
-              value: contract.source,
-              label: formatContractSource(contract.source),
-            })}
+            aria-pressed={selectedOpportunitySourceFilter === contract.source}
             onClick={() =>
-              handleOpportunityTagFilterClick({
-                kind: "source",
-                value: contract.source,
-                label: formatContractSource(contract.source),
-              })
+              setSelectedOpportunitySourceFilter((current) =>
+                current === contract.source ? null : contract.source,
+              )
             }
           >
             {formatContractSource(contract.source)}
@@ -807,17 +1126,19 @@ export default function App() {
             <span>Last seen: {formatTimestamp(contract.last_seen_at)}</span>
           </div>
           <div className="action-row">
-            <button
-              type="button"
-              onClick={() => void handleFunnelContract(contract)}
-              disabled={funnelingContractId === contract.id}
-            >
-              {funnelingContractId === contract.id
-                ? "Sending..."
-                : contract.funnel_delivery_status === "delivered"
-                  ? "Resend to CRM"
-                  : "Add to lead funnel"}
-            </button>
+            {isAdminUser ? (
+              <button
+                type="button"
+                onClick={() => void handleFunnelContract(contract)}
+                disabled={funnelingContractId === contract.id}
+              >
+                {funnelingContractId === contract.id
+                  ? "Sending..."
+                  : contract.funnel_delivery_status === "delivered"
+                    ? "Resend to CRM"
+                    : "Add to lead funnel"}
+              </button>
+            ) : null}
             <a className="button-link secondary-link" href={contract.source_url} target="_blank" rel="noreferrer">
               {contract.source === "gmail_rfqs" ? "Open Gmail" : "Open source"}
             </a>
@@ -1052,6 +1373,23 @@ export default function App() {
         <section className="panel">
           <div className="panel-heading">
             <div>
+              <p className="eyebrow">Marketing Intake</p>
+              <h2>Dedicated intake page</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("intake")}>
+                Open marketing intake page
+              </button>
+            </div>
+          </div>
+          <p className="panel-subcopy">
+            Review connected intake surfaces, recent source-site activity, and new contact initiations flowing toward CRM.
+          </p>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
               <p className="eyebrow">Opportunities</p>
               <h2>Dedicated list page</h2>
             </div>
@@ -1062,8 +1400,468 @@ export default function App() {
             </div>
           </div>
           <p className="panel-subcopy">
-            Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs now live on a separate page and require admin sign-in.
+            Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs now live on a separate page and require an invited account sign-in.
           </p>
+        </section>
+      </>
+    );
+  }
+
+  function renderProfilePage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking account access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Profile and password",
+        subcopy: "Sign in with your existing account or accept an invite code to activate a new login.",
+      });
+    }
+
+    return (
+      <>
+        <section className="grid profile-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Account</p>
+                <h2>Profile summary</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">
+              Authentication is stored inside this app. It is not delegated to an external Keycloak tenant.
+            </p>
+
+            <div className="profile-stat-grid">
+              <div className="metric-pill">
+                <strong>{currentAdmin.username}</strong>
+                <span>username</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.email}</strong>
+                <span>email</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.is_admin ? "Admin" : "Member"}</strong>
+                <span>role</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{formatTimestamp(currentAdmin.created_at)}</strong>
+                <span>joined</span>
+              </div>
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Password</p>
+                <h2>Change your password</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">
+              Enter your current password, then set a new one. After bootstrap, password changes are managed here.
+            </p>
+
+            <form className="content-form auth-form" onSubmit={handleChangePassword}>
+              <label>
+                <span>Current password</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  placeholder="Enter your current password"
+                />
+              </label>
+
+              <label>
+                <span>New password</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="Use at least 8 characters"
+                />
+              </label>
+
+              <label>
+                <span>Confirm new password</span>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  placeholder="Repeat your new password"
+                />
+              </label>
+
+              <div className="action-row auth-actions">
+                <button type="submit" disabled={changingPassword}>
+                  {changingPassword ? "Updating..." : "Change password"}
+                </button>
+              </div>
+            </form>
+          </article>
+        </section>
+
+        {isAdminUser ? (
+          <>
+            <section className="panel">
+              <div className="panel-heading contract-toolbar">
+                <div>
+                  <p className="eyebrow">Invitations</p>
+                  <h2>Invite-only user access</h2>
+                </div>
+              </div>
+
+              <p className="panel-subcopy">
+                Create accounts by invite only. New users cannot self-register without an invite code from an admin.
+              </p>
+
+              <form className="keyword-form" onSubmit={handleCreateInvite}>
+                <label>
+                  <span>Email</span>
+                  <input
+                    value={inviteEmail}
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                    placeholder="user@example.com"
+                    type="email"
+                  />
+                </label>
+                <div className="action-row keyword-form-actions">
+                  <button type="submit" disabled={creatingInvite}>
+                    {creatingInvite ? "Creating..." : "Create invite"}
+                  </button>
+                </div>
+              </form>
+
+              {latestInvite ? (
+                <div className="invite-code-card">
+                  <div className="invite-code-card-copy">
+                    <strong>{latestInvite.email}</strong>
+                    <span>Send this user to the app and give them this one-time invite code.</span>
+                  </div>
+                  <code className="invite-code">{latestInvite.invite_code}</code>
+                  <div className="action-row">
+                    <button type="button" className="secondary-link" onClick={() => void handleCopyInviteCode(latestInvite)}>
+                      Copy invite code
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="invite-list">
+                {userInvites.length === 0 ? (
+                  <p className="empty-state">No invites have been created yet.</p>
+                ) : (
+                  userInvites.map((invite) => (
+                    <div className="invite-row" key={invite.id}>
+                      <div className="invite-row-meta">
+                        <strong>{invite.email}</strong>
+                        <span>Status: {formatInviteStatus(invite)}</span>
+                        <span>Created: {formatTimestamp(invite.created_at)}</span>
+                        <span>Expires: {formatTimestamp(invite.expires_at)}</span>
+                        {invite.accepted_at ? <span>Accepted: {formatTimestamp(invite.accepted_at)}</span> : null}
+                      </div>
+                      {invite.accepted_at || invite.revoked_at ? null : (
+                        <div className="action-row">
+                          <button
+                            type="button"
+                            className="secondary-link destructive-button"
+                            onClick={() => void handleRevokeInvite(invite)}
+                            disabled={revokingInviteId === invite.id}
+                          >
+                            {revokingInviteId === invite.id ? "Revoking..." : "Revoke"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Access</p>
+                <h2>Invite-only membership</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Your account was created by invite. Admin users control new invitations, scoring rules, source refreshes,
+              and CRM funnel actions.
+            </p>
+          </section>
+        )}
+      </>
+    );
+  }
+
+  function renderBillingPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking billing access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+      return renderProtectedAuthPanel({
+        eyebrow: "Billing Access",
+        title: "Operator billing workflow",
+        subcopy: "Sign in with your invited account to open the protected Billing page and prepare invoices.",
+      });
+    }
+
+    return <BillingPage currentUser={currentAdmin} />;
+  }
+
+  function renderIntakePage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking intake access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Marketing intake dashboard",
+        subcopy: "Sign in with your username or email, or accept an invite code to review connected sources and new contact initiations.",
+      });
+    }
+
+    if (!intakeDashboard && refreshingIntakeDashboard) {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Loading marketing intake dashboard...</p>
+        </section>
+      );
+    }
+
+    if (!intakeDashboard) {
+      return (
+        <section className="panel auth-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Marketing Intake</p>
+              <h2>No dashboard data loaded yet</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => void refreshIntakeDashboard()} disabled={refreshingIntakeDashboard}>
+                {refreshingIntakeDashboard ? "Refreshing..." : "Refresh intake"}
+              </button>
+            </div>
+          </div>
+          <p className="empty-state">Refresh to load the current source and CRM intake summary.</p>
+        </section>
+      );
+    }
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Marketing Intake</p>
+              <h2>Cross-site contact funnel</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => void refreshIntakeDashboard()} disabled={refreshingIntakeDashboard}>
+                {refreshingIntakeDashboard ? "Refreshing..." : "Refresh intake"}
+              </button>
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            Review which source sites are sending leads, whether the CRM handoff is configured, and which new contacts have initiated the funnel.
+          </p>
+
+          <div className="metric-row">
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.observed_source_sites}</strong>
+              <span>source sites observed</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.new_contacts_today}</strong>
+              <span>new in last 24h</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.new_contacts_7d}</strong>
+              <span>new in last 7d</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.delivered_submissions}</strong>
+              <span>delivered to CRM</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.failed_submissions}</strong>
+              <span>CRM delivery failures</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.total_submissions}</strong>
+              <span>total submissions</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid intake-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Connections</p>
+                <h2>What is connected</h2>
+              </div>
+            </div>
+
+            <div className="stack">
+              {intakeDashboard.connections.map((connection) => (
+                <article className="content-card" key={connection.key}>
+                  <div className="content-meta">
+                    <div>
+                      <strong>{connection.label}</strong>
+                      <span>{connection.detail}</span>
+                    </div>
+                    <span className={getIntakeStatusBadgeClass(connection.status)}>
+                      {formatIntakeConnectionStatus(connection.status)}
+                    </span>
+                  </div>
+
+                  {connection.value ? (
+                    <div className="tag-row">
+                      <span className="tag">{connection.value}</span>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Source Sites</p>
+                <h2>Observed intake activity</h2>
+              </div>
+            </div>
+
+            {intakeDashboard.source_sites.length === 0 ? (
+              <p className="empty-state">No marketing sources have submitted leads yet.</p>
+            ) : (
+              <div className="stack">
+                {intakeDashboard.source_sites.map((source) => (
+                  <article className="content-card" key={source.source_site}>
+                    <div className="content-meta">
+                      <div>
+                        <strong>{source.source_site}</strong>
+                        <span>{formatIntakeSourceType(source.source_type)}</span>
+                      </div>
+                      <span className={getIntakeStatusBadgeClass(source.last_delivery_status)}>
+                        {formatIntakeDeliveryStatus(source.last_delivery_status)}
+                      </span>
+                    </div>
+
+                    {source.business_contexts.length > 0 || source.form_providers.length > 0 || source.form_names.length > 0 ? (
+                      <div className="tag-row">
+                        {source.business_contexts.map((context) => (
+                          <span className="tag" key={`${source.source_site}-context-${context}`}>
+                            {context}
+                          </span>
+                        ))}
+                        {source.form_providers.map((provider) => (
+                          <span className="tag" key={`${source.source_site}-provider-${provider}`}>
+                            {provider}
+                          </span>
+                        ))}
+                        {source.form_names.map((formName) => (
+                          <span className="tag" key={`${source.source_site}-form-${formName}`}>
+                            {formName}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="status-stack">
+                      <span>Submissions: {source.total_submissions}</span>
+                      <span>New 24h: {source.new_contacts_today}</span>
+                      <span>New 7d: {source.new_contacts_7d}</span>
+                      <span>CRM delivered: {source.delivered_submissions}</span>
+                      <span>CRM failed: {source.failed_submissions}</span>
+                      <span>Latest contact: {source.last_contact_name ?? "Unknown contact"}</span>
+                      <span>Last submission: {formatTimestamp(source.last_submission_at)}</span>
+                      {source.last_page_url ? <span>Last page: {source.last_page_url}</span> : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">New Contacts</p>
+              <h2>Recent initiations</h2>
+            </div>
+          </div>
+
+          {intakeDashboard.recent_contacts.length === 0 ? (
+            <p className="empty-state">No new contacts have initiated the marketing funnel yet.</p>
+          ) : (
+            <div className="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contact</th>
+                    <th>Source</th>
+                    <th>Context</th>
+                    <th>CRM</th>
+                    <th>Initiated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {intakeDashboard.recent_contacts.map((contact) => (
+                    <tr key={contact.id}>
+                      <td>
+                        <strong>{contact.contact_name ?? "Unknown contact"}</strong>
+                        {contact.email ? <span>{contact.email}</span> : null}
+                        {contact.phone ? <span>{contact.phone}</span> : null}
+                      </td>
+                      <td>
+                        <strong>{contact.source_site}</strong>
+                        {contact.page_url ? <span>{contact.page_url}</span> : null}
+                        {contact.campaign ? <span>Campaign: {contact.campaign}</span> : null}
+                      </td>
+                      <td>
+                        <strong>{contact.business_context ?? "Unscoped"}</strong>
+                        <span>{contact.product_context ?? "No product context"}</span>
+                      </td>
+                      <td>
+                        <span className={getIntakeStatusBadgeClass(contact.delivery_status)}>
+                          {formatIntakeDeliveryStatus(contact.delivery_status)}
+                        </span>
+                        {contact.delivery_record_id ? <span>Record: {contact.delivery_record_id}</span> : null}
+                      </td>
+                      <td>{formatTimestamp(contact.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </>
     );
@@ -1073,62 +1871,25 @@ export default function App() {
     if (opportunitiesAuthStatus === "checking") {
       return (
         <section className="panel auth-panel">
-          <p className="empty-state">Checking admin access...</p>
+          <p className="empty-state">Checking opportunity access...</p>
         </section>
       );
     }
 
     if (opportunitiesAuthStatus === "unauthenticated") {
-      return (
-        <section className="panel auth-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">Admin Login</p>
-              <h2>Protected opportunities page</h2>
-            </div>
-          </div>
-
-          <p className="panel-subcopy">
-            This page is protected. Sign in with the admin credentials configured for `lecrown-platform`.
-          </p>
-
-          {authMessage ? <div className="message-banner auth-banner">{authMessage}</div> : null}
-
-          <form className="content-form auth-form" onSubmit={handleOpportunitiesLogin}>
-            <label>
-              <span>Username</span>
-              <input value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} />
-            </label>
-
-            <label>
-              <span>Password</span>
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(event) => setLoginPassword(event.target.value)}
-              />
-            </label>
-
-            <div className="action-row auth-actions">
-              <button type="submit" disabled={loggingIn}>
-                {loggingIn ? "Signing in..." : "Sign in"}
-              </button>
-              <button type="button" className="secondary-link" onClick={() => navigateToView("dashboard")}>
-                Back to dashboard
-              </button>
-            </div>
-          </form>
-        </section>
-      );
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Protected opportunities page",
+        subcopy: "Sign in with your username or email, or accept an invite code to create a new login.",
+      });
     }
 
-    const sourcePanels = [
+    const sourceCollections = [
       ...(contractCapabilities.gmail_rfq_sync_enabled
         ? [
             {
               key: "gmail_rfqs",
               label: "Gmail RFQs",
-              emptyState: "No open Gmail RFQs are synced yet.",
               contracts: gmailContracts,
             },
           ]
@@ -1136,56 +1897,56 @@ export default function App() {
       {
         key: "federal_forecast",
         label: "Federal Forecast",
-        emptyState: "No federal forecast opportunities match the current view.",
         contracts: federalContracts,
       },
       {
         key: "grants_gov",
         label: "Grants.gov",
-        emptyState: "No Grants.gov opportunities match the current view.",
         contracts: grantsContracts,
       },
       {
         key: "sba_subnet",
         label: "SBA SUBNet",
-        emptyState: "No SBA SUBNet opportunities match the current view.",
         contracts: sbaSubnetContracts,
       },
       {
         key: "txsmartbuy_esbd",
         label: "Texas ESBD",
-        emptyState: "No matched ESBD opportunities are stored yet.",
         contracts: esbdContracts,
       },
     ];
-    const tagFilteredSourcePanels = sourcePanels.map((panel) => ({
-      ...panel,
-      contracts: filterContractsByOpportunityTag(panel.contracts, selectedOpportunityTagFilter),
-    }));
-    const keywordFilteredSourcePanels = tagFilteredSourcePanels.map((panel) => ({
-      ...panel,
-      contracts: filterContractsByOpportunityKeyword(panel.contracts, opportunityKeywordFilter),
-    }));
+    const allContracts = sourceCollections.flatMap((sourceCollection) => sourceCollection.contracts);
+    const tagFilteredContracts = filterContractsByOpportunityTag(allContracts, selectedOpportunityTagFilter);
+    const keywordFilteredContracts = filterContractsByOpportunityKeyword(tagFilteredContracts, opportunityKeywordFilter);
+    const sourceScopedContracts = filterContractsByOpportunitySource(
+      keywordFilteredContracts,
+      selectedOpportunitySourceFilter,
+    );
     const categoryCounts = {
-      all: keywordFilteredSourcePanels.reduce((total, panel) => total + panel.contracts.length, 0),
-      it_services: keywordFilteredSourcePanels.reduce(
-        (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "it_services").length,
-        0,
-      ),
-      property_services: keywordFilteredSourcePanels.reduce(
-        (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "property_services").length,
-        0,
-      ),
-      other: keywordFilteredSourcePanels.reduce(
-        (total, panel) => total + filterContractsByOpportunityCategory(panel.contracts, "other").length,
-        0,
-      ),
+      all: sourceScopedContracts.length,
+      it_services: filterContractsByOpportunityCategory(sourceScopedContracts, "it_services").length,
+      property_services: filterContractsByOpportunityCategory(sourceScopedContracts, "property_services").length,
+      other: filterContractsByOpportunityCategory(sourceScopedContracts, "other").length,
     };
-    const filteredSourcePanels = keywordFilteredSourcePanels.map((panel) => ({
-      ...panel,
-      contracts: filterContractsByOpportunityCategory(panel.contracts, opportunityCategoryTab),
-    }));
-    const hasVisibleContracts = filteredSourcePanels.some((panel) => panel.contracts.length > 0);
+    const categoryScopedContracts = filterContractsByOpportunityCategory(sourceScopedContracts, opportunityCategoryTab);
+    const sourceCountBaseContracts = filterContractsByOpportunityCategory(
+      keywordFilteredContracts,
+      opportunityCategoryTab,
+    );
+    const sourceFilters = [
+      {
+        key: "all",
+        label: "All sources",
+        count: sourceCountBaseContracts.length,
+      },
+      ...sourceCollections.map((sourceCollection) => ({
+        key: sourceCollection.key,
+        label: sourceCollection.label,
+        count: sourceCountBaseContracts.filter((contract) => contract.source === sourceCollection.key).length,
+      })),
+    ];
+    const displayedContracts = sortContractsForDisplay(categoryScopedContracts);
+    const hasVisibleContracts = displayedContracts.length > 0;
 
     return (
       <>
@@ -1211,44 +1972,54 @@ export default function App() {
               >
                 {downloadingGrantsExport ? "Downloading..." : "Download Grants CSV"}
               </button>
-              <button
-                type="button"
-                onClick={() => void handleFederalContractRefresh()}
-                disabled={refreshingFederalContracts}
-              >
-                {refreshingFederalContracts ? "Refreshing..." : "Refresh Federal"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleGrantsContractRefresh()}
-                disabled={refreshingGrantsContracts}
-              >
-                {refreshingGrantsContracts ? "Refreshing..." : "Refresh Grants"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSbaSubnetContractRefresh()}
-                disabled={refreshingSbaSubnetContracts}
-              >
-                {refreshingSbaSubnetContracts ? "Refreshing..." : "Refresh SBA SUBNet"}
-              </button>
               <button type="button" onClick={() => void handleContractExport()} disabled={downloadingExport}>
                 {downloadingExport ? "Downloading..." : "Download ESBD CSV"}
               </button>
-              <button type="button" onClick={() => void handleContractRefresh()} disabled={refreshingContracts}>
-                {refreshingContracts ? "Refreshing..." : "Refresh ESBD"}
-              </button>
-              {contractCapabilities.gmail_rfq_sync_enabled ? (
-                <button
-                  type="button"
-                  onClick={() => void handleGmailContractRefresh()}
-                  disabled={refreshingGmailContracts}
-                >
-                  {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
-                </button>
+              {isAdminUser ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleFederalContractRefresh()}
+                    disabled={refreshingFederalContracts}
+                  >
+                    {refreshingFederalContracts ? "Refreshing..." : "Refresh Federal"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleGrantsContractRefresh()}
+                    disabled={refreshingGrantsContracts}
+                  >
+                    {refreshingGrantsContracts ? "Refreshing..." : "Refresh Grants"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSbaSubnetContractRefresh()}
+                    disabled={refreshingSbaSubnetContracts}
+                  >
+                    {refreshingSbaSubnetContracts ? "Refreshing..." : "Refresh SBA SUBNet"}
+                  </button>
+                  <button type="button" onClick={() => void handleContractRefresh()} disabled={refreshingContracts}>
+                    {refreshingContracts ? "Refreshing..." : "Refresh ESBD"}
+                  </button>
+                  {contractCapabilities.gmail_rfq_sync_enabled ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleGmailContractRefresh()}
+                      disabled={refreshingGmailContracts}
+                    >
+                      {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
+                    </button>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </div>
+
+          <p className="panel-subcopy">
+            {isAdminUser
+              ? "Admin access can refresh sources, tune scoring, create invite-only accounts, and send fits to the CRM."
+              : "This account has viewer access to browse, filter, and export opportunities. Source refreshes, scoring changes, and CRM funnel actions stay admin-only."}
+          </p>
 
           {!contractCapabilities.gmail_rfq_sync_enabled ? (
             <p className="panel-subcopy">
@@ -1345,6 +2116,50 @@ export default function App() {
             ))}
           </div>
 
+          <div className="source-filter-row" role="tablist" aria-label="Opportunity source filters">
+            {sourceFilters.map((sourceFilter) => {
+              const isActive =
+                sourceFilter.key === "all"
+                  ? selectedOpportunitySourceFilter === null
+                  : selectedOpportunitySourceFilter === sourceFilter.key;
+              return (
+                <button
+                  key={sourceFilter.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
+                  onClick={() =>
+                    setSelectedOpportunitySourceFilter(sourceFilter.key === "all" ? null : sourceFilter.key)
+                  }
+                >
+                  <span>{sourceFilter.label}</span>
+                  <strong>{sourceFilter.count}</strong>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedOpportunitySourceFilter ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Source:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => setSelectedOpportunitySourceFilter(null)}
+              >
+                {formatContractSource(selectedOpportunitySourceFilter)}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => setSelectedOpportunitySourceFilter(null)}
+              >
+                Clear source
+              </button>
+            </div>
+          ) : null}
+
           {selectedOpportunityTagFilter ? (
             <div className="active-tag-filter-row">
               <span className="panel-subcopy">Filtering by tag:</span>
@@ -1387,260 +2202,251 @@ export default function App() {
 
           <p className="panel-subcopy opportunity-tab-copy">
             Tabs group opportunities by matched keywords, title, and scope text so you can jump between IT services,
-            real estate / property work, and everything else without losing the source breakdown.
+            real estate / property work, and everything else while keeping all sources merged into one ranked list.
           </p>
         </section>
 
-        <section className="panel">
-          <div className="panel-heading contract-toolbar">
-            <div>
-              <p className="eyebrow">Agency Preferences</p>
-              <h2>Bias the list toward target buyers</h2>
-            </div>
-          </div>
+        {isAdminUser ? (
+          <>
+            <section className="panel">
+              <div className="panel-heading contract-toolbar">
+                <div>
+                  <p className="eyebrow">Agency Preferences</p>
+                  <h2>Bias the list toward target buyers</h2>
+                </div>
+              </div>
 
-          <p className="panel-subcopy">
-            Add agencies you want to prioritize. Matching agencies lift the `agency affinity` score and feed into
-            overall priority.
-          </p>
+              <p className="panel-subcopy">
+                Add agencies you want to prioritize. Matching agencies lift the `agency affinity` score and feed into
+                overall priority.
+              </p>
 
-          <form className="keyword-form" onSubmit={handleCreateAgencyPreference}>
-            <label>
-              <span>Agency</span>
-              <input
-                value={agencyName}
-                onChange={(event) => setAgencyName(event.target.value)}
-                placeholder="Texas A&M University System"
-              />
-            </label>
-            <label className="keyword-weight-field">
-              <span>Affinity</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={agencyWeight}
-                onChange={(event) => setAgencyWeight(Number(event.target.value) || DEFAULT_AGENCY_WEIGHT)}
-              />
-            </label>
-            <div className="action-row keyword-form-actions">
-              <button type="submit" disabled={savingAgencyPreference}>
-                {savingAgencyPreference ? "Saving..." : "Add agency"}
-              </button>
-            </div>
-          </form>
+              <form className="keyword-form" onSubmit={handleCreateAgencyPreference}>
+                <label>
+                  <span>Agency</span>
+                  <input
+                    value={agencyName}
+                    onChange={(event) => setAgencyName(event.target.value)}
+                    placeholder="Texas A&M University System"
+                  />
+                </label>
+                <label className="keyword-weight-field">
+                  <span>Affinity</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={agencyWeight}
+                    onChange={(event) => setAgencyWeight(Number(event.target.value) || DEFAULT_AGENCY_WEIGHT)}
+                  />
+                </label>
+                <div className="action-row keyword-form-actions">
+                  <button type="submit" disabled={savingAgencyPreference}>
+                    {savingAgencyPreference ? "Saving..." : "Add agency"}
+                  </button>
+                </div>
+              </form>
 
-          <div className="keyword-rule-stack keyword-rule-chip-list">
-            {agencyPreferences.length === 0 ? (
-              <p className="empty-state">No preferred agencies are configured yet.</p>
-            ) : (
-              agencyPreferences.map((preference) =>
-                editingAgencyId === preference.id ? (
-                  <form
-                    className="keyword-rule-card keyword-rule-form"
-                    key={preference.id}
-                    onSubmit={handleUpdateAgencyPreference}
-                  >
-                    <label>
-                      <span>Agency</span>
-                      <input
-                        value={editingAgencyName}
-                        onChange={(event) => setEditingAgencyName(event.target.value)}
-                      />
-                    </label>
-                    <label className="keyword-weight-field">
-                      <span>Affinity</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={editingAgencyWeight}
-                        onChange={(event) =>
-                          setEditingAgencyWeight(Number(event.target.value) || DEFAULT_AGENCY_WEIGHT)
-                        }
-                      />
-                    </label>
-                    <div className="action-row keyword-rule-actions">
-                      <button type="submit" disabled={savingAgencyPreference}>
-                        {savingAgencyPreference ? "Saving..." : "Save"}
-                      </button>
-                      <button type="button" className="secondary-link" onClick={cancelEditingAgency}>
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
+              <div className="keyword-rule-stack keyword-rule-chip-list">
+                {agencyPreferences.length === 0 ? (
+                  <p className="empty-state">No preferred agencies are configured yet.</p>
                 ) : (
-                  <div className="keyword-rule-chip" key={preference.id}>
-                    <div className="keyword-rule-chip-copy">
-                      <strong title={preference.agency_name}>{preference.agency_name}</strong>
-                      <span className="keyword-rule-chip-score">A{preference.weight}</span>
-                    </div>
-                    <div className="keyword-rule-chip-actions">
-                      <button
-                        type="button"
-                        className="secondary-link chip-action-button"
-                        onClick={() => startEditingAgency(preference)}
+                  agencyPreferences.map((preference) =>
+                    editingAgencyId === preference.id ? (
+                      <form
+                        className="keyword-rule-card keyword-rule-form"
+                        key={preference.id}
+                        onSubmit={handleUpdateAgencyPreference}
                       >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-link destructive-button chip-action-button"
-                        onClick={() => void handleDeleteAgencyPreference(preference)}
-                        disabled={deletingAgencyId === preference.id}
-                      >
-                        {deletingAgencyId === preference.id ? "Removing..." : "Remove"}
-                      </button>
-                    </div>
-                  </div>
-                ),
-              )
-            )}
-          </div>
-        </section>
+                        <label>
+                          <span>Agency</span>
+                          <input
+                            value={editingAgencyName}
+                            onChange={(event) => setEditingAgencyName(event.target.value)}
+                          />
+                        </label>
+                        <label className="keyword-weight-field">
+                          <span>Affinity</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={editingAgencyWeight}
+                            onChange={(event) =>
+                              setEditingAgencyWeight(Number(event.target.value) || DEFAULT_AGENCY_WEIGHT)
+                            }
+                          />
+                        </label>
+                        <div className="action-row keyword-rule-actions">
+                          <button type="submit" disabled={savingAgencyPreference}>
+                            {savingAgencyPreference ? "Saving..." : "Save"}
+                          </button>
+                          <button type="button" className="secondary-link" onClick={cancelEditingAgency}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="keyword-rule-chip" key={preference.id}>
+                        <div className="keyword-rule-chip-copy">
+                          <strong title={preference.agency_name}>{preference.agency_name}</strong>
+                          <span className="keyword-rule-chip-score">A{preference.weight}</span>
+                        </div>
+                        <div className="keyword-rule-chip-actions">
+                          <button
+                            type="button"
+                            className="secondary-link chip-action-button"
+                            onClick={() => startEditingAgency(preference)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-link destructive-button chip-action-button"
+                            onClick={() => void handleDeleteAgencyPreference(preference)}
+                            disabled={deletingAgencyId === preference.id}
+                          >
+                            {deletingAgencyId === preference.id ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                  )
+                )}
+              </div>
+            </section>
 
-        <section className="panel">
-          <div className="panel-heading contract-toolbar">
-            <div>
-              <p className="eyebrow">Match Keywords</p>
-              <h2>Control what counts as a fit</h2>
-            </div>
-          </div>
+            <section className="panel">
+              <div className="panel-heading contract-toolbar">
+                <div>
+                  <p className="eyebrow">Match Keywords</p>
+                  <h2>Control what counts as a fit</h2>
+                </div>
+              </div>
 
-          <p className="panel-subcopy">
-            Add, edit, or remove the keyword rules that score federal forecast, Grants.gov, SBA SUBNet, ESBD, and Gmail opportunities.
-            Changes rescore the stored list immediately.
-          </p>
+              <p className="panel-subcopy">
+                Add, edit, or remove the keyword rules that score federal forecast, Grants.gov, SBA SUBNet, ESBD, and Gmail opportunities.
+                Changes rescore the stored list immediately.
+              </p>
 
-          <form className="keyword-form" onSubmit={handleCreateKeyword}>
-            <label>
-              <span>Keyword</span>
-              <input
-                value={keywordPhrase}
-                onChange={(event) => setKeywordPhrase(event.target.value)}
-                placeholder="property management"
-              />
-            </label>
-            <label className="keyword-weight-field">
-              <span>Score</span>
-              <input
-                type="number"
-                min={1}
-                max={25}
-                value={keywordWeight}
-                onChange={(event) => setKeywordWeight(Number(event.target.value) || DEFAULT_KEYWORD_WEIGHT)}
-              />
-            </label>
-            <div className="action-row keyword-form-actions">
-              <button type="submit" disabled={savingKeyword}>
-                {savingKeyword ? "Saving..." : "Add keyword"}
-              </button>
-            </div>
-          </form>
+              <form className="keyword-form" onSubmit={handleCreateKeyword}>
+                <label>
+                  <span>Keyword</span>
+                  <input
+                    value={keywordPhrase}
+                    onChange={(event) => setKeywordPhrase(event.target.value)}
+                    placeholder="property management"
+                  />
+                </label>
+                <label className="keyword-weight-field">
+                  <span>Score</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={25}
+                    value={keywordWeight}
+                    onChange={(event) => setKeywordWeight(Number(event.target.value) || DEFAULT_KEYWORD_WEIGHT)}
+                  />
+                </label>
+                <div className="action-row keyword-form-actions">
+                  <button type="submit" disabled={savingKeyword}>
+                    {savingKeyword ? "Saving..." : "Add keyword"}
+                  </button>
+                </div>
+              </form>
 
-          <div className="keyword-rule-stack keyword-rule-chip-list">
-            {keywordRules.length === 0 ? (
-              <p className="empty-state">No keyword rules are configured yet.</p>
-            ) : (
-              keywordRules.map((rule) =>
-                editingKeywordId === rule.id ? (
-                  <form className="keyword-rule-card keyword-rule-form" key={rule.id} onSubmit={handleUpdateKeyword}>
-                    <label>
-                      <span>Keyword</span>
-                      <input
-                        value={editingKeywordPhrase}
-                        onChange={(event) => setEditingKeywordPhrase(event.target.value)}
-                      />
-                    </label>
-                    <label className="keyword-weight-field">
-                      <span>Score</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={25}
-                        value={editingKeywordWeight}
-                        onChange={(event) =>
-                          setEditingKeywordWeight(Number(event.target.value) || DEFAULT_KEYWORD_WEIGHT)
-                        }
-                      />
-                    </label>
-                    <div className="action-row keyword-rule-actions">
-                      <button type="submit" disabled={savingKeyword}>
-                        {savingKeyword ? "Saving..." : "Save"}
-                      </button>
-                      <button type="button" className="secondary-link" onClick={cancelEditingKeyword}>
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
+              <div className="keyword-rule-stack keyword-rule-chip-list">
+                {keywordRules.length === 0 ? (
+                  <p className="empty-state">No keyword rules are configured yet.</p>
                 ) : (
-                  <div className="keyword-rule-chip" key={rule.id}>
-                    <div className="keyword-rule-chip-copy">
-                      <strong title={rule.phrase}>{rule.phrase}</strong>
-                      <span className="keyword-rule-chip-score">+{rule.weight}</span>
-                    </div>
-                    <div className="keyword-rule-chip-actions">
-                      <button
-                        type="button"
-                        className="secondary-link chip-action-button"
-                        onClick={() => startEditingKeyword(rule)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-link destructive-button chip-action-button"
-                        onClick={() => void handleDeleteKeyword(rule)}
-                        disabled={deletingKeywordId === rule.id}
-                      >
-                        {deletingKeywordId === rule.id ? "Removing..." : "Remove"}
-                      </button>
-                    </div>
-                  </div>
-                ),
-              )
-            )}
-          </div>
-        </section>
+                  keywordRules.map((rule) =>
+                    editingKeywordId === rule.id ? (
+                      <form className="keyword-rule-card keyword-rule-form" key={rule.id} onSubmit={handleUpdateKeyword}>
+                        <label>
+                          <span>Keyword</span>
+                          <input
+                            value={editingKeywordPhrase}
+                            onChange={(event) => setEditingKeywordPhrase(event.target.value)}
+                          />
+                        </label>
+                        <label className="keyword-weight-field">
+                          <span>Score</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={25}
+                            value={editingKeywordWeight}
+                            onChange={(event) =>
+                              setEditingKeywordWeight(Number(event.target.value) || DEFAULT_KEYWORD_WEIGHT)
+                            }
+                          />
+                        </label>
+                        <div className="action-row keyword-rule-actions">
+                          <button type="submit" disabled={savingKeyword}>
+                            {savingKeyword ? "Saving..." : "Save"}
+                          </button>
+                          <button type="button" className="secondary-link" onClick={cancelEditingKeyword}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="keyword-rule-chip" key={rule.id}>
+                        <div className="keyword-rule-chip-copy">
+                          <strong title={rule.phrase}>{rule.phrase}</strong>
+                          <span className="keyword-rule-chip-score">+{rule.weight}</span>
+                        </div>
+                        <div className="keyword-rule-chip-actions">
+                          <button
+                            type="button"
+                            className="secondary-link chip-action-button"
+                            onClick={() => startEditingKeyword(rule)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-link destructive-button chip-action-button"
+                            onClick={() => void handleDeleteKeyword(rule)}
+                            disabled={deletingKeywordId === rule.id}
+                          >
+                            {deletingKeywordId === rule.id ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                  )
+                )}
+              </div>
+            </section>
+          </>
+        ) : null}
 
         {!hasVisibleContracts ? (
           <section className="panel">
             <p className="empty-state">
               {buildOpportunityEmptyStateMessage(
                 opportunityCategoryTab,
+                selectedOpportunitySourceFilter,
                 selectedOpportunityTagFilter,
                 opportunityKeywordFilter,
               )}
             </p>
           </section>
         ) : (
-          <section className="grid opportunity-grid">
-            {filteredSourcePanels.map((panel) => (
-              <article className="panel" key={panel.key}>
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">Source</p>
-                    <h2>{panel.label}</h2>
-                  </div>
-                  <span>{panel.contracts.length} shown</span>
-                </div>
-                <div className="stack">
-                  {panel.contracts.length === 0 ? (
-                    <p className="empty-state">
-                      {getOpportunityCategoryEmptyState(
-                        panel.emptyState,
-                        panel.label,
-                        opportunityCategoryTab,
-                        selectedOpportunityTagFilter,
-                        opportunityKeywordFilter,
-                      )}
-                    </p>
-                  ) : (
-                    panel.contracts.map(renderContractCard)
-                  )}
-                </div>
-              </article>
-            ))}
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Combined Feed</p>
+                <h2>Consolidated opportunities</h2>
+              </div>
+              <span>{displayedContracts.length} shown</span>
+            </div>
+            <p className="panel-subcopy combined-feed-copy">
+              All loaded sources are consolidated here. Use the source, category, tag, and keyword filters above to
+              narrow the list without switching panels.
+            </p>
+            <div className="stack">{displayedContracts.map(renderContractCard)}</div>
           </section>
         )}
       </>
@@ -1659,10 +2465,31 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={`nav-pill${view === "intake" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("intake")}
+        >
+          Marketing Intake
+        </button>
+        <button
+          type="button"
           className={`nav-pill${view === "opportunities" ? " nav-pill-active" : ""}`}
           onClick={() => navigateToView("opportunities")}
         >
           Opportunities
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "billing" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("billing")}
+        >
+          Billing
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "profile" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("profile")}
+        >
+          Profile
         </button>
       </nav>
 
@@ -1672,12 +2499,24 @@ export default function App() {
           <h1>
             {view === "dashboard"
               ? "Multi-tenant content and inquiry control room"
-              : "Opportunity list and lead-funnel review"}
+              : view === "intake"
+              ? "Marketing intake and CRM funnel"
+              : view === "billing"
+                ? "Protected invoice creation and Gmail draft workflow"
+              : view === "profile"
+                ? "Profile, password, and invite-only access"
+                : "Opportunity list and lead-funnel review"}
           </h1>
           <p className="hero-copy">
             {view === "dashboard"
               ? "One backend, two business surfaces. Switch tenants, create content, and push live when the publishing path is ready."
-              : "Review matched federal forecast opportunities, Grants.gov opportunities, SBA SUBNet subcontracting opportunities, ESBD opportunities, and Gmail RFQs, then push strong fits into the CRM lead funnel."}
+              : view === "intake"
+              ? "Inspect intake health across connected sites, confirm CRM delivery is wired, and review the newest contacts entering the funnel."
+              : view === "billing"
+                ? "Prepare LeCrown invoices, generate the exact platform PDF on the backend, and create a Gmail draft with the PDF attached without leaving the admin surface."
+              : view === "profile"
+                ? "Manage your login inside the app. Admins can invite new users and keep access locked down to invited accounts only."
+                : "Review matched federal forecast opportunities, Grants.gov opportunities, SBA SUBNet subcontracting opportunities, ESBD opportunities, and Gmail RFQs, then push strong fits into the CRM lead funnel."}
           </p>
         </div>
 
@@ -1699,8 +2538,18 @@ export default function App() {
         ) : (
           <div className="hero-side">
             <span className="hero-badge">
-              {opportunitiesAuthStatus === "authenticated" ? "Admin protected" : "Login required"}
+              {opportunitiesAuthStatus === "authenticated"
+                ? currentAdmin?.is_admin
+                  ? "Admin signed in"
+                  : "Member signed in"
+                : "Invite-only access"}
             </span>
+            {currentAdmin ? (
+              <div className="hero-account-copy">
+                <strong>{currentAdmin.username}</strong>
+                <span>{currentAdmin.email}</span>
+              </div>
+            ) : null}
             {opportunitiesAuthStatus === "authenticated" ? (
               <button type="button" className="secondary-link" onClick={handleLogout}>
                 Log out
@@ -1712,7 +2561,15 @@ export default function App() {
 
       {message ? <div className="message-banner">{message}</div> : null}
 
-      {view === "dashboard" ? renderDashboard() : renderOpportunitiesPage()}
+      {view === "dashboard"
+        ? renderDashboard()
+        : view === "intake"
+          ? renderIntakePage()
+          : view === "billing"
+            ? renderBillingPage()
+          : view === "profile"
+            ? renderProfilePage()
+            : renderOpportunitiesPage()}
     </main>
   );
 }
@@ -1754,6 +2611,59 @@ function formatTimestamp(value: string): string {
     return value;
   }
   return parsed.toLocaleString();
+}
+
+function formatIntakeConnectionStatus(status: string): string {
+  if (status === "configured") {
+    return "Configured";
+  }
+  if (status === "protected") {
+    return "Protected";
+  }
+  if (status === "attention") {
+    return "Needs attention";
+  }
+  if (status === "open") {
+    return "Open";
+  }
+  return status;
+}
+
+function formatIntakeDeliveryStatus(status: string): string {
+  if (status === "delivered") {
+    return "Delivered";
+  }
+  if (status === "failed") {
+    return "Failed";
+  }
+  if (status === "pending") {
+    return "Pending";
+  }
+  if (status === "processed") {
+    return "Processed";
+  }
+  return status;
+}
+
+function formatIntakeSourceType(sourceType: string): string {
+  return sourceType
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getIntakeStatusBadgeClass(status: string): string {
+  if (status === "configured" || status === "delivered" || status === "processed") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "protected" || status === "pending" || status === "open") {
+    return "status-badge status-badge-warn";
+  }
+  if (status === "attention" || status === "failed") {
+    return "status-badge status-badge-bad";
+  }
+  return "status-badge status-badge-neutral";
 }
 
 function formatNigpPreview(value: string): string {
@@ -1807,6 +2717,20 @@ function formatFunnelLabel(contract: GovContractOpportunity): string {
     return "CRM sync failed";
   }
   return contract.funnel_status;
+}
+
+function formatInviteStatus(invite: UserInvite): string {
+  if (invite.revoked_at) {
+    return "revoked";
+  }
+  if (invite.accepted_at) {
+    return "accepted";
+  }
+  const expiresAt = new Date(invite.expires_at);
+  if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+    return "expired";
+  }
+  return "pending";
 }
 
 function normalizeOpportunityCategoryText(value: string | null | undefined): string {
@@ -1922,6 +2846,23 @@ function filterContractsByOpportunityTag(
   return contracts.filter((contract) => matchesOpportunityTagFilter(contract, filter));
 }
 
+function matchesOpportunitySourceFilter(
+  contract: GovContractOpportunity,
+  sourceFilter: string | null,
+): boolean {
+  if (!sourceFilter) {
+    return true;
+  }
+  return contract.source === sourceFilter;
+}
+
+function filterContractsByOpportunitySource(
+  contracts: GovContractOpportunity[],
+  sourceFilter: string | null,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunitySourceFilter(contract, sourceFilter));
+}
+
 function matchesOpportunityKeywordFilter(
   contract: GovContractOpportunity,
   keywordFilter: string,
@@ -1960,6 +2901,26 @@ function filterContractsByOpportunityKeyword(
   return contracts.filter((contract) => matchesOpportunityKeywordFilter(contract, keywordFilter));
 }
 
+function parseOpportunityTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function sortContractsForDisplay(contracts: GovContractOpportunity[]): GovContractOpportunity[] {
+  return [...contracts].sort((left, right) => {
+    if (right.priority_score !== left.priority_score) {
+      return right.priority_score - left.priority_score;
+    }
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    return parseOpportunityTimestamp(right.last_seen_at) - parseOpportunityTimestamp(left.last_seen_at);
+  });
+}
+
 function formatOpportunityCategoryTabLabel(tab: OpportunityCategoryTab): string {
   if (tab === "all") {
     return "All opportunities";
@@ -1977,23 +2938,35 @@ function getOpportunityCategoryEmptyState(
   defaultMessage: string,
   sourceLabel: string,
   tab: OpportunityCategoryTab,
+  sourceFilter: string | null,
   tagFilter: OpportunityTagFilter | null,
   keywordFilter: string,
 ): string {
   const normalizedKeywordFilter = keywordFilter.trim();
-  if (tab === "all" && !tagFilter && !normalizedKeywordFilter) {
+  if (tab === "all" && !sourceFilter && !tagFilter && !normalizedKeywordFilter) {
     return defaultMessage;
   }
   const pieces = [`No ${sourceLabel.toLowerCase()} opportunities match`];
   if (tab !== "all") {
     pieces.push(`the ${formatOpportunityCategoryTabLabel(tab).toLowerCase()} tab`);
   }
+  if (sourceFilter) {
+    pieces.push(
+      tab === "all"
+        ? `the ${formatContractSource(sourceFilter).toLowerCase()} source`
+        : `and the ${formatContractSource(sourceFilter).toLowerCase()} source`,
+    );
+  }
   if (tagFilter) {
-    pieces.push(tab === "all" ? `the "${tagFilter.label}" tag` : `and the "${tagFilter.label}" tag`);
+    pieces.push(
+      tab === "all" && !sourceFilter
+        ? `the "${tagFilter.label}" tag`
+        : `and the "${tagFilter.label}" tag`,
+    );
   }
   if (normalizedKeywordFilter) {
     pieces.push(
-      tab === "all" && !tagFilter
+      tab === "all" && !sourceFilter && !tagFilter
         ? `the keyword "${normalizedKeywordFilter}"`
         : `and the keyword "${normalizedKeywordFilter}"`,
     );
@@ -2003,11 +2976,12 @@ function getOpportunityCategoryEmptyState(
 
 function buildOpportunityEmptyStateMessage(
   tab: OpportunityCategoryTab,
+  sourceFilter: string | null,
   tagFilter: OpportunityTagFilter | null,
   keywordFilter: string,
 ): string {
   const normalizedKeywordFilter = keywordFilter.trim();
-  if (tab === "all" && !tagFilter && !normalizedKeywordFilter) {
+  if (tab === "all" && !sourceFilter && !tagFilter && !normalizedKeywordFilter) {
     return "No opportunities match the current view filters.";
   }
 
@@ -2015,12 +2989,23 @@ function buildOpportunityEmptyStateMessage(
   if (tab !== "all") {
     pieces.push(`the ${formatOpportunityCategoryTabLabel(tab).toLowerCase()} tab`);
   }
+  if (sourceFilter) {
+    pieces.push(
+      tab === "all"
+        ? `the ${formatContractSource(sourceFilter).toLowerCase()} source`
+        : `and the ${formatContractSource(sourceFilter).toLowerCase()} source`,
+    );
+  }
   if (tagFilter) {
-    pieces.push(tab === "all" ? `the "${tagFilter.label}" tag` : `and the "${tagFilter.label}" tag`);
+    pieces.push(
+      tab === "all" && !sourceFilter
+        ? `the "${tagFilter.label}" tag`
+        : `and the "${tagFilter.label}" tag`,
+    );
   }
   if (normalizedKeywordFilter) {
     pieces.push(
-      tab === "all" && !tagFilter
+      tab === "all" && !sourceFilter && !tagFilter
         ? `the keyword "${normalizedKeywordFilter}"`
         : `and the keyword "${normalizedKeywordFilter}"`,
     );

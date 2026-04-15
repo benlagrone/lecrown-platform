@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_admin, require_intake_key
-from app.schemas.intake import IntakeLeadCreate, IntakeLeadRead, IntakeLeadResponse
+from app.schemas.intake import (
+    IntakeDashboardRead,
+    IntakeLeadCreate,
+    IntakeLeadRead,
+    IntakeLeadResponse,
+)
 from app.services import intake_service
 
 router = APIRouter()
@@ -31,6 +36,16 @@ def create_intake_lead(
         product_context=submission.product_context,
         created_at=submission.created_at,
     )
+
+
+@router.get("/dashboard", response_model=IntakeDashboardRead)
+def get_intake_dashboard(
+    source_limit: int = Query(default=12, ge=1, le=50),
+    recent_limit: int = Query(default=12, ge=1, le=50),
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> IntakeDashboardRead:
+    return intake_service.get_dashboard(db, source_limit=source_limit, recent_limit=recent_limit)
 
 
 @router.get("/list", response_model=list[IntakeLeadRead])

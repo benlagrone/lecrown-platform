@@ -23,6 +23,21 @@ class EspoCRMError(RuntimeError):
         self.body = body or {}
 
 
+def has_base_url() -> bool:
+    return bool(settings.espocrm_base_url.strip())
+
+
+def has_credentials() -> bool:
+    return bool(
+        settings.espocrm_api_key
+        or (settings.espocrm_username.strip() and settings.espocrm_password.strip())
+    )
+
+
+def is_configured() -> bool:
+    return has_base_url() and has_credentials()
+
+
 def _base_url() -> str:
     base_url = settings.espocrm_base_url.strip().rstrip("/")
     if not base_url:

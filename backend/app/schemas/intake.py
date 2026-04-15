@@ -84,3 +84,60 @@ class IntakeLeadRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class IntakeDashboardOverview(BaseModel):
+    observed_source_sites: int
+    total_submissions: int
+    new_contacts_today: int
+    new_contacts_7d: int
+    delivered_submissions: int
+    failed_submissions: int
+
+
+class IntakeDashboardConnectionRead(BaseModel):
+    key: str
+    label: str
+    status: str
+    detail: str
+    value: Optional[str] = None
+
+
+class IntakeDashboardSourceSiteRead(BaseModel):
+    source_site: str
+    source_type: str
+    business_contexts: list[str] = Field(default_factory=list)
+    form_providers: list[str] = Field(default_factory=list)
+    form_names: list[str] = Field(default_factory=list)
+    total_submissions: int
+    delivered_submissions: int
+    failed_submissions: int
+    new_contacts_today: int
+    new_contacts_7d: int
+    last_submission_at: datetime
+    last_contact_name: Optional[str] = None
+    last_page_url: Optional[str] = None
+    last_delivery_status: str
+
+
+class IntakeDashboardRecentContactRead(BaseModel):
+    id: str
+    source_site: str
+    contact_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    business_context: Optional[str] = None
+    product_context: Optional[str] = None
+    page_url: Optional[str] = None
+    campaign: Optional[str] = None
+    status: str
+    delivery_status: str
+    delivery_record_id: Optional[str] = None
+    created_at: datetime
+
+
+class IntakeDashboardRead(BaseModel):
+    overview: IntakeDashboardOverview
+    connections: list[IntakeDashboardConnectionRead] = Field(default_factory=list)
+    source_sites: list[IntakeDashboardSourceSiteRead] = Field(default_factory=list)
+    recent_contacts: list[IntakeDashboardRecentContactRead] = Field(default_factory=list)

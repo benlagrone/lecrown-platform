@@ -1,4 +1,6 @@
 import type {
+  AuthUser,
+  ChangePasswordRequest,
   Content,
   ContentCreate,
   DistributionChannel,
@@ -8,9 +10,15 @@ import type {
   GovContractImportRun,
   GovContractKeywordRule,
   GovContractOpportunity,
+  InvoiceDefaults,
+  InvoiceDraftResult,
+  InvoiceRenderRequest,
+  IntakeDashboard,
   Inquiry,
   LoginRequest,
   TokenResponse,
+  UserInvite,
+  UserInviteCreateResponse,
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -32,8 +40,15 @@ function buildHeaders(init?: RequestInit): HeadersInit {
   };
 }
 
+function resolveApiUrl(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+  return `${API_BASE_URL}${path}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(resolveApiUrl(path), {
     ...init,
     headers: buildHeaders(init),
   });
@@ -59,6 +74,54 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+async function ensureOkResponse(response: Response): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  const body = await response.text();
+  if (body) {
+    let detail: string | undefined;
+    try {
+      const parsed = JSON.parse(body) as { detail?: string };
+      detail = parsed.detail;
+    } catch {}
+    if (detail) {
+      throw new Error(detail);
+    }
+    throw new Error(body);
+  }
+  throw new Error(`Request failed with ${response.status}`);
+}
+
+function getDownloadFilename(response: Response, fallbackFilename: string): string {
+  const disposition = response.headers.get("Content-Disposition");
+  if (!disposition) {
+    return fallbackFilename;
+  }
+
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ?? fallbackFilename;
+}
+
+async function downloadResponse(response: Response, fallbackFilename: string): Promise<void> {
+  await ensureOkResponse(response);
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = getDownloadFilename(response, fallbackFilename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export function storeAuthToken(token: string): void {
@@ -91,6 +154,14 @@ export async function listContent(tenant: Content["tenant"]): Promise<Content[]>
 
 export async function listInquiries(): Promise<Inquiry[]> {
   return request<Inquiry[]>("/inquiry/list");
+}
+
+export async function getIntakeDashboard(sourceLimit = 12, recentLimit = 12): Promise<IntakeDashboard> {
+  const query = new URLSearchParams({
+    source_limit: String(sourceLimit),
+    recent_limit: String(recentLimit),
+  });
+  return request<IntakeDashboard>(`/intake/dashboard?${query.toString()}`);
 }
 
 export async function listGovContracts(
@@ -352,6 +423,73 @@ export async function login(payload: LoginRequest): Promise<TokenResponse> {
   });
 }
 
-export async function getCurrentAdmin(): Promise<{ username: string }> {
-  return request<{ username: string }>("/auth/me");
+export async function getCurrentAdmin(): Promise<AuthUser> {
+  return request<AuthUser>("/auth/me");
+}
+
+export async function changePassword(payload: ChangePasswordRequest): Promise<AuthUser> {
+  return request<AuthUser>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listUserInvites(): Promise<UserInvite[]> {
+  return request<UserInvite[]>("/auth/invitations");
+}
+
+export async function createUserInvite(payload: { email: string }): Promise<UserInviteCreateResponse> {
+  return request<UserInviteCreateResponse>("/auth/invitations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function revokeUserInvite(inviteId: string): Promise<void> {
+  return request<void>(`/auth/invitations/${inviteId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function acceptInvite(payload: {
+  invite_code: string;
+  username: string;
+  password: string;
+}): Promise<TokenResponse> {
+  return request<TokenResponse>("/auth/accept-invite", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getInvoiceDefaults(companyKey?: string): Promise<InvoiceDefaults> {
+  const query = new URLSearchParams();
+  if (companyKey) {
+    query.set("company_key", companyKey);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<InvoiceDefaults>(`/invoice/defaults${suffix}`);
+}
+
+export async function downloadRenderedInvoice(payload: InvoiceRenderRequest): Promise<void> {
+  const response = await fetch(resolveApiUrl("/invoice/render"), {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  });
+  await downloadResponse(response, "invoice.pdf");
+}
+
+export async function createInvoiceDraft(payload: InvoiceRenderRequest): Promise<InvoiceDraftResult> {
+  return request<InvoiceDraftResult>("/invoice/draft", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function downloadGeneratedInvoice(downloadUrl: string, fallbackFilename: string): Promise<void> {
+  const response = await fetch(resolveApiUrl(downloadUrl), {
+    headers: buildHeaders(),
+  });
+  await downloadResponse(response, fallbackFilename);
 }

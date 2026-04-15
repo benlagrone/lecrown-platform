@@ -23,6 +23,7 @@ README.md
 ## What is implemented
 
 - FastAPI backend with tenant-aware `content`, `inquiry`, `linkedin`, `youtube`, `distribution`, `intake`, and `auth` routes
+- Stripe-backed billing API for shared app accounts, checkout, customer portal, webhook sync, and entitlement lookup
 - SQLite persistence through SQLAlchemy
 - Minimal React admin for creating canonical content, choosing output channels, and viewing property inquiries
 - Transform layer that adapts one content record into channel-specific payloads
@@ -51,6 +52,18 @@ README.md
 - `POST /distribution/publish`
 - `POST /auth/login`
 - `GET /auth/me`
+- `GET|POST /billing/apps`
+- `GET /billing/accounts`
+- `POST /billing/accounts`
+- `GET|POST /billing/accounts/{account_id}/memberships`
+- `GET|POST /billing/entitlements`
+- `GET|POST /billing/products`
+- `GET|POST /billing/prices`
+- `POST /billing/checkout/session`
+- `POST /billing/portal/session`
+- `GET /billing/accounts/{account_id}/entitlements`
+- `GET /billing/accounts/{account_id}/subscriptions`
+- `POST /billing/webhooks/stripe`
 - `GET /healthz`
 
 ## Local run
@@ -82,6 +95,7 @@ For production:
 - set `VITE_API_BASE_URL` to the public API origin
 - set `CORS_ORIGINS` to the public admin origin
 - replace the default `SECRET_KEY` and `ADMIN_PASSWORD`
+- set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BILLING_SERVICE_KEYS` before enabling billing flows
 - leave `GMAIL_RFQ_FEED_URL` blank unless the Gmail RFQ sidecar service exists in that environment
 
 ## Content model shape
@@ -179,6 +193,25 @@ Current first target:
 
 - `AskMortgageAuthority`
 
+## Billing API
+
+`lecrown-platform` now exposes a platform billing surface for other LeCrown apps.
+
+Current implementation:
+
+- platform-owned `accounts`, `account_memberships`, `products`, `prices`, `entitlements`, `billing_customers`, `billing_subscriptions`, and `billing_webhook_events`
+- hosted Stripe Checkout Session creation for subscription signup
+- Stripe Customer Portal session creation for self-service billing management
+- webhook-driven subscription synchronization into account-scoped entitlements
+- app-scoped entitlement lookup for runtime enforcement in external projects
+
+App-facing billing routes expect:
+
+- `X-Billing-App: <app_key>`
+- `X-Billing-Key: <shared_secret>`
+
+`BILLING_SERVICE_KEYS` should be configured as comma-separated `app_key:secret` pairs.
+
 ## Feature Roadmap
 
 Product direction:
@@ -191,6 +224,8 @@ Product direction:
 See:
 
 - [docs/feature-roadmap.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/feature-roadmap.md)
+- [docs/billing-platform-strategy.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/billing-platform-strategy.md)
+- [docs/lecrown-billing-workflow-spec.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/lecrown-billing-workflow-spec.md)
 
 ## CRM Direction
 

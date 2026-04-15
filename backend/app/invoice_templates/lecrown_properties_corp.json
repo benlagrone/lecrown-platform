@@ -1,0 +1,18 @@
+{
+  "company_name": "LeCrown Properties Corp",
+  "invoice_title": "INVOICE",
+  "due_text": "Within 7 days upon receipt.",
+  "email_to": "kensington.obh@gmail.com",
+  "email_cc": "edm.kpg@gmail.com",
+  "from": {
+    "name": "LeCrown Properties Corp",
+    "address_lines": [
+      "12518 Boheme Drive",
+      "Houston, TX 77024"
+    ]
+  },
+  "memo_title": "Regarding",
+  "currency": "USD",
+  "accent_color": "#1f4b6e",
+  "footer_note": "Thank you for your business."
+}

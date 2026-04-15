@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.config import get_settings
-from app.core.security import get_current_admin
+from app.core.security import get_current_admin, get_current_user
 from app.schemas.gov_contract import (
     GovContractAgencyPreferenceRead,
     GovContractAgencyPreferenceWrite,
@@ -28,7 +28,7 @@ settings = get_settings()
 
 
 @router.get("/capabilities", response_model=GovContractCapabilitiesRead)
-def get_contract_capabilities(_: dict = Depends(get_current_admin)) -> GovContractCapabilitiesRead:
+def get_contract_capabilities(_: object = Depends(get_current_user)) -> GovContractCapabilitiesRead:
     return GovContractCapabilitiesRead(
         gmail_rfq_sync_enabled=settings.gmail_rfq_feed_enabled,
         gmail_rfq_feed_label=settings.gmail_rfq_feed_label if settings.gmail_rfq_feed_enabled else None,
@@ -38,7 +38,7 @@ def get_contract_capabilities(_: dict = Depends(get_current_admin)) -> GovContra
 @router.get("/keywords", response_model=list[GovContractKeywordRuleRead])
 def get_keyword_rules(
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_admin),
+    _: object = Depends(get_current_user),
 ) -> list[GovContractKeywordRuleRead]:
     return gov_contract_service.list_keyword_rules(db)
 
@@ -46,7 +46,7 @@ def get_keyword_rules(
 @router.get("/agency-preferences", response_model=list[GovContractAgencyPreferenceRead])
 def get_agency_preferences(
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_admin),
+    _: object = Depends(get_current_user),
 ) -> list[GovContractAgencyPreferenceRead]:
     return gov_contract_service.list_agency_preferences(db)
 
@@ -203,7 +203,7 @@ def refresh_sba_subnet_contracts(
 def refresh_gmail_contracts(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_admin),
+    _: object = Depends(get_current_admin),
 ) -> GovContractImportRunRead:
     try:
         return gov_contract_service.refresh_gmail_contracts(db, limit=limit)
@@ -219,7 +219,7 @@ def list_contracts(
     min_priority_score: int = Query(default=0, ge=0, le=100),
     source: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_admin),
+    _: object = Depends(get_current_user),
 ) -> list[GovContractOpportunityRead]:
     return gov_contract_service.serialize_opportunities(
         gov_contract_service.list_contracts(
@@ -258,7 +258,7 @@ def funnel_contract(
 def list_contract_runs(
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
-    _: dict = Depends(get_current_admin),
+    _: object = Depends(get_current_user),
 ) -> list[GovContractImportRunRead]:
     return gov_contract_service.list_import_runs(db, limit=limit)
 
@@ -268,7 +268,7 @@ def export_contracts_csv(
     window_days: int = Query(default=7, ge=1, le=90),
     start_date: Optional[date] = Query(default=None),
     end_date: Optional[date] = Query(default=None),
-    _: dict = Depends(get_current_admin),
+    _: object = Depends(get_current_user),
 ) -> Response:
     try:
         csv_text, resolved_start, resolved_end = gov_contract_service.export_contracts_csv(
@@ -288,7 +288,7 @@ def export_contracts_csv(
 
 
 @router.get("/export-federal.csv")
-def export_federal_contracts_csv(_: dict = Depends(get_current_admin)) -> Response:
+def export_federal_contracts_csv(_: object = Depends(get_current_user)) -> Response:
     try:
         csv_text, exported_at = gov_contract_service.export_federal_contracts_csv()
     except gov_contract_service.GovContractSourceError as exc:
@@ -303,7 +303,7 @@ def export_federal_contracts_csv(_: dict = Depends(get_current_admin)) -> Respon
 
 
 @router.get("/export-grants.csv")
-def export_grants_contracts_csv(_: dict = Depends(get_current_admin)) -> Response:
+def export_grants_contracts_csv(_: object = Depends(get_current_user)) -> Response:
     try:
         csv_text, exported_at = gov_contract_service.export_grants_contracts_csv()
     except gov_contract_service.GovContractSourceError as exc:

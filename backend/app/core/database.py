@@ -23,9 +23,11 @@ def get_db() -> Generator:
 
 
 def init_db() -> None:
+    import app.models.billing  # noqa: F401
     import app.models.content  # noqa: F401
     import app.models.gov_contract  # noqa: F401
     import app.models.intake  # noqa: F401
+    import app.models.invoice  # noqa: F401
     import app.models.inquiry  # noqa: F401
     import app.models.user  # noqa: F401
 
@@ -35,6 +37,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     should_rescore_gov_contracts = _run_lightweight_migrations()
+    _seed_bootstrap_admin_user()
     if not had_gov_contract_keyword_rules:
         _seed_gov_contract_keyword_rules()
     if should_rescore_gov_contracts or not had_gov_contract_agency_preferences:
@@ -46,6 +49,33 @@ def _run_lightweight_migrations() -> bool:
         return False
 
     inspector = inspect(engine)
+    if inspector.has_table("users"):
+        existing_user_columns = {column["name"] for column in inspector.get_columns("users")}
+        user_migrations = {
+            "username": "username VARCHAR",
+            "is_admin": "is_admin BOOLEAN DEFAULT 0 NOT NULL",
+            "updated_at": "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL",
+        }
+        with engine.begin() as connection:
+            for column_name, ddl in user_migrations.items():
+                if column_name not in existing_user_columns:
+                    try:
+                        connection.execute(text(f"ALTER TABLE users ADD COLUMN {ddl}"))
+                    except OperationalError as exc:
+                        if "duplicate column name" not in str(exc).lower():
+                            raise
+            if "username" not in existing_user_columns:
+                connection.execute(
+                    text(
+                        "UPDATE users "
+                        "SET username = substr(email, 1, instr(email, '@') - 1) "
+                        "WHERE username IS NULL OR trim(username) = ''"
+                    )
+                )
+            connection.execute(
+                text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)")
+            )
+
     if not inspector.has_table("gov_contract_opportunities"):
         return False
 
@@ -110,6 +140,13 @@ def _seed_gov_contract_keyword_rules() -> None:
                 )
             )
         db.commit()
+
+
+def _seed_bootstrap_admin_user() -> None:
+    from app.services.auth_service import ensure_bootstrap_admin_user
+
+    with SessionLocal() as db:
+        ensure_bootstrap_admin_user(db)
 
 
 def _backfill_gov_contract_scores() -> None:
