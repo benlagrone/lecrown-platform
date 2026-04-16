@@ -42,11 +42,11 @@ api.lecrowndevelopment.com.  A  89.117.151.145
 
 ## Runtime Shape
 
-- backend listens on `127.0.0.1:8000`
-- frontend listens on `127.0.0.1:3000`
+- backend listens on `127.0.0.1:18035`
+- frontend listens on `127.0.0.1:13084`
 - host-level `nginx` terminates TLS and proxies:
-  - `app.lecrowndevelopment.com` -> `127.0.0.1:3000`
-  - `api.lecrowndevelopment.com` -> `127.0.0.1:8000`
+  - `app.lecrowndevelopment.com` -> `127.0.0.1:13084`
+  - `api.lecrowndevelopment.com` -> `127.0.0.1:18035`
 
 ## Environment
 
@@ -56,6 +56,8 @@ Important production values:
 
 - `VITE_API_BASE_URL=https://api.lecrowndevelopment.com`
 - `CORS_ORIGINS=https://app.lecrowndevelopment.com`
+- `PLATFORM_API_BIND=127.0.0.1:18035`
+- `PLATFORM_FRONTEND_BIND=127.0.0.1:13084`
 - `SECRET_KEY` must be replaced
 - `ADMIN_PASSWORD` must be replaced
 - `DATABASE_URL=sqlite:///./data/lecrown.db`
