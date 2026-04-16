@@ -52,6 +52,8 @@ api.lecrowndevelopment.com.  A  89.117.151.145
 
 Copy [.env.example](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/ops/platform/.env.example) to `ops/platform/.env` and set real values before bringing the stack up.
 
+`ops/platform/.env` is intentionally gitignored. Keep it only on the server or in your local untracked deploy workspace.
+
 Important production values:
 
 - `VITE_API_BASE_URL=https://api.lecrowndevelopment.com`

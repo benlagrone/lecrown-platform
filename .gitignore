@@ -12,6 +12,7 @@ build/
 backend/lecrown.db
 ops/espocrm/.env
 ops/espocrm/backups/
+ops/platform/.env
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

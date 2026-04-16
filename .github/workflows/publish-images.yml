@@ -312,9 +312,21 @@ jobs:
             exit 1
           }
 
+          require_no_tracked_changes() {
+            local repo_path="$1"
+            if ! git -C "$repo_path" diff --quiet --ignore-submodules --exit-code || \
+               ! git -C "$repo_path" diff --cached --quiet --ignore-submodules --exit-code; then
+              git -C "$repo_path" status --short --branch --untracked-files=all >&2 || true
+              fail_repo "deploy checkout has tracked modifications at ${repo_path}"
+            fi
+          }
+
           require_clean_repo() {
             local repo_path="$1"
-            if [[ -n "$(git -C "$repo_path" status --porcelain --untracked-files=all)" ]]; then
+            local repo_status=""
+            repo_status="$(git -C "$repo_path" status --porcelain --untracked-files=all)"
+            if [[ -n "${repo_status}" ]]; then
+              printf '%s\n' "${repo_status}" >&2
               fail_repo "deploy checkout is dirty at ${repo_path}"
             fi
           }
@@ -363,7 +375,7 @@ jobs:
           fi
 
           assert_expected_origin "${DEPLOY_ROOT}" "${REPO_SLUG}"
-          require_clean_repo "${DEPLOY_ROOT}"
+          require_no_tracked_changes "${DEPLOY_ROOT}"
 
           git -C "${DEPLOY_ROOT}" fetch origin --tags
           git -C "${DEPLOY_ROOT}" checkout main
