@@ -20,6 +20,7 @@ from app.schemas.gov_contract import (
     GovContractKeywordRuleWrite,
     GovContractOpportunityRead,
     GovContractRefreshRequest,
+    GovContractTrackedSourceRead,
 )
 from app.services import gov_contract_service
 
@@ -49,6 +50,14 @@ def get_agency_preferences(
     _: object = Depends(get_current_user),
 ) -> list[GovContractAgencyPreferenceRead]:
     return gov_contract_service.list_agency_preferences(db)
+
+
+@router.get("/sources", response_model=list[GovContractTrackedSourceRead])
+def get_tracked_sources(
+    db: Session = Depends(get_db),
+    _: object = Depends(get_current_user),
+) -> list[GovContractTrackedSourceRead]:
+    return gov_contract_service.list_tracked_sources(db)
 
 
 @router.post("/agency-preferences", response_model=GovContractAgencyPreferenceRead)
@@ -209,6 +218,14 @@ def refresh_gmail_contracts(
         return gov_contract_service.refresh_gmail_contracts(db, limit=limit)
     except gov_contract_service.GovContractSourceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/refresh-tracked-sources", response_model=list[GovContractImportRunRead])
+def refresh_tracked_sources(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> list[GovContractImportRunRead]:
+    return gov_contract_service.refresh_tracked_procurement_sources(db)
 
 
 @router.get("/list", response_model=list[GovContractOpportunityRead])

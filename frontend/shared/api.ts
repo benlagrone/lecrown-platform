@@ -10,6 +10,7 @@ import type {
   GovContractImportRun,
   GovContractKeywordRule,
   GovContractOpportunity,
+  GovContractTrackedSource,
   InvoiceDefaults,
   InvoiceDraftResult,
   InvoiceRenderRequest,
@@ -186,6 +187,10 @@ export async function listGovContractRuns(limit = 5): Promise<GovContractImportR
   return request<GovContractImportRun[]>(`/contracts/runs?${query.toString()}`);
 }
 
+export async function listGovContractTrackedSources(): Promise<GovContractTrackedSource[]> {
+  return request<GovContractTrackedSource[]>("/contracts/sources");
+}
+
 export async function getGovContractCapabilities(): Promise<GovContractCapabilities> {
   return request<GovContractCapabilities>("/contracts/capabilities");
 }
@@ -278,6 +283,12 @@ export async function refreshSbaSubnetContracts(): Promise<GovContractImportRun>
 export async function refreshGmailRfqs(limit = 50): Promise<GovContractImportRun> {
   const query = new URLSearchParams({ limit: String(limit) });
   return request<GovContractImportRun>(`/contracts/refresh-gmail?${query.toString()}`, {
+    method: "POST",
+  });
+}
+
+export async function refreshTrackedGovSources(): Promise<GovContractImportRun[]> {
+  return request<GovContractImportRun[]>("/contracts/refresh-tracked-sources", {
     method: "POST",
   });
 }

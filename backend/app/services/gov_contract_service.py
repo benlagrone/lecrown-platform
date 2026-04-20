@@ -20,6 +20,7 @@ from app.models.gov_contract import (
     GovContractImportRun,
     GovContractKeywordRule,
     GovContractOpportunity,
+    GovContractTrackedSource,
 )
 from app.schemas.gov_contract import GovContractOpportunityRead
 from app.schemas.intake import IntakeLeadCreate
@@ -33,12 +34,48 @@ FEDERAL_FORECAST_SOURCE_NAME = "federal_forecast"
 GRANTS_GOV_SOURCE_NAME = "grants_gov"
 SBA_SUBNET_SOURCE_NAME = "sba_subnet"
 GMAIL_RFQ_SOURCE_NAME = "gmail_rfqs"
+AUSTIN_AFO_SOURCE_NAME = "city_austin_afo"
+SAN_ANTONIO_BIDS_SOURCE_NAME = "city_san_antonio_bids"
+FORT_WORTH_BONFIRE_SOURCE_NAME = "city_fort_worth_bonfire"
+EL_PASO_IONWAVE_SOURCE_NAME = "city_el_paso_ionwave"
+HARRIS_COUNTY_BONFIRE_SOURCE_NAME = "harris_county_bonfire"
+TRAVIS_COUNTY_BIDNET_SOURCE_NAME = "travis_county_bidnet"
+TARRANT_COUNTY_IONWAVE_SOURCE_NAME = "tarrant_county_ionwave"
+COLLIN_COUNTY_IONWAVE_SOURCE_NAME = "collin_county_ionwave"
+DALLAS_COUNTY_OFFICIAL_SOURCE_NAME = "dallas_county_official"
+DALLAS_COUNTY_BIDNET_SOURCE_NAME = "dallas_county_bidnet"
+CAPMETRO_PLANETBIDS_SOURCE_NAME = "capmetro_planetbids"
+HOUSTON_METRO_PROCUREMENT_SOURCE_NAME = "houston_metro_procurement"
+DART_PROCUREMENT_SOURCE_NAME = "dart_procurement"
+HGAC_PROCUREMENT_SOURCE_NAME = "h_gac_procurement"
+HOUSTON_METRO_OPEN_CONTEXT = "metro_open_procurement"
+HOUSTON_METRO_RECENTLY_ADDED_CONTEXT = "metro_recently_added"
+HOUSTON_METRO_Q2_FORECAST_CONTEXT = "metro_q2_2026_forecast"
+HOUSTON_METRO_Q3_FORECAST_CONTEXT = "metro_q3_2026_forecast"
+HOUSTON_METRO_Q4_FORECAST_CONTEXT = "metro_q4_2026_forecast"
+HOUSTON_METRO_Q1_FORECAST_CONTEXT = "metro_q1_2027_forecast"
+HOUSTON_METRO_MAJOR_CONSTRUCTION_CONTEXT = "metro_major_construction"
+HOUSTON_METRO_APN_CONTEXT = "metro_advance_procurement_notice"
 SOURCE_LABELS = {
     SOURCE_NAME: "Texas ESBD",
     FEDERAL_FORECAST_SOURCE_NAME: "Federal Forecast",
     GRANTS_GOV_SOURCE_NAME: "Grants.gov",
     SBA_SUBNET_SOURCE_NAME: "SBA SUBNet",
     GMAIL_RFQ_SOURCE_NAME: "Gmail RFQs",
+    AUSTIN_AFO_SOURCE_NAME: "City of Austin",
+    SAN_ANTONIO_BIDS_SOURCE_NAME: "City of San Antonio",
+    FORT_WORTH_BONFIRE_SOURCE_NAME: "City of Fort Worth",
+    EL_PASO_IONWAVE_SOURCE_NAME: "City of El Paso",
+    HARRIS_COUNTY_BONFIRE_SOURCE_NAME: "Harris County",
+    TRAVIS_COUNTY_BIDNET_SOURCE_NAME: "Travis County",
+    TARRANT_COUNTY_IONWAVE_SOURCE_NAME: "Tarrant County",
+    COLLIN_COUNTY_IONWAVE_SOURCE_NAME: "Collin County",
+    DALLAS_COUNTY_OFFICIAL_SOURCE_NAME: "Dallas County",
+    DALLAS_COUNTY_BIDNET_SOURCE_NAME: "Dallas County BidNet",
+    CAPMETRO_PLANETBIDS_SOURCE_NAME: "CapMetro",
+    HOUSTON_METRO_PROCUREMENT_SOURCE_NAME: "Houston METRO",
+    DART_PROCUREMENT_SOURCE_NAME: "DART",
+    HGAC_PROCUREMENT_SOURCE_NAME: "H-GAC",
 }
 OPEN_STATUS_CODES = {"1", "6"}
 FEDERAL_FORECAST_CLOSED_STATUS_NAMES = {
@@ -158,6 +195,11 @@ OPPORTUNITY_SOURCE_TYPE_TAGS = {
     GRANTS_GOV_SOURCE_NAME: "Grant",
     SBA_SUBNET_SOURCE_NAME: "Subcontract",
     GMAIL_RFQ_SOURCE_NAME: "RFQ",
+    AUSTIN_AFO_SOURCE_NAME: "Bid",
+    SAN_ANTONIO_BIDS_SOURCE_NAME: "Bid",
+    TRAVIS_COUNTY_BIDNET_SOURCE_NAME: "Bid",
+    DALLAS_COUNTY_BIDNET_SOURCE_NAME: "Bid",
+    HOUSTON_METRO_PROCUREMENT_SOURCE_NAME: "Bid",
 }
 IT_OPPORTUNITY_RULES: tuple[tuple[str, int], ...] = (
     ("Information Technology", 8),
@@ -232,6 +274,20 @@ class GovContractSourceError(RuntimeError):
     """Raised when an upstream opportunity source cannot be fetched or parsed."""
 
 
+@dataclass(frozen=True)
+class GovContractTrackedSourceDefinition:
+    source: str
+    label: str
+    listing_url: str
+    platform_name: str
+    jurisdiction_type: str
+    extraction_mode: str
+    load_scope: str
+    automation_summary: str
+    automation_detail: str | None = None
+    notes: str | None = None
+
+
 @dataclass
 class GovContractSourceRecord:
     source_key: str
@@ -257,6 +313,259 @@ class GovContractFetchResult:
     source_total_records: int
     csv_text: str
     records: list[GovContractSourceRecord]
+
+
+CORE_PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, ...] = (
+    GovContractTrackedSourceDefinition(
+        source=SOURCE_NAME,
+        label="Texas ESBD",
+        listing_url="https://www.txsmartbuy.gov/esbd",
+        platform_name="Texas SmartBuy ESBD",
+        jurisdiction_type="state",
+        extraction_mode="csv_export_api",
+        load_scope="opportunities",
+        automation_summary="Weekly CSV export import",
+        automation_detail="Posts to the ESBD export service, downloads the CSV payload, parses rows, and stores scored opportunities.",
+        notes="Primary Texas statewide bid source.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=FEDERAL_FORECAST_SOURCE_NAME,
+        label="Federal Forecast",
+        listing_url="https://acquisitiongateway.gov/forecast",
+        platform_name="Acquisition Gateway",
+        jurisdiction_type="federal",
+        extraction_mode="json_api",
+        load_scope="opportunities",
+        automation_summary="Weekly JSON API snapshot",
+        automation_detail="Reads the public Acquisition Gateway forecast API, normalizes listing rows, and stores scored opportunities.",
+        notes="Nationwide federal forecast feed.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=GRANTS_GOV_SOURCE_NAME,
+        label="Grants.gov",
+        listing_url="https://simpler.grants.gov/search",
+        platform_name="Grants.gov",
+        jurisdiction_type="federal",
+        extraction_mode="csv_export",
+        load_scope="opportunities",
+        automation_summary="Weekly CSV export import",
+        automation_detail="Downloads the public Grants.gov export CSV, parses grant rows, and stores scored opportunities.",
+        notes="Grant opportunity feed sourced from the public export endpoint.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=SBA_SUBNET_SOURCE_NAME,
+        label="SBA SUBNet",
+        listing_url="https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting/subcontracting-opportunities",
+        platform_name="SBA SUBNet",
+        jurisdiction_type="federal",
+        extraction_mode="paginated_html",
+        load_scope="opportunities",
+        automation_summary="Weekly paginated HTML crawl",
+        automation_detail="Walks the public SBA SUBNet listing pages, parses subcontract rows, and stores scored opportunities.",
+        notes="Subcontracting opportunity board.",
+    ),
+)
+
+TRACKED_PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, ...] = (
+    GovContractTrackedSourceDefinition(
+        source=AUSTIN_AFO_SOURCE_NAME,
+        label="City of Austin",
+        listing_url="https://financeonline.austintexas.gov/afo/account_services/solicitation/solicitations.cfm",
+        platform_name="Austin Finance Online",
+        jurisdiction_type="city",
+        extraction_mode="html_cards",
+        load_scope="opportunities",
+        automation_summary="Weekly HTML card parser",
+        automation_detail="Fetches the active solicitations page, parses server-rendered solicitation cards, and stores scored opportunities.",
+        notes="Server-rendered active solicitation cards. Parsed directly.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=SAN_ANTONIO_BIDS_SOURCE_NAME,
+        label="City of San Antonio",
+        listing_url="https://webapp1.sanantonio.gov/BidContractOpps/Default.aspx",
+        platform_name="City Bidding & Contracting",
+        jurisdiction_type="city",
+        extraction_mode="html_table",
+        load_scope="opportunities",
+        automation_summary="Weekly HTML table parser",
+        automation_detail="Fetches the public bidding table, parses server-rendered rows, and stores scored opportunities.",
+        notes="Server-rendered bidding table. Parsed directly.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=FORT_WORTH_BONFIRE_SOURCE_NAME,
+        label="City of Fort Worth",
+        listing_url="https://fortworthtexas.bonfirehub.com/portal/?tab=openOpportunities",
+        platform_name="Bonfire",
+        jurisdiction_type="city",
+        extraction_mode="browser_required",
+        load_scope="catalog_only",
+        automation_summary="Weekly reachability probe only",
+        automation_detail="The job records whether the page is reachable, but plain server-side fetches do not expose the opportunity list. A browser or portal-specific integration is still needed.",
+        notes="Reachable but JS-only from a plain fetch. Needs deeper Bonfire/browser integration.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=EL_PASO_IONWAVE_SOURCE_NAME,
+        label="City of El Paso",
+        listing_url="https://elpasotexas.ionwave.net/SourcingEvents.aspx?SourceType=1",
+        platform_name="Ion Wave",
+        jurisdiction_type="city",
+        extraction_mode="anti_bot_blocked",
+        load_scope="catalog_only",
+        automation_summary="Weekly probe with anti-bot detection",
+        automation_detail="The job checks the page and records the anti-bot challenge instead of pretending the feed is empty. No opportunities are loaded yet.",
+        notes="Returns an anti-bot challenge instead of the bid grid from a server-side fetch.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=HARRIS_COUNTY_BONFIRE_SOURCE_NAME,
+        label="Harris County",
+        listing_url="https://harriscountytx.bonfirehub.com/portal/?tab=openOpportunities",
+        platform_name="Bonfire",
+        jurisdiction_type="county",
+        extraction_mode="browser_required",
+        load_scope="catalog_only",
+        automation_summary="Weekly reachability probe only",
+        automation_detail="The job records whether the page is reachable, but plain server-side fetches do not expose the opportunity list. A browser or portal-specific integration is still needed.",
+        notes="Reachable but JS-only from a plain fetch. Needs deeper Bonfire/browser integration.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=TRAVIS_COUNTY_BIDNET_SOURCE_NAME,
+        label="Travis County",
+        listing_url="https://www.bidnetdirect.com/texas/traviscounty",
+        platform_name="BidNet Direct",
+        jurisdiction_type="county",
+        extraction_mode="html_table",
+        load_scope="opportunities",
+        automation_summary="Weekly HTML table parser",
+        automation_detail="Fetches the public BidNet page, parses open solicitation rows, and stores scored opportunities.",
+        notes="Open solicitations are rendered in HTML rows and can be parsed directly.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=TARRANT_COUNTY_IONWAVE_SOURCE_NAME,
+        label="Tarrant County",
+        listing_url="https://tarrantcountytx.ionwave.net/SourcingEvents.aspx?SourceType=1",
+        platform_name="Ion Wave",
+        jurisdiction_type="county",
+        extraction_mode="anti_bot_blocked",
+        load_scope="catalog_only",
+        automation_summary="Weekly probe with anti-bot detection",
+        automation_detail="The job checks the page and records the anti-bot challenge instead of pretending the feed is empty. No opportunities are loaded yet.",
+        notes="Returns an anti-bot challenge instead of the sourcing table from a server-side fetch.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=COLLIN_COUNTY_IONWAVE_SOURCE_NAME,
+        label="Collin County",
+        listing_url="https://collincountytx.ionwave.net/ActiveContractList.aspx",
+        platform_name="Ion Wave",
+        jurisdiction_type="county",
+        extraction_mode="anti_bot_blocked",
+        load_scope="catalog_only",
+        automation_summary="Weekly probe with anti-bot detection",
+        automation_detail="The job checks the page and records the anti-bot challenge instead of pretending the feed is empty. No opportunities are loaded yet.",
+        notes="Returns an anti-bot challenge instead of the active contracts grid from a server-side fetch.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=DALLAS_COUNTY_OFFICIAL_SOURCE_NAME,
+        label="Dallas County",
+        listing_url="https://www.dallascounty.org/departments/purchasing/current-business-ops.php",
+        platform_name="Official procurement page",
+        jurisdiction_type="county",
+        extraction_mode="html_table",
+        load_scope="catalog_only",
+        automation_summary="Weekly catalog probe",
+        automation_detail="The official page is parsed for visibility and status, but Dallas County BidNet remains the primary automated loader to avoid duplicate opportunities.",
+        notes="Official table is reachable, but BidNet is the primary loaded source to avoid duplicate records.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=DALLAS_COUNTY_BIDNET_SOURCE_NAME,
+        label="Dallas County BidNet",
+        listing_url="https://www.bidnetdirect.com/texas/dallas-county/solicitations/open-bids?selectedContent=BUYER",
+        platform_name="BidNet Direct",
+        jurisdiction_type="county",
+        extraction_mode="html_table",
+        load_scope="opportunities",
+        automation_summary="Weekly HTML table parser",
+        automation_detail="Fetches the public BidNet page, parses open solicitation rows, and stores scored opportunities.",
+        notes="Open solicitations are rendered in HTML rows and can be parsed directly.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=CAPMETRO_PLANETBIDS_SOURCE_NAME,
+        label="CapMetro",
+        listing_url="https://vendors.planetbids.com/portal/39494/bo/bo-search",
+        platform_name="PlanetBids",
+        jurisdiction_type="regional",
+        extraction_mode="browser_required",
+        load_scope="catalog_only",
+        automation_summary="Weekly reachability probe only",
+        automation_detail="The job checks the portal and records that the public fetch only returns a shell page. A browser or portal-specific integration is still needed.",
+        notes="Returns a bare 202 shell without listings from a plain fetch. Needs deeper portal integration.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=HOUSTON_METRO_PROCUREMENT_SOURCE_NAME,
+        label="Houston METRO",
+        listing_url="https://www.ridemetro.org/about/business-to-business/procurement-opportunities",
+        platform_name="Official procurement page",
+        jurisdiction_type="regional",
+        extraction_mode="html_table",
+        load_scope="opportunities",
+        automation_summary="Weekly HTML procurement and forecast parser",
+        automation_detail="Fetches the public procurement page, parses open solicitations, forecast tables, major construction listings, and advance procurement notices, then stores scored opportunities.",
+        notes="Open procurements, planning tables, and APN links are server-rendered and can be parsed directly.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=DART_PROCUREMENT_SOURCE_NAME,
+        label="DART",
+        listing_url="https://dart.org/about/doing-business/procurement#upcomingprocurements",
+        platform_name="DART procurement page",
+        jurisdiction_type="regional",
+        extraction_mode="manual_review",
+        load_scope="catalog_only",
+        automation_summary="Weekly manual-review probe",
+        automation_detail="The job records that the page is reachable but the upcoming procurement data is not yet exposed in a reliably parseable structure.",
+        notes="The page is reachable, but the upcoming procurement data is not exposed cleanly enough yet for reliable ingestion.",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=HGAC_PROCUREMENT_SOURCE_NAME,
+        label="H-GAC",
+        listing_url="https://www.h-gac.com/procurement",
+        platform_name="OpenGov embed",
+        jurisdiction_type="regional",
+        extraction_mode="iframe_embed",
+        load_scope="catalog_only",
+        automation_summary="Weekly iframe probe only",
+        automation_detail="The job records that the official page embeds the procurement list in an iframe. A deeper parser or browser pass is still needed before loading opportunities.",
+        notes="The official page embeds the OpenGov project list in an iframe and needs a deeper parser or browser pass.",
+    ),
+)
+PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, ...] = (
+    *CORE_PROCUREMENT_SOURCE_DEFINITIONS,
+    *TRACKED_PROCUREMENT_SOURCE_DEFINITIONS,
+)
+TRACKED_PROCUREMENT_SOURCES = {
+    definition.source: definition for definition in TRACKED_PROCUREMENT_SOURCE_DEFINITIONS
+}
+PROCUREMENT_SOURCE_DEFINITIONS_BY_SOURCE = {
+    definition.source: definition for definition in PROCUREMENT_SOURCE_DEFINITIONS
+}
+HOUSTON_METRO_SOURCE_CONTEXT_LABELS = {
+    HOUSTON_METRO_OPEN_CONTEXT: "Open procurement",
+    HOUSTON_METRO_RECENTLY_ADDED_CONTEXT: "Recently added",
+    HOUSTON_METRO_Q2_FORECAST_CONTEXT: "Q2 2026 Forecast",
+    HOUSTON_METRO_Q3_FORECAST_CONTEXT: "Q3 2026 Forecast",
+    HOUSTON_METRO_Q4_FORECAST_CONTEXT: "Q4 2026 Forecast",
+    HOUSTON_METRO_Q1_FORECAST_CONTEXT: "Q1 2027 Forecast",
+    HOUSTON_METRO_MAJOR_CONSTRUCTION_CONTEXT: "Major construction",
+    HOUSTON_METRO_APN_CONTEXT: "Advance procurement notice",
+}
+HOUSTON_METRO_SOURCE_CONTEXT_ANCHORS = {
+    HOUSTON_METRO_OPEN_CONTEXT: "#OpenProcurements",
+    HOUSTON_METRO_RECENTLY_ADDED_CONTEXT: "#recently-added",
+    HOUSTON_METRO_Q2_FORECAST_CONTEXT: "#q-2-2026-forecast",
+    HOUSTON_METRO_Q3_FORECAST_CONTEXT: "#q-3-2026-forecast",
+    HOUSTON_METRO_Q4_FORECAST_CONTEXT: "#q-4-2026-forecast",
+    HOUSTON_METRO_Q1_FORECAST_CONTEXT: "#q-1-2027-forecast",
+    HOUSTON_METRO_MAJOR_CONSTRUCTION_CONTEXT: "#major-construction-projects",
+    HOUSTON_METRO_APN_CONTEXT: "#advanceProcurementNotices",
+}
 
 
 HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -578,6 +887,16 @@ def _payload_score_parts(raw_payload: dict[str, object] | dict[str, str] | None)
         "acquisition_strategy",
         "contract_type",
         "estimated_contract_value",
+        "estimated_project_value",
+        "project_description",
+        "project_name",
+        "procurement_method",
+        "small_business_goal",
+        "sbe_goal",
+        "advertisement_month",
+        "advertising_date",
+        "source_context_label",
+        "portal",
         "funding_instruments",
         "funding_categories",
         "funding_category_description",
@@ -608,6 +927,16 @@ def _payload_classification_parts(raw_payload: dict[str, object] | dict[str, str
         "acquisition_strategy",
         "contract_type",
         "estimated_contract_value",
+        "estimated_project_value",
+        "project_description",
+        "project_name",
+        "procurement_method",
+        "small_business_goal",
+        "sbe_goal",
+        "advertisement_month",
+        "advertising_date",
+        "source_context_label",
+        "portal",
         "funding_instruments",
         "funding_categories",
         "funding_category_description",
@@ -633,7 +962,7 @@ def _opportunity_classification_parts(opportunity: GovContractOpportunity) -> li
     ]
 
 
-def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, list[str]]:
+def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, object]:
     parts = _opportunity_classification_parts(opportunity)
     it_score, it_tags = _score_text_parts(parts, list(IT_OPPORTUNITY_RULES))
     property_score, property_tags = _score_text_parts(parts, list(PROPERTY_OPPORTUNITY_RULES))
@@ -650,6 +979,12 @@ def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, list
     seen_tags: set[str] = set()
 
     _append_unique_tag(auto_tags, OPPORTUNITY_SOURCE_TYPE_TAGS.get(opportunity.source), seen=seen_tags)
+    raw_payload = opportunity.raw_payload or {}
+    if opportunity.source == HOUSTON_METRO_PROCUREMENT_SOURCE_NAME:
+        _append_unique_tag(auto_tags, "METRO", seen=seen_tags)
+    _append_unique_tag(auto_tags, _clean(raw_payload.get("source_context_label")), seen=seen_tags)
+    _append_unique_tag(auto_tags, _clean(raw_payload.get("procurement_method")), seen=seen_tags)
+    _append_unique_tag(auto_tags, _clean(raw_payload.get("portal")), seen=seen_tags)
     for category in categories:
         if category == OTHER_OPPORTUNITIES_CATEGORY:
             continue
@@ -662,6 +997,8 @@ def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, list
     return {
         "opportunity_categories": categories,
         "auto_tags": auto_tags,
+        "source_context": _clean(raw_payload.get("source_context")),
+        "source_context_label": _clean(raw_payload.get("source_context_label")),
     }
 
 
@@ -709,6 +1046,86 @@ def _resolve_window(
     if resolved_start > resolved_end:
         raise ValueError("start_date must be on or before end_date")
     return resolved_start, resolved_end
+
+
+def _request_html_page(
+    url: str,
+    *,
+    source_label: str,
+    params: dict[str, object] | None = None,
+) -> requests.Response:
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=settings.gov_contract_request_timeout_seconds,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        response.raise_for_status()
+        return response
+    except requests.RequestException as exc:
+        raise GovContractSourceError(f"Failed to fetch {source_label}: {exc}") from exc
+
+
+def _records_to_simple_csv(records: list[GovContractSourceRecord]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "source_key",
+            "solicitation_id",
+            "title",
+            "agency_name",
+            "status_name",
+            "posting_date",
+            "due_date",
+            "source_url",
+        ]
+    )
+    for record in records:
+        writer.writerow(
+            [
+                record.source_key,
+                record.solicitation_id,
+                record.title,
+                record.agency_name or "",
+                record.status_name or "",
+                record.posting_date.isoformat() if record.posting_date else "",
+                record.due_date.isoformat() if record.due_date else "",
+                record.source_url,
+            ]
+        )
+    return output.getvalue()
+
+
+def _extract_first_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    match = re.search(r"\b\d{1,2}/\d{1,2}/\d{4}\b", value)
+    return _parse_date(match.group(0)) if match else None
+
+
+def _extract_first_time(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = re.search(r"\b\d{1,2}(?::\d{2})?\s*[APap][.]?[Mm][.]?\b", value)
+    if not match:
+        return None
+    return re.sub(r"\s+", " ", match.group(0)).replace(".", "").upper()
+
+
+def _parse_long_form_due_date(value: str | None) -> tuple[date | None, str | None]:
+    if not value:
+        return None, None
+
+    cleaned = re.sub(r"\s+", " ", value.replace("Sept.", "Sep.")).strip()
+    for fmt in ("%B %d, %Y %I %p", "%B %d, %Y %I:%M %p", "%b %d, %Y %I %p", "%b %d, %Y %I:%M %p"):
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+            return parsed.date(), parsed.strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            continue
+    return _extract_first_date(cleaned), _extract_first_time(cleaned)
 
 
 def _build_request_payload(start_date: date, end_date: date) -> dict[str, object]:
@@ -1368,6 +1785,423 @@ def fetch_sba_subnet_contracts() -> GovContractFetchResult:
         },
         source_total_records=len(records),
         csv_text=_sba_subnet_export_csv(rows),
+        records=records,
+    )
+
+
+def fetch_austin_afo_contracts() -> GovContractFetchResult:
+    definition = TRACKED_PROCUREMENT_SOURCES[AUSTIN_AFO_SOURCE_NAME]
+    response = _request_html_page(definition.listing_url, source_label=definition.label)
+    soup = BeautifulSoup(response.text, "html.parser")
+    cards = soup.select("div.portlet-body div.well.parent")
+    records: list[GovContractSourceRecord] = []
+
+    for card in cards:
+        link = card.find("a", href=lambda href: href and "solicitation_details.cfm" in href)
+        parts = [part.strip() for part in card.stripped_strings if part.strip()]
+        if link is None or len(parts) < 4:
+            continue
+
+        href = _clean(link.get("href"))
+        if not href:
+            continue
+        sid_match = re.search(r"sid=(\d+)", href)
+        record_key = sid_match.group(1) if sid_match else _normalize_text(parts[0]).replace(" ", "-")
+        due_text = parts[3] if len(parts) > 3 else None
+        title = parts[4] if len(parts) > 4 else parts[0]
+        description = " ".join(parts[5:]) if len(parts) > 5 else None
+        source_url = urljoin(definition.listing_url, href)
+
+        records.append(
+            GovContractSourceRecord(
+                source_key=f"{AUSTIN_AFO_SOURCE_NAME}:{record_key}",
+                solicitation_id=parts[0],
+                source_url=source_url,
+                title=title,
+                agency_name=definition.label,
+                agency_number=None,
+                status_code="1",
+                status_name="Open Solicitation",
+                due_date=_extract_first_date(due_text),
+                due_time=_extract_first_time(due_text),
+                posting_date=None,
+                source_created_at=None,
+                source_last_modified_at=None,
+                nigp_codes=None,
+                raw_payload={
+                    "description": description,
+                    "due_text": due_text,
+                    "listing_url": definition.listing_url,
+                },
+            )
+        )
+
+    return GovContractFetchResult(
+        request_payload={"listing_url": definition.listing_url},
+        source_total_records=len(records),
+        csv_text=_records_to_simple_csv(records),
+        records=records,
+    )
+
+
+def fetch_san_antonio_contracts() -> GovContractFetchResult:
+    definition = TRACKED_PROCUREMENT_SOURCES[SAN_ANTONIO_BIDS_SOURCE_NAME]
+    response = _request_html_page(definition.listing_url, source_label=definition.label)
+    soup = BeautifulSoup(response.text, "html.parser")
+    table = soup.find("table")
+    records: list[GovContractSourceRecord] = []
+    if table is None:
+        raise GovContractSourceError("City of San Antonio page did not include a bidding table")
+
+    for row in table.find_all("tr")[1:]:
+        cells = [cell.get_text(" ", strip=True) for cell in row.find_all(["td", "th"])]
+        link = row.find("a", href=True)
+        if link is None or len(cells) < 6:
+            continue
+
+        description, contract_type, department, release_text, _, deadline_text = cells[:6]
+        solicitation_id = description.split(" ", 1)[0]
+        source_url = urljoin(definition.listing_url, link["href"])
+        records.append(
+            GovContractSourceRecord(
+                source_key=f"{SAN_ANTONIO_BIDS_SOURCE_NAME}:{solicitation_id}",
+                solicitation_id=solicitation_id,
+                source_url=source_url,
+                title=description,
+                agency_name=definition.label,
+                agency_number=None,
+                status_code="1",
+                status_name=contract_type,
+                due_date=_extract_first_date(deadline_text),
+                due_time=_extract_first_time(deadline_text),
+                posting_date=_parse_date(release_text),
+                source_created_at=None,
+                source_last_modified_at=None,
+                nigp_codes=None,
+                raw_payload={
+                    "department": department,
+                    "release_date": release_text,
+                    "deadline": deadline_text,
+                },
+            )
+        )
+
+    return GovContractFetchResult(
+        request_payload={"listing_url": definition.listing_url},
+        source_total_records=len(records),
+        csv_text=_records_to_simple_csv(records),
+        records=records,
+    )
+
+
+def _fetch_bidnet_contracts(
+    *,
+    source_name: str,
+    listing_url: str,
+    source_label: str,
+) -> GovContractFetchResult:
+    response = _request_html_page(listing_url, source_label=source_label)
+    soup = BeautifulSoup(response.text, "html.parser")
+    table = soup.find("table")
+    records: list[GovContractSourceRecord] = []
+    if table is None:
+        raise GovContractSourceError(f"{source_label} did not include an open solicitations table")
+
+    for row in table.find_all("tr")[1:]:
+        link = row.find("a", href=True)
+        cells = [cell.get_text(" ", strip=True) for cell in row.find_all(["td", "th"])]
+        if link is None or not cells:
+            continue
+
+        row_text = re.sub(r"\s+", " ", cells[0]).strip()
+        if "Published" not in row_text or "Closing" not in row_text:
+            continue
+
+        solicitation_id = row_text.split(" ", 1)[0]
+        title_segment = row_text.split(" ", 1)[1] if " " in row_text else solicitation_id
+        title = title_segment.split(" Texas Calendar ", 1)[0].strip()
+        published_match = re.search(r"Published\s+(\d{2}/\d{2}/\d{4})", row_text)
+        closing_match = re.search(r"Closing\s+(\d{2}/\d{2}/\d{4})", row_text)
+        source_url = urljoin(listing_url, link["href"])
+        records.append(
+            GovContractSourceRecord(
+                source_key=f"{source_name}:{solicitation_id}",
+                solicitation_id=solicitation_id,
+                source_url=source_url,
+                title=title,
+                agency_name=source_label,
+                agency_number=None,
+                status_code="1",
+                status_name="Open Solicitation",
+                due_date=_parse_date(closing_match.group(1) if closing_match else None),
+                due_time=None,
+                posting_date=_parse_date(published_match.group(1) if published_match else None),
+                source_created_at=None,
+                source_last_modified_at=None,
+                nigp_codes=None,
+                raw_payload={
+                    "published_date": published_match.group(1) if published_match else None,
+                    "closing_date": closing_match.group(1) if closing_match else None,
+                    "listing_url": listing_url,
+                },
+            )
+        )
+
+    return GovContractFetchResult(
+        request_payload={"listing_url": listing_url},
+        source_total_records=len(records),
+        csv_text=_records_to_simple_csv(records),
+        records=records,
+    )
+
+
+def fetch_travis_county_contracts() -> GovContractFetchResult:
+    definition = TRACKED_PROCUREMENT_SOURCES[TRAVIS_COUNTY_BIDNET_SOURCE_NAME]
+    return _fetch_bidnet_contracts(
+        source_name=TRAVIS_COUNTY_BIDNET_SOURCE_NAME,
+        listing_url=definition.listing_url,
+        source_label=definition.label,
+    )
+
+
+def fetch_dallas_county_bidnet_contracts() -> GovContractFetchResult:
+    definition = TRACKED_PROCUREMENT_SOURCES[DALLAS_COUNTY_BIDNET_SOURCE_NAME]
+    return _fetch_bidnet_contracts(
+        source_name=DALLAS_COUNTY_BIDNET_SOURCE_NAME,
+        listing_url=definition.listing_url,
+        source_label=definition.label,
+    )
+
+
+def _slugify_source_key_fragment(value: str | None) -> str:
+    normalized = _normalize_text(value)
+    return normalized.replace(" ", "-") or "item"
+
+
+def _houston_metro_context_url(listing_url: str, source_context: str) -> str:
+    anchor = HOUSTON_METRO_SOURCE_CONTEXT_ANCHORS.get(source_context)
+    return f"{listing_url}{anchor}" if anchor else listing_url
+
+
+def _build_houston_metro_record(
+    *,
+    definition: GovContractTrackedSourceDefinition,
+    source_context: str,
+    solicitation_id: str,
+    title: str,
+    status_name: str,
+    source_url: str | None = None,
+    due_date: date | None = None,
+    due_time: str | None = None,
+    posting_date: date | None = None,
+    raw_payload: dict[str, object] | None = None,
+) -> GovContractSourceRecord:
+    resolved_title = _clean(title) or solicitation_id
+    resolved_source_url = source_url or _houston_metro_context_url(definition.listing_url, source_context)
+    payload = {
+        "source_context": source_context,
+        "source_context_label": HOUSTON_METRO_SOURCE_CONTEXT_LABELS.get(source_context),
+        **(raw_payload or {}),
+    }
+    return GovContractSourceRecord(
+        source_key=(
+            f"{HOUSTON_METRO_PROCUREMENT_SOURCE_NAME}:{source_context}:"
+            f"{_slugify_source_key_fragment(solicitation_id or resolved_title)}"
+        ),
+        solicitation_id=_clean(solicitation_id) or resolved_title,
+        source_url=resolved_source_url,
+        title=resolved_title,
+        agency_name=definition.label,
+        agency_number=None,
+        status_code="1",
+        status_name=status_name,
+        due_date=due_date,
+        due_time=due_time,
+        posting_date=posting_date,
+        source_created_at=None,
+        source_last_modified_at=None,
+        nigp_codes=None,
+        raw_payload=payload,
+    )
+
+
+def _houston_metro_tab_context(element_name: str | None) -> tuple[str, str] | None:
+    mapping = {
+        "Recently Added": (HOUSTON_METRO_RECENTLY_ADDED_CONTEXT, "Forecast"),
+        "Q2 2026 Forecast": (HOUSTON_METRO_Q2_FORECAST_CONTEXT, "Forecast"),
+        "Q3 2026 Forecast": (HOUSTON_METRO_Q3_FORECAST_CONTEXT, "Forecast"),
+        "Q4 2026 Forecast": (HOUSTON_METRO_Q4_FORECAST_CONTEXT, "Forecast"),
+        "Q1 2027 Forecast": (HOUSTON_METRO_Q1_FORECAST_CONTEXT, "Forecast"),
+        "Major Construction Projects": (
+            HOUSTON_METRO_MAJOR_CONSTRUCTION_CONTEXT,
+            "Major Construction",
+        ),
+        "Advance Procurement Notices": (
+            HOUSTON_METRO_APN_CONTEXT,
+            "Advance Procurement Notice",
+        ),
+    }
+    return mapping.get(_clean(element_name))
+
+
+def fetch_houston_metro_contracts() -> GovContractFetchResult:
+    definition = TRACKED_PROCUREMENT_SOURCES[HOUSTON_METRO_PROCUREMENT_SOURCE_NAME]
+    response = _request_html_page(definition.listing_url, source_label=definition.label)
+    soup = BeautifulSoup(response.text, "html.parser")
+    records: list[GovContractSourceRecord] = []
+
+    open_procurements_table = None
+    for table in soup.find_all("table"):
+        headers = [header.get_text(" ", strip=True) for header in table.find_all("th")]
+        if headers[:3] == ["Solicitation Number", "Title", "Close Date"]:
+            open_procurements_table = table
+            break
+
+    if open_procurements_table is None:
+        raise GovContractSourceError("Houston METRO page did not expose the open procurements table")
+
+    for row in open_procurements_table.find_all("tr")[1:]:
+        cells = row.find_all("td")
+        if len(cells) < 3:
+            continue
+
+        solicitation_link = cells[0].find("a", href=True)
+        solicitation_id = cells[0].get_text(" ", strip=True)
+        title = cells[1].get_text(" ", strip=True)
+        close_date_text = cells[2].get_text(" ", strip=True)
+        due_date, due_time = _parse_long_form_due_date(close_date_text)
+        records.append(
+            _build_houston_metro_record(
+                definition=definition,
+                source_context=HOUSTON_METRO_OPEN_CONTEXT,
+                solicitation_id=solicitation_id,
+                title=title,
+                source_url=urljoin(definition.listing_url, solicitation_link.get("href"))
+                if solicitation_link and solicitation_link.get("href")
+                else None,
+                status_name="Open Procurement",
+                due_date=due_date,
+                due_time=due_time,
+                raw_payload={
+                    "close_date_text": close_date_text,
+                    "portal": "Bonfire",
+                    "project_name": title,
+                },
+            )
+        )
+
+    for content in soup.select(".tab-pane-content[data-sf-element]"):
+        tab_context = _houston_metro_tab_context(content.get("data-sf-element"))
+        if tab_context is None:
+            continue
+
+        source_context, status_name = tab_context
+        table = content.find("table")
+        if table is None:
+            if source_context != HOUSTON_METRO_APN_CONTEXT:
+                continue
+        elif source_context == HOUSTON_METRO_RECENTLY_ADDED_CONTEXT:
+            for row in table.find_all("tr")[1:]:
+                cells = [cell.get_text(" ", strip=True) for cell in row.find_all("td")]
+                if len(cells) < 5:
+                    continue
+                title, procurement_method, small_business_goal, advertisement_month, due_date_text = cells[:5]
+                records.append(
+                    _build_houston_metro_record(
+                        definition=definition,
+                        source_context=source_context,
+                        solicitation_id=title,
+                        title=title,
+                        status_name=status_name,
+                        raw_payload={
+                            "project_name": title,
+                            "procurement_method": procurement_method,
+                            "small_business_goal": small_business_goal,
+                            "advertisement_month": advertisement_month,
+                            "forecast_due_text": due_date_text,
+                            "portal": "METRO procurement forecast",
+                        },
+                    )
+                )
+            continue
+        elif source_context in {
+            HOUSTON_METRO_Q2_FORECAST_CONTEXT,
+            HOUSTON_METRO_Q3_FORECAST_CONTEXT,
+            HOUSTON_METRO_Q4_FORECAST_CONTEXT,
+            HOUSTON_METRO_Q1_FORECAST_CONTEXT,
+        }:
+            for row in table.find_all("tr")[1:]:
+                cells = [cell.get_text(" ", strip=True) for cell in row.find_all("td")]
+                if len(cells) < 2:
+                    continue
+                title, procurement_method = cells[:2]
+                records.append(
+                    _build_houston_metro_record(
+                        definition=definition,
+                        source_context=source_context,
+                        solicitation_id=title,
+                        title=title,
+                        status_name=status_name,
+                        raw_payload={
+                            "project_name": title,
+                            "procurement_method": procurement_method,
+                            "portal": "METRO procurement forecast",
+                        },
+                    )
+                )
+            continue
+        elif source_context == HOUSTON_METRO_MAJOR_CONSTRUCTION_CONTEXT:
+            for row in table.find_all("tr")[1:]:
+                cells = [cell.get_text(" ", strip=True) for cell in row.find_all("td")]
+                if len(cells) < 4:
+                    continue
+                (
+                    title,
+                    advertising_date,
+                    estimated_project_value,
+                    sbe_goal,
+                ) = cells[:4]
+                records.append(
+                    _build_houston_metro_record(
+                        definition=definition,
+                        source_context=source_context,
+                        solicitation_id=title,
+                        title=title,
+                        status_name=status_name,
+                        raw_payload={
+                            "project_description": title,
+                            "advertising_date": advertising_date,
+                            "estimated_project_value": estimated_project_value,
+                            "sbe_goal": sbe_goal,
+                            "portal": "METRO major construction",
+                        },
+                    )
+                )
+            continue
+
+        for link in content.select("a[href]"):
+            title = _clean(link.get_text(" ", strip=True))
+            if not title or "template" in _normalize_text(title):
+                continue
+            records.append(
+                _build_houston_metro_record(
+                    definition=definition,
+                    source_context=source_context,
+                    solicitation_id=title,
+                    title=title,
+                    source_url=urljoin(definition.listing_url, link.get("href")),
+                    status_name=status_name,
+                    raw_payload={
+                        "project_name": title,
+                        "portal": "METRO advance procurement notice",
+                    },
+                )
+            )
+
+    return GovContractFetchResult(
+        request_payload={"listing_url": definition.listing_url},
+        source_total_records=len(records),
+        csv_text=_records_to_simple_csv(records),
         records=records,
     )
 
@@ -2153,6 +2987,309 @@ def serialize_opportunities(opportunities: list[GovContractOpportunity]) -> list
 def list_import_runs(db: Session, *, limit: int = 10) -> list[GovContractImportRun]:
     statement = select(GovContractImportRun).order_by(desc(GovContractImportRun.created_at)).limit(limit)
     return list(db.scalars(statement).all())
+
+
+def _tracked_sources_statement():
+    return select(GovContractTrackedSource).order_by(
+        GovContractTrackedSource.jurisdiction_type,
+        GovContractTrackedSource.label,
+    )
+
+
+def _ensure_tracked_sources(db: Session) -> None:
+    existing_by_source = {
+        source.source: source for source in db.scalars(_tracked_sources_statement()).all()
+    }
+    changed = False
+
+    for definition in PROCUREMENT_SOURCE_DEFINITIONS:
+        tracked_source = existing_by_source.get(definition.source)
+        if tracked_source is None:
+            db.add(
+                GovContractTrackedSource(
+                    id=new_uuid(),
+                    source=definition.source,
+                    label=definition.label,
+                    listing_url=definition.listing_url,
+                    platform_name=definition.platform_name,
+                    jurisdiction_type=definition.jurisdiction_type,
+                    extraction_mode=definition.extraction_mode,
+                    load_scope=definition.load_scope,
+                    cadence="weekly",
+                    active=True,
+                    notes=definition.notes,
+                )
+            )
+            changed = True
+            continue
+
+        for field_name, value in {
+            "label": definition.label,
+            "listing_url": definition.listing_url,
+            "platform_name": definition.platform_name,
+            "jurisdiction_type": definition.jurisdiction_type,
+            "extraction_mode": definition.extraction_mode,
+            "load_scope": definition.load_scope,
+            "notes": definition.notes,
+        }.items():
+            if getattr(tracked_source, field_name) != value:
+                setattr(tracked_source, field_name, value)
+                changed = True
+        if tracked_source.cadence != "weekly":
+            tracked_source.cadence = "weekly"
+            changed = True
+        db.add(tracked_source)
+
+    if changed:
+        db.commit()
+
+
+def _latest_import_run_for_source(db: Session, source: str) -> GovContractImportRun | None:
+    statement = (
+        select(GovContractImportRun)
+        .where(GovContractImportRun.source == source)
+        .order_by(desc(GovContractImportRun.created_at))
+        .limit(1)
+    )
+    return db.scalars(statement).first()
+
+
+def list_tracked_sources(db: Session) -> list[dict[str, object]]:
+    _ensure_tracked_sources(db)
+    tracked_sources = list(db.scalars(_tracked_sources_statement()).all())
+    latest_runs: dict[str, GovContractImportRun] = {}
+    for run in db.scalars(select(GovContractImportRun).order_by(desc(GovContractImportRun.created_at))).all():
+        if run.source not in latest_runs:
+            latest_runs[run.source] = run
+
+    stored_counts: dict[str, int] = {}
+    for opportunity in db.scalars(select(GovContractOpportunity)).all():
+        stored_counts[opportunity.source] = stored_counts.get(opportunity.source, 0) + 1
+
+    payload: list[dict[str, object]] = []
+    for tracked_source in tracked_sources:
+        definition = PROCUREMENT_SOURCE_DEFINITIONS_BY_SOURCE.get(tracked_source.source)
+        latest_run = latest_runs.get(tracked_source.source)
+        payload.append(
+            {
+                "id": tracked_source.id,
+                "source": tracked_source.source,
+                "label": tracked_source.label,
+                "listing_url": tracked_source.listing_url,
+                "platform_name": tracked_source.platform_name,
+                "jurisdiction_type": tracked_source.jurisdiction_type,
+                "extraction_mode": tracked_source.extraction_mode,
+                "load_scope": tracked_source.load_scope,
+                "cadence": tracked_source.cadence,
+                "active": tracked_source.active,
+                "automation_summary": definition.automation_summary if definition else "Recorded in source registry",
+                "automation_detail": definition.automation_detail if definition else None,
+                "notes": tracked_source.notes,
+                "latest_run_status": latest_run.status if latest_run else None,
+                "latest_run_error_message": latest_run.error_message if latest_run else None,
+                "latest_run_completed_at": latest_run.completed_at if latest_run else None,
+                "latest_total_records": latest_run.total_records if latest_run else None,
+                "latest_open_records": latest_run.open_records if latest_run else None,
+                "latest_matched_records": latest_run.matched_records if latest_run else None,
+                "stored_opportunity_count": stored_counts.get(tracked_source.source, 0),
+                "created_at": tracked_source.created_at,
+                "updated_at": tracked_source.updated_at,
+            }
+        )
+    return payload
+
+
+def _create_single_day_import_run(db: Session, source: str) -> GovContractImportRun:
+    today = date.today()
+    run = GovContractImportRun(
+        id=new_uuid(),
+        source=source,
+        status="running",
+        window_start=today,
+        window_end=today,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def _complete_non_loading_run(
+    db: Session,
+    run: GovContractImportRun,
+    *,
+    status: str,
+    detail: str,
+    request_payload: dict[str, object],
+) -> GovContractImportRun:
+    run.status = status
+    run.request_payload = request_payload
+    run.error_message = detail
+    run.completed_at = datetime.now(timezone.utc)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def _probe_tracked_source_page(definition: GovContractTrackedSourceDefinition) -> tuple[str, str, dict[str, object]]:
+    response = _request_html_page(definition.listing_url, source_label=definition.label)
+    soup = BeautifulSoup(response.text, "html.parser")
+    title = soup.title.get_text(" ", strip=True) if soup.title else None
+    text = " ".join(soup.stripped_strings)
+    iframe_count = len(soup.find_all("iframe"))
+    table_count = len(soup.find_all("table"))
+
+    if "Just a moment" in text or "Enable JavaScript and cookies to continue" in text:
+        return (
+            "blocked",
+            "Upstream anti-bot challenge blocked server-side extraction.",
+            {"title": title, "table_count": table_count, "iframe_count": iframe_count},
+        )
+    if "This site was designed to use Javascript" in text or "Working ..." in text:
+        return (
+            "manual_review",
+            "Portal is reachable but requires JavaScript to expose the opportunity list.",
+            {"title": title, "table_count": table_count, "iframe_count": iframe_count},
+        )
+    if response.status_code == 202 or not text.strip():
+        return (
+            "manual_review",
+            "Portal returned a shell page without a usable opportunity list.",
+            {"title": title, "table_count": table_count, "iframe_count": iframe_count},
+        )
+    if iframe_count > 0 and definition.extraction_mode == "iframe_embed":
+        return (
+            "manual_review",
+            "Official page embeds the listings in an iframe that is not parsed yet.",
+            {"title": title, "table_count": table_count, "iframe_count": iframe_count},
+        )
+    return (
+        "cataloged",
+        "Source page is reachable and recorded, but this source is not parser-backed yet.",
+        {"title": title, "table_count": table_count, "iframe_count": iframe_count},
+    )
+
+
+def refresh_austin_afo_contracts(db: Session) -> GovContractImportRun:
+    run = _create_single_day_import_run(db, AUSTIN_AFO_SOURCE_NAME)
+    try:
+        fetched = fetch_austin_afo_contracts()
+        return _persist_source_records(
+            db,
+            run=run,
+            source_name=AUSTIN_AFO_SOURCE_NAME,
+            fetched=fetched,
+            is_open_resolver=lambda record, *, today: _is_open_contract(record.status_code, record.due_date, today=today),
+        )
+    except GovContractSourceError as exc:
+        _mark_run_failed(db, run, str(exc))
+        raise
+
+
+def refresh_san_antonio_contracts(db: Session) -> GovContractImportRun:
+    run = _create_single_day_import_run(db, SAN_ANTONIO_BIDS_SOURCE_NAME)
+    try:
+        fetched = fetch_san_antonio_contracts()
+        return _persist_source_records(
+            db,
+            run=run,
+            source_name=SAN_ANTONIO_BIDS_SOURCE_NAME,
+            fetched=fetched,
+            is_open_resolver=lambda record, *, today: _is_open_contract(record.status_code, record.due_date, today=today),
+        )
+    except GovContractSourceError as exc:
+        _mark_run_failed(db, run, str(exc))
+        raise
+
+
+def refresh_travis_county_contracts(db: Session) -> GovContractImportRun:
+    run = _create_single_day_import_run(db, TRAVIS_COUNTY_BIDNET_SOURCE_NAME)
+    try:
+        fetched = fetch_travis_county_contracts()
+        return _persist_source_records(
+            db,
+            run=run,
+            source_name=TRAVIS_COUNTY_BIDNET_SOURCE_NAME,
+            fetched=fetched,
+            is_open_resolver=lambda record, *, today: _is_open_contract(record.status_code, record.due_date, today=today),
+        )
+    except GovContractSourceError as exc:
+        _mark_run_failed(db, run, str(exc))
+        raise
+
+
+def refresh_dallas_county_bidnet_contracts(db: Session) -> GovContractImportRun:
+    run = _create_single_day_import_run(db, DALLAS_COUNTY_BIDNET_SOURCE_NAME)
+    try:
+        fetched = fetch_dallas_county_bidnet_contracts()
+        return _persist_source_records(
+            db,
+            run=run,
+            source_name=DALLAS_COUNTY_BIDNET_SOURCE_NAME,
+            fetched=fetched,
+            is_open_resolver=lambda record, *, today: _is_open_contract(record.status_code, record.due_date, today=today),
+        )
+    except GovContractSourceError as exc:
+        _mark_run_failed(db, run, str(exc))
+        raise
+
+
+def refresh_houston_metro_contracts(db: Session) -> GovContractImportRun:
+    run = _create_single_day_import_run(db, HOUSTON_METRO_PROCUREMENT_SOURCE_NAME)
+    try:
+        fetched = fetch_houston_metro_contracts()
+        return _persist_source_records(
+            db,
+            run=run,
+            source_name=HOUSTON_METRO_PROCUREMENT_SOURCE_NAME,
+            fetched=fetched,
+            is_open_resolver=lambda record, *, today: _is_open_contract(record.status_code, record.due_date, today=today),
+        )
+    except GovContractSourceError as exc:
+        _mark_run_failed(db, run, str(exc))
+        raise
+
+
+def refresh_tracked_source_probe(db: Session, source_name: str) -> GovContractImportRun:
+    definition = TRACKED_PROCUREMENT_SOURCES[source_name]
+    run = _create_single_day_import_run(db, source_name)
+    try:
+        status, detail, request_payload = _probe_tracked_source_page(definition)
+        return _complete_non_loading_run(
+            db,
+            run,
+            status=status,
+            detail=detail,
+            request_payload={"listing_url": definition.listing_url, **request_payload},
+        )
+    except GovContractSourceError as exc:
+        _mark_run_failed(db, run, str(exc))
+        raise
+
+
+def refresh_tracked_procurement_sources(db: Session) -> list[GovContractImportRun]:
+    _ensure_tracked_sources(db)
+    runs: list[GovContractImportRun] = []
+    for definition in TRACKED_PROCUREMENT_SOURCE_DEFINITIONS:
+        try:
+            if definition.source == AUSTIN_AFO_SOURCE_NAME:
+                runs.append(refresh_austin_afo_contracts(db))
+            elif definition.source == SAN_ANTONIO_BIDS_SOURCE_NAME:
+                runs.append(refresh_san_antonio_contracts(db))
+            elif definition.source == TRAVIS_COUNTY_BIDNET_SOURCE_NAME:
+                runs.append(refresh_travis_county_contracts(db))
+            elif definition.source == DALLAS_COUNTY_BIDNET_SOURCE_NAME:
+                runs.append(refresh_dallas_county_bidnet_contracts(db))
+            elif definition.source == HOUSTON_METRO_PROCUREMENT_SOURCE_NAME:
+                runs.append(refresh_houston_metro_contracts(db))
+            else:
+                runs.append(refresh_tracked_source_probe(db, definition.source))
+        except GovContractSourceError:
+            latest_run = _latest_import_run_for_source(db, definition.source)
+            if latest_run is not None:
+                runs.append(latest_run)
+    return runs
 
 
 def export_contracts_csv(

@@ -21,6 +21,7 @@ import {
   hasStoredAuthToken,
   listGovContractAgencyPreferences,
   listGovContractKeywordRules,
+  listGovContractTrackedSources,
   listContent,
   listGovContractRuns,
   listGovContracts,
@@ -34,6 +35,7 @@ import {
   refreshGovContracts,
   refreshGrantsContracts,
   refreshSbaSubnetContracts,
+  refreshTrackedGovSources,
   revokeUserInvite,
   storeAuthToken,
   updateGovContractAgencyPreference,
@@ -49,6 +51,7 @@ import type {
   GovContractOpportunity,
   GovContractCapabilities,
   GovContractKeywordRule,
+  GovContractTrackedSource,
   IntakeDashboard,
   Inquiry,
   Tenant,
@@ -56,7 +59,7 @@ import type {
   UserInviteCreateResponse,
 } from "../../shared/types";
 
-type AdminView = "dashboard" | "intake" | "opportunities" | "billing" | "profile";
+type AdminView = "dashboard" | "intake" | "opportunities" | "sources" | "billing" | "profile";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
 type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
 type OpportunityTagFilterKind = "source" | "tag" | "preferred_agency";
@@ -64,6 +67,13 @@ type OpportunityTagFilter = {
   kind: OpportunityTagFilterKind;
   value: string;
   label: string;
+};
+type MetroVendorResource = {
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+  tags: string[];
 };
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
@@ -73,6 +83,36 @@ const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: stri
   { id: "it_services", label: "IT services" },
   { id: "property_services", label: "Real estate / property" },
   { id: "other", label: "Other" },
+];
+const METRO_VENDOR_RESOURCES: MetroVendorResource[] = [
+  {
+    title: "SBE Certification Portal",
+    description: "Apply, renew, search firms, and manage METRO small-business certification and compliance in B2Gnow.",
+    href: "https://ridemetro.sbdbe.com/",
+    cta: "Open portal",
+    tags: ["Certification", "Compliance"],
+  },
+  {
+    title: "SBE Business Assessment",
+    description: "METRO’s intake form for matching your firm to the right next steps based on performance, bonding, insurance, and revenue profile.",
+    href: "https://ridemetro.qualtrics.com/jfe/form/SV_e3C1E0X9CM61Kx8",
+    cta: "Start assessment",
+    tags: ["Readiness", "Intake"],
+  },
+  {
+    title: "Business University",
+    description: "METRO’s training calendar for certification, facilities maintenance, procurement, and vendor-development workshops.",
+    href: "https://www.ridemetro.org/about/business-to-business/procurement-opportunities#metro-business-university-active-modal",
+    cta: "View events",
+    tags: ["Training", "Networking"],
+  },
+  {
+    title: "METRO Procurement Page",
+    description: "Primary source for open procurements, forecast tabs, major construction listings, and advance procurement notices.",
+    href: "https://www.ridemetro.org/about/business-to-business/procurement-opportunities",
+    cta: "Open source",
+    tags: ["Source", "Forecasts"],
+  },
 ];
 
 function buildInitialForm(tenant: Tenant = "development"): ContentCreate {
@@ -112,6 +152,9 @@ function getCurrentView(): AdminView {
   if (window.location.hash.startsWith("#/billing")) {
     return "billing";
   }
+  if (window.location.hash.startsWith("#/sources")) {
+    return "sources";
+  }
   return window.location.hash.startsWith("#/opportunities") ? "opportunities" : "dashboard";
 }
 
@@ -121,6 +164,10 @@ function navigateToView(view: AdminView): void {
   }
   if (view === "opportunities") {
     window.location.hash = "#/opportunities";
+    return;
+  }
+  if (view === "sources") {
+    window.location.hash = "#/sources";
     return;
   }
   if (view === "intake") {
@@ -138,6 +185,21 @@ function navigateToView(view: AdminView): void {
   window.location.hash = "#/";
 }
 
+function getInviteCodeFromLocation(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const searchCode = new URLSearchParams(window.location.search).get("invite_code");
+  if (searchCode) {
+    return searchCode;
+  }
+  const queryIndex = window.location.hash.indexOf("?");
+  if (queryIndex === -1) {
+    return null;
+  }
+  return new URLSearchParams(window.location.hash.slice(queryIndex + 1)).get("invite_code");
+}
+
 export default function App() {
   const [view, setView] = useState<AdminView>(getCurrentView());
   const [tenant, setTenant] = useState<Tenant>("development");
@@ -145,12 +207,9 @@ export default function App() {
   const [contentItems, setContentItems] = useState<Content[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [intakeDashboard, setIntakeDashboard] = useState<IntakeDashboard | null>(null);
-  const [gmailContracts, setGmailContracts] = useState<GovContractOpportunity[]>([]);
-  const [federalContracts, setFederalContracts] = useState<GovContractOpportunity[]>([]);
-  const [grantsContracts, setGrantsContracts] = useState<GovContractOpportunity[]>([]);
-  const [sbaSubnetContracts, setSbaSubnetContracts] = useState<GovContractOpportunity[]>([]);
-  const [esbdContracts, setEsbdContracts] = useState<GovContractOpportunity[]>([]);
+  const [govContracts, setGovContracts] = useState<GovContractOpportunity[]>([]);
   const [contractRuns, setContractRuns] = useState<GovContractImportRun[]>([]);
+  const [trackedSources, setTrackedSources] = useState<GovContractTrackedSource[]>([]);
   const [contractCapabilities, setContractCapabilities] = useState<GovContractCapabilities>({
     gmail_rfq_sync_enabled: false,
     gmail_rfq_feed_label: null,
@@ -168,6 +227,7 @@ export default function App() {
   const [refreshingGrantsContracts, setRefreshingGrantsContracts] = useState(false);
   const [refreshingSbaSubnetContracts, setRefreshingSbaSubnetContracts] = useState(false);
   const [refreshingGmailContracts, setRefreshingGmailContracts] = useState(false);
+  const [refreshingTrackedSources, setRefreshingTrackedSources] = useState(false);
   const [downloadingExport, setDownloadingExport] = useState(false);
   const [downloadingFederalExport, setDownloadingFederalExport] = useState(false);
   const [downloadingGrantsExport, setDownloadingGrantsExport] = useState(false);
@@ -176,6 +236,7 @@ export default function App() {
     useState<OpportunitiesAuthStatus>("unauthenticated");
   const [opportunityCategoryTab, setOpportunityCategoryTab] = useState<OpportunityCategoryTab>("all");
   const [selectedOpportunitySourceFilter, setSelectedOpportunitySourceFilter] = useState<string | null>(null);
+  const [selectedOpportunitySourceContextFilter, setSelectedOpportunitySourceContextFilter] = useState<string | null>(null);
   const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
   const [opportunityKeywordFilter, setOpportunityKeywordFilter] = useState("");
   const [loginUsername, setLoginUsername] = useState("admin");
@@ -215,10 +276,22 @@ export default function App() {
   useEffect(() => {
     function handleHashChange() {
       setView(getCurrentView());
+      const presetInviteCode = getInviteCodeFromLocation();
+      if (presetInviteCode) {
+        setInviteCode(presetInviteCode);
+      }
     }
 
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const presetInviteCode = getInviteCodeFromLocation();
+    if (presetInviteCode) {
+      setInviteCode(presetInviteCode);
+      navigateToView("opportunities");
+    }
   }, []);
 
   useEffect(() => {
@@ -229,14 +302,14 @@ export default function App() {
   }, [tenant]);
 
   useEffect(() => {
-    if (view !== "opportunities" && view !== "profile" && view !== "intake" && view !== "billing") {
+    if (view !== "opportunities" && view !== "sources" && view !== "profile" && view !== "intake" && view !== "billing") {
       return;
     }
     void ensureProtectedAccess();
   }, [view]);
 
   useEffect(() => {
-    if (view !== "opportunities" || opportunitiesAuthStatus !== "authenticated") {
+    if ((view !== "opportunities" && view !== "sources") || opportunitiesAuthStatus !== "authenticated") {
       return;
     }
     void refreshContractsView();
@@ -264,7 +337,7 @@ export default function App() {
       setContractCapabilities(capabilities);
       setAuthMessage("");
       setOpportunitiesAuthStatus("authenticated");
-      if (view === "opportunities") {
+      if (view === "opportunities" || view === "sources") {
         await refreshContractsView(capabilities);
       }
     } catch {
@@ -311,46 +384,24 @@ export default function App() {
       const capabilities = capabilitiesOverride ?? contractCapabilities;
       const currentUser = currentAdmin ?? (await getCurrentAdmin());
       setCurrentAdmin(currentUser);
-      const [gmailItems, federalItems, grantsItems, sbaSubnetItems, esbdItems, runs, keywords, agencyPrefs, invites] =
+      const [contracts, runs, sources, keywords, agencyPrefs, invites] =
         await Promise.all([
-          capabilities.gmail_rfq_sync_enabled
-            ? listGovContracts(OPPORTUNITY_LIST_LIMIT, "gmail_rfqs", {
-                matchesOnly: matchesOnlyFilter,
-                minPriorityScore: minPriorityScoreFilter,
-                openOnly: openOnlyFilter,
-              })
-            : Promise.resolve([]),
-          listGovContracts(OPPORTUNITY_LIST_LIMIT, "federal_forecast", {
+          listGovContracts(OPPORTUNITY_LIST_LIMIT, undefined, {
             matchesOnly: matchesOnlyFilter,
             minPriorityScore: minPriorityScoreFilter,
             openOnly: openOnlyFilter,
           }),
-          listGovContracts(OPPORTUNITY_LIST_LIMIT, "grants_gov", {
-            matchesOnly: matchesOnlyFilter,
-            minPriorityScore: minPriorityScoreFilter,
-            openOnly: openOnlyFilter,
-          }),
-          listGovContracts(OPPORTUNITY_LIST_LIMIT, "sba_subnet", {
-            matchesOnly: matchesOnlyFilter,
-            minPriorityScore: minPriorityScoreFilter,
-            openOnly: openOnlyFilter,
-          }),
-          listGovContracts(OPPORTUNITY_LIST_LIMIT, "txsmartbuy_esbd", {
-            matchesOnly: matchesOnlyFilter,
-            minPriorityScore: minPriorityScoreFilter,
-            openOnly: openOnlyFilter,
-          }),
-          listGovContractRuns(10),
+          listGovContractRuns(25),
+          listGovContractTrackedSources(),
           listGovContractKeywordRules(),
           listGovContractAgencyPreferences(),
           currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
         ]);
-      setGmailContracts(gmailItems);
-      setFederalContracts(federalItems);
-      setGrantsContracts(grantsItems);
-      setSbaSubnetContracts(sbaSubnetItems);
-      setEsbdContracts(esbdItems);
+      setGovContracts(
+        capabilities.gmail_rfq_sync_enabled ? contracts : contracts.filter((contract) => contract.source !== "gmail_rfqs"),
+      );
       setContractRuns(runs);
+      setTrackedSources(sources);
       setKeywordRules(keywords);
       setAgencyPreferences(agencyPrefs);
       setUserInvites(invites);
@@ -487,6 +538,25 @@ export default function App() {
     }
   }
 
+  async function handleTrackedSourceRefresh() {
+    setRefreshingTrackedSources(true);
+    setMessage("");
+    try {
+      const runs = await refreshTrackedGovSources();
+      await refreshContractsView();
+      const completedCount = runs.filter((run) => run.status === "completed").length;
+      const reviewCount = runs.filter((run) => run.status === "manual_review" || run.status === "cataloged").length;
+      const blockedCount = runs.filter((run) => run.status === "blocked" || run.status === "failed").length;
+      setMessage(
+        `Tracked sources refreshed. ${completedCount} loaded, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingTrackedSources(false);
+    }
+  }
+
   async function handleFederalContractExport() {
     setDownloadingFederalExport(true);
     setMessage("");
@@ -557,7 +627,7 @@ export default function App() {
       const capabilities = await getGovContractCapabilities();
       setContractCapabilities(capabilities);
       setOpportunitiesAuthStatus("authenticated");
-      if (view === "opportunities") {
+      if (view === "opportunities" || view === "sources") {
         await refreshContractsView(capabilities);
       }
       setMessage("Signed in.");
@@ -596,7 +666,7 @@ export default function App() {
       setInviteUsername("");
       setInvitePassword("");
       setInvitePasswordConfirm("");
-      if (view === "opportunities") {
+      if (view === "opportunities" || view === "sources") {
         await refreshContractsView(capabilities);
       }
       setMessage("Invite accepted. Your account is ready.");
@@ -617,12 +687,9 @@ export default function App() {
     setIntakeDashboard(null);
     setOpportunitiesAuthStatus("unauthenticated");
     setAuthMessage("");
-    setGmailContracts([]);
-    setFederalContracts([]);
-    setGrantsContracts([]);
-    setSbaSubnetContracts([]);
-    setEsbdContracts([]);
+    setGovContracts([]);
     setContractRuns([]);
+    setTrackedSources([]);
     setAgencyPreferences([]);
     setKeywordRules([]);
     setUserInvites([]);
@@ -689,7 +756,7 @@ export default function App() {
       setInviteEmail("");
       setLatestInvite(invite);
       await refreshContractsView();
-      setMessage("Invite created.");
+      setMessage(buildInviteCreateMessage(invite));
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -1026,6 +1093,7 @@ export default function App() {
           <span>Status: {contract.status_name ?? "Unknown"}</span>
           <span>Due: {formatDateLabel(contract.due_date, contract.due_time)}</span>
           <span>Posted: {formatDateLabel(contract.posting_date)}</span>
+          {contract.source_context_label ? <span>Context: {contract.source_context_label}</span> : null}
         </div>
 
         <div className="score-matrix">
@@ -1078,14 +1146,33 @@ export default function App() {
                 : ""
             }`}
             aria-pressed={selectedOpportunitySourceFilter === contract.source}
-            onClick={() =>
+            onClick={() => {
               setSelectedOpportunitySourceFilter((current) =>
                 current === contract.source ? null : contract.source,
-              )
-            }
+              );
+              setSelectedOpportunitySourceContextFilter(null);
+            }}
           >
             {formatContractSource(contract.source)}
           </button>
+          {contract.source_context ? (
+            <button
+              type="button"
+              className={`tag filter-tag-button${
+                selectedOpportunitySourceContextFilter === contract.source_context
+                  ? " filter-tag-button-active"
+                  : ""
+              }`}
+              aria-pressed={selectedOpportunitySourceContextFilter === contract.source_context}
+              onClick={() =>
+                setSelectedOpportunitySourceContextFilter((current) =>
+                  current === contract.source_context ? null : contract.source_context ?? null,
+                )
+              }
+            >
+              {formatContractSourceContextLabel(contract.source_context_label, contract.source_context)}
+            </button>
+          ) : null}
           {getOpportunityDisplayTags(contract).map((tag) => (
             <button
               type="button"
@@ -1533,6 +1620,7 @@ export default function App() {
                     onChange={(event) => setInviteEmail(event.target.value)}
                     placeholder="user@example.com"
                     type="email"
+                    required
                   />
                 </label>
                 <div className="action-row keyword-form-actions">
@@ -1546,7 +1634,14 @@ export default function App() {
                 <div className="invite-code-card">
                   <div className="invite-code-card-copy">
                     <strong>{latestInvite.email}</strong>
-                    <span>Send this user to the app and give them this one-time invite code.</span>
+                    <span>
+                      {latestInvite.email_delivery_status === "sent"
+                        ? "Invite email sent automatically. They can still use this one-time invite code manually."
+                        : "Email delivery is not configured. Send this user to the app and give them this one-time invite code."}
+                    </span>
+                    {latestInvite.email_delivery_status !== "sent" && latestInvite.email_delivery_detail ? (
+                      <span>{latestInvite.email_delivery_detail}</span>
+                    ) : null}
                   </div>
                   <code className="invite-code">{latestInvite.invite_code}</code>
                   <div className="action-row">
@@ -1867,6 +1962,159 @@ export default function App() {
     );
   }
 
+  function renderSourcesPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking source access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Protected source registry",
+        subcopy: "Sign in with your username or email, or accept an invite code to review source automation coverage.",
+      });
+    }
+
+    const automatedSourceCount = trackedSources.filter((source) => source.load_scope === "opportunities").length;
+    const probeOnlySourceCount = trackedSources.filter((source) => source.load_scope !== "opportunities").length;
+    const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
+    const needsReviewCount = trackedSources.filter(
+      (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
+    ).length;
+    const blockedSourceCount = trackedSources.filter(
+      (source) => source.latest_run_status === "blocked" || source.latest_run_status === "failed",
+    ).length;
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Source Registry</p>
+              <h2>All eProcurement sources and their automation paths</h2>
+            </div>
+            <div className="action-row">
+              {isAdminUser ? (
+                <button
+                  type="button"
+                  onClick={() => void handleTrackedSourceRefresh()}
+                  disabled={refreshingTrackedSources}
+                >
+                  {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            This page is the coverage map for the opportunities funnel. It shows every automated procurement source,
+            what the job does for that source, and which portals still need a deeper integration before they can load opportunities.
+            The `Refresh tracked sites` action probes the local municipal, county, and regional portals; core feeds like ESBD,
+            federal forecast, Grants.gov, and SBA SUBNet still refresh through their source-specific jobs.
+          </p>
+
+          <div className="metric-row">
+            <div className="metric-pill">
+              <strong>{trackedSources.length}</strong>
+              <span>sources tracked</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{automatedSourceCount}</strong>
+              <span>automation-backed</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{probeOnlySourceCount}</strong>
+              <span>probe only</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{loadedSourceCount}</strong>
+              <span>currently loaded</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{needsReviewCount}</strong>
+              <span>need review</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{blockedSourceCount}</strong>
+              <span>blocked or failed</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Registry</p>
+              <h2>Source-by-source automation detail</h2>
+            </div>
+            <span>{trackedSources.length} listed</span>
+          </div>
+          <div className="table-shell">
+            <table className="sources-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Coverage</th>
+                  <th>Automation</th>
+                  <th>Status</th>
+                  <th>Last Check</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trackedSources.map((trackedSource) => (
+                  <tr key={trackedSource.id}>
+                    <td>
+                      <strong>{trackedSource.label}</strong>
+                      <span>{trackedSource.platform_name}</span>
+                      <a href={trackedSource.listing_url} target="_blank" rel="noreferrer">
+                        Open source
+                      </a>
+                    </td>
+                    <td>
+                      <strong>{formatTrackedSourceJurisdiction(trackedSource.jurisdiction_type)}</strong>
+                      <span>{formatTrackedSourceMode(trackedSource.extraction_mode)}</span>
+                      <span>{formatTrackedSourceLoadScope(trackedSource.load_scope)}</span>
+                    </td>
+                    <td>
+                      <strong>{trackedSource.automation_summary}</strong>
+                      {trackedSource.automation_detail ? <span>{trackedSource.automation_detail}</span> : null}
+                      {trackedSource.notes ? <span>{trackedSource.notes}</span> : null}
+                    </td>
+                    <td>
+                      <span className={getTrackedSourceStatusBadgeClass(trackedSource.latest_run_status)}>
+                        {formatTrackedSourceStatus(trackedSource.latest_run_status)}
+                      </span>
+                      <span>{trackedSource.stored_opportunity_count} stored</span>
+                      {trackedSource.latest_total_records != null ? (
+                        <span>
+                          Last run: {trackedSource.latest_total_records} total / {trackedSource.latest_open_records ?? 0} open /{" "}
+                          {trackedSource.latest_matched_records ?? 0} matched
+                        </span>
+                      ) : null}
+                      {trackedSource.latest_run_error_message ? <span>{trackedSource.latest_run_error_message}</span> : null}
+                    </td>
+                    <td>
+                      <strong>
+                        {trackedSource.latest_run_completed_at
+                          ? formatTimestamp(trackedSource.latest_run_completed_at)
+                          : "Not checked yet"}
+                      </strong>
+                      <span>{trackedSource.cadence}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </>
+    );
+  }
+
   function renderOpportunitiesPage() {
     if (opportunitiesAuthStatus === "checking") {
       return (
@@ -1884,54 +2132,37 @@ export default function App() {
       });
     }
 
-    const sourceCollections = [
-      ...(contractCapabilities.gmail_rfq_sync_enabled
-        ? [
-            {
-              key: "gmail_rfqs",
-              label: "Gmail RFQs",
-              contracts: gmailContracts,
-            },
-          ]
-        : []),
-      {
-        key: "federal_forecast",
-        label: "Federal Forecast",
-        contracts: federalContracts,
-      },
-      {
-        key: "grants_gov",
-        label: "Grants.gov",
-        contracts: grantsContracts,
-      },
-      {
-        key: "sba_subnet",
-        label: "SBA SUBNet",
-        contracts: sbaSubnetContracts,
-      },
-      {
-        key: "txsmartbuy_esbd",
-        label: "Texas ESBD",
-        contracts: esbdContracts,
-      },
-    ];
-    const allContracts = sourceCollections.flatMap((sourceCollection) => sourceCollection.contracts);
+    const allContracts = govContracts;
     const tagFilteredContracts = filterContractsByOpportunityTag(allContracts, selectedOpportunityTagFilter);
     const keywordFilteredContracts = filterContractsByOpportunityKeyword(tagFilteredContracts, opportunityKeywordFilter);
     const sourceScopedContracts = filterContractsByOpportunitySource(
       keywordFilteredContracts,
       selectedOpportunitySourceFilter,
     );
+    const sourceContextScopedContracts = filterContractsByOpportunitySourceContext(
+      sourceScopedContracts,
+      selectedOpportunitySourceContextFilter,
+    );
     const categoryCounts = {
-      all: sourceScopedContracts.length,
-      it_services: filterContractsByOpportunityCategory(sourceScopedContracts, "it_services").length,
-      property_services: filterContractsByOpportunityCategory(sourceScopedContracts, "property_services").length,
-      other: filterContractsByOpportunityCategory(sourceScopedContracts, "other").length,
+      all: sourceContextScopedContracts.length,
+      it_services: filterContractsByOpportunityCategory(sourceContextScopedContracts, "it_services").length,
+      property_services: filterContractsByOpportunityCategory(sourceContextScopedContracts, "property_services").length,
+      other: filterContractsByOpportunityCategory(sourceContextScopedContracts, "other").length,
     };
-    const categoryScopedContracts = filterContractsByOpportunityCategory(sourceScopedContracts, opportunityCategoryTab);
+    const categoryScopedContracts = filterContractsByOpportunityCategory(
+      sourceContextScopedContracts,
+      opportunityCategoryTab,
+    );
     const sourceCountBaseContracts = filterContractsByOpportunityCategory(
       keywordFilteredContracts,
       opportunityCategoryTab,
+    );
+    const sourceContextCountBaseContracts = filterContractsByOpportunityCategory(
+      sourceScopedContracts,
+      opportunityCategoryTab,
+    );
+    const uniqueSourceKeys = Array.from(new Set(allContracts.map((contract) => contract.source))).sort((left, right) =>
+      formatContractSource(left).localeCompare(formatContractSource(right)),
     );
     const sourceFilters = [
       {
@@ -1939,14 +2170,42 @@ export default function App() {
         label: "All sources",
         count: sourceCountBaseContracts.length,
       },
-      ...sourceCollections.map((sourceCollection) => ({
-        key: sourceCollection.key,
-        label: sourceCollection.label,
-        count: sourceCountBaseContracts.filter((contract) => contract.source === sourceCollection.key).length,
+      ...uniqueSourceKeys.map((sourceKey) => ({
+        key: sourceKey,
+        label: formatContractSource(sourceKey),
+        count: sourceCountBaseContracts.filter((contract) => contract.source === sourceKey).length,
       })),
+    ];
+    const sourceContextFilters = [
+      {
+        key: "all",
+        label: "All contexts",
+        count: sourceContextCountBaseContracts.length,
+      },
+      ...Array.from(
+        new Map(
+          sourceContextCountBaseContracts
+            .filter((contract) => contract.source_context && contract.source_context_label)
+            .map((contract) => [contract.source_context as string, contract.source_context_label as string]),
+        ),
+      )
+        .map(([key, label]) => ({
+          key,
+          label,
+          count: sourceContextCountBaseContracts.filter((contract) => contract.source_context === key).length,
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
     ];
     const displayedContracts = sortContractsForDisplay(categoryScopedContracts);
     const hasVisibleContracts = displayedContracts.length > 0;
+    const latestLoadedContractRun = contractRuns.find((run) => (run.total_records ?? 0) > 0) ?? contractRuns[0] ?? null;
+    const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
+    const trackedReviewSources = trackedSources.filter(
+      (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
+    ).length;
+    const trackedBlockedSources = trackedSources.filter(
+      (source) => source.latest_run_status === "blocked" || source.latest_run_status === "failed",
+    ).length;
 
     return (
       <>
@@ -1954,7 +2213,7 @@ export default function App() {
           <div className="panel-heading contract-toolbar">
             <div>
               <p className="eyebrow">Government Work Finder</p>
-              <h2>Federal Forecast + Grants.gov + SBA SUBNet + ESBD + Gmail RFQs for LeCrown</h2>
+              <h2>Federal, state, municipal, county, and regional opportunities for LeCrown</h2>
             </div>
 
             <div className="action-row">
@@ -2002,14 +2261,21 @@ export default function App() {
                     {refreshingContracts ? "Refreshing..." : "Refresh ESBD"}
                   </button>
                   {contractCapabilities.gmail_rfq_sync_enabled ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleGmailContractRefresh()}
-                      disabled={refreshingGmailContracts}
-                    >
-                      {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
-                    </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleGmailContractRefresh()}
+                    disabled={refreshingGmailContracts}
+                  >
+                    {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
+                  </button>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleTrackedSourceRefresh()}
+                    disabled={refreshingTrackedSources}
+                  >
+                    {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
+                  </button>
                 </>
               ) : null}
             </div>
@@ -2023,9 +2289,31 @@ export default function App() {
 
           {!contractCapabilities.gmail_rfq_sync_enabled ? (
             <p className="panel-subcopy">
-              Gmail RFQ sync is not configured in this environment. Federal forecast, Grants.gov, SBA SUBNet, and ESBD imports remain available.
+              Gmail RFQ sync is not configured in this environment. Federal forecast, Grants.gov, SBA SUBNet, ESBD, and the tracked municipal procurement sites remain available.
             </p>
           ) : null}
+
+          <div className="vendor-resource-grid">
+            {METRO_VENDOR_RESOURCES.map((resource) => (
+              <article className="vendor-resource-card" key={resource.title}>
+                <div>
+                  <p className="eyebrow">METRO Vendor Readiness</p>
+                  <h3>{resource.title}</h3>
+                  <p className="panel-subcopy">{resource.description}</p>
+                </div>
+                <div className="tag-row">
+                  {resource.tags.map((tag) => (
+                    <span className="tag" key={`${resource.title}-${tag}`}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <a className="secondary-link vendor-resource-link" href={resource.href} target="_blank" rel="noreferrer">
+                  {resource.cta}
+                </a>
+              </article>
+            ))}
+          </div>
 
           <div className="toggle-row opportunity-filter-row">
             <label className="toggle">
@@ -2069,34 +2357,42 @@ export default function App() {
             ) : null}
           </div>
 
-          {latestContractRun ? (
+          {latestLoadedContractRun ? (
             <div className="metric-row">
               <div className="metric-pill">
-                <strong>{latestContractRun.total_records}</strong>
+                <strong>{latestLoadedContractRun.total_records}</strong>
                 <span>loaded</span>
               </div>
               <div className="metric-pill">
-                <strong>{latestContractRun.matched_records}</strong>
+                <strong>{latestLoadedContractRun.matched_records}</strong>
                 <span>matched</span>
               </div>
               <div className="metric-pill">
-                <strong>{latestContractRun.open_records}</strong>
+                <strong>{latestLoadedContractRun.open_records}</strong>
                 <span>still open</span>
               </div>
               <div className="metric-pill">
-                <strong>{formatContractSource(latestContractRun.source)}</strong>
+                <strong>{loadedSourceCount}</strong>
+                <span>sources loaded</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{trackedReviewSources + trackedBlockedSources}</strong>
+                <span>need deeper dive</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{formatContractSource(latestLoadedContractRun.source)}</strong>
                 <span>latest source</span>
               </div>
               <div className="metric-pill">
                 <strong>
-                  {latestContractRun.window_start} to {latestContractRun.window_end}
+                  {latestLoadedContractRun.window_start} to {latestLoadedContractRun.window_end}
                 </strong>
                 <span>current window</span>
               </div>
             </div>
           ) : (
             <p className="empty-state">
-              No opportunity sync has run yet. Refresh federal forecast, Grants.gov, SBA SUBNet, ESBD, or Gmail RFQs to pull current opportunities.
+              No opportunity sync has run yet. Refresh federal forecast, Grants.gov, SBA SUBNet, ESBD, Gmail RFQs, or the tracked municipal procurement sites to pull current opportunities.
             </p>
           )}
 
@@ -2129,9 +2425,10 @@ export default function App() {
                   role="tab"
                   aria-selected={isActive}
                   className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
-                  onClick={() =>
-                    setSelectedOpportunitySourceFilter(sourceFilter.key === "all" ? null : sourceFilter.key)
-                  }
+                  onClick={() => {
+                    setSelectedOpportunitySourceFilter(sourceFilter.key === "all" ? null : sourceFilter.key);
+                    setSelectedOpportunitySourceContextFilter(null);
+                  }}
                 >
                   <span>{sourceFilter.label}</span>
                   <strong>{sourceFilter.count}</strong>
@@ -2139,6 +2436,34 @@ export default function App() {
               );
             })}
           </div>
+
+          {sourceContextFilters.length > 1 ? (
+            <div className="source-filter-row" role="tablist" aria-label="Opportunity context filters">
+              {sourceContextFilters.map((contextFilter) => {
+                const isActive =
+                  contextFilter.key === "all"
+                    ? selectedOpportunitySourceContextFilter === null
+                    : selectedOpportunitySourceContextFilter === contextFilter.key;
+                return (
+                  <button
+                    key={contextFilter.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
+                    onClick={() =>
+                      setSelectedOpportunitySourceContextFilter(
+                        contextFilter.key === "all" ? null : contextFilter.key,
+                      )
+                    }
+                  >
+                    <span>{contextFilter.label}</span>
+                    <strong>{contextFilter.count}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
           {selectedOpportunitySourceFilter ? (
             <div className="active-tag-filter-row">
@@ -2156,6 +2481,31 @@ export default function App() {
                 onClick={() => setSelectedOpportunitySourceFilter(null)}
               >
                 Clear source
+              </button>
+            </div>
+          ) : null}
+
+          {selectedOpportunitySourceContextFilter ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Context:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => setSelectedOpportunitySourceContextFilter(null)}
+              >
+                {formatContractSourceContextLabel(
+                  sourceContextFilters.find(
+                    (contextFilter) => contextFilter.key === selectedOpportunitySourceContextFilter,
+                  )?.label ?? null,
+                  selectedOpportunitySourceContextFilter,
+                )}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => setSelectedOpportunitySourceContextFilter(null)}
+              >
+                Clear context
               </button>
             </div>
           ) : null}
@@ -2325,8 +2675,8 @@ export default function App() {
               </div>
 
               <p className="panel-subcopy">
-                Add, edit, or remove the keyword rules that score federal forecast, Grants.gov, SBA SUBNet, ESBD, and Gmail opportunities.
-                Changes rescore the stored list immediately.
+                Add, edit, or remove the keyword rules that score the stored federal, state, municipal, county,
+                regional, and Gmail opportunity feeds. Changes rescore the stored list immediately.
               </p>
 
               <form className="keyword-form" onSubmit={handleCreateKeyword}>
@@ -2428,6 +2778,7 @@ export default function App() {
               {buildOpportunityEmptyStateMessage(
                 opportunityCategoryTab,
                 selectedOpportunitySourceFilter,
+                selectedOpportunitySourceContextFilter,
                 selectedOpportunityTagFilter,
                 opportunityKeywordFilter,
               )}
@@ -2479,6 +2830,13 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={`nav-pill${view === "sources" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("sources")}
+        >
+          Sources
+        </button>
+        <button
+          type="button"
           className={`nav-pill${view === "billing" ? " nav-pill-active" : ""}`}
           onClick={() => navigateToView("billing")}
         >
@@ -2501,6 +2859,8 @@ export default function App() {
               ? "Multi-tenant content and inquiry control room"
               : view === "intake"
               ? "Marketing intake and CRM funnel"
+              : view === "sources"
+              ? "eProcurement source automation registry"
               : view === "billing"
                 ? "Protected invoice creation and Gmail draft workflow"
               : view === "profile"
@@ -2512,6 +2872,8 @@ export default function App() {
               ? "One backend, two business surfaces. Switch tenants, create content, and push live when the publishing path is ready."
               : view === "intake"
               ? "Inspect intake health across connected sites, confirm CRM delivery is wired, and review the newest contacts entering the funnel."
+              : view === "sources"
+              ? "Review every procurement source feeding the funnel, see what automation is active for each one, and identify which portals still need a deeper integration."
               : view === "billing"
                 ? "Prepare LeCrown invoices, generate the exact platform PDF on the backend, and create a Gmail draft with the PDF attached without leaving the admin surface."
               : view === "profile"
@@ -2565,6 +2927,8 @@ export default function App() {
         ? renderDashboard()
         : view === "intake"
           ? renderIntakePage()
+          : view === "sources"
+            ? renderSourcesPage()
           : view === "billing"
             ? renderBillingPage()
           : view === "profile"
@@ -2596,6 +2960,20 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
   return "Something went wrong.";
+}
+
+function buildInviteCreateMessage(invite: UserInviteCreateResponse): string {
+  const parts = [invite.reissued_existing ? "Invite refreshed." : "Invite created."];
+  if (invite.email_delivery_status === "sent") {
+    parts.push(`Email sent to ${invite.email}.`);
+    return parts.join(" ");
+  }
+  if (invite.email_delivery_detail) {
+    parts.push(invite.email_delivery_detail);
+    return parts.join(" ");
+  }
+  parts.push("Copy the invite code manually.");
+  return parts.join(" ");
 }
 
 function formatDateLabel(value?: string | null, time?: string | null): string {
@@ -2706,7 +3084,160 @@ function formatContractSource(source: string): string {
   if (source === "txsmartbuy_esbd") {
     return "Texas ESBD";
   }
+  if (source === "city_austin_afo") {
+    return "City of Austin";
+  }
+  if (source === "city_san_antonio_bids") {
+    return "City of San Antonio";
+  }
+  if (source === "city_fort_worth_bonfire") {
+    return "City of Fort Worth";
+  }
+  if (source === "city_el_paso_ionwave") {
+    return "City of El Paso";
+  }
+  if (source === "harris_county_bonfire") {
+    return "Harris County";
+  }
+  if (source === "travis_county_bidnet") {
+    return "Travis County";
+  }
+  if (source === "tarrant_county_ionwave") {
+    return "Tarrant County";
+  }
+  if (source === "collin_county_ionwave") {
+    return "Collin County";
+  }
+  if (source === "dallas_county_official") {
+    return "Dallas County";
+  }
+  if (source === "dallas_county_bidnet") {
+    return "Dallas County BidNet";
+  }
+  if (source === "capmetro_planetbids") {
+    return "CapMetro";
+  }
+  if (source === "houston_metro_procurement") {
+    return "Houston METRO";
+  }
+  if (source === "dart_procurement") {
+    return "DART";
+  }
+  if (source === "h_gac_procurement") {
+    return "H-GAC";
+  }
   return source.split("_").join(" ");
+}
+
+function formatContractSourceContextLabel(
+  label?: string | null,
+  fallbackContext?: string | null,
+): string {
+  if (label) {
+    return label;
+  }
+  if (!fallbackContext) {
+    return "Unknown context";
+  }
+  return fallbackContext.split("_").join(" ");
+}
+
+function formatTrackedSourceJurisdiction(value: string): string {
+  if (value === "federal") {
+    return "Federal";
+  }
+  if (value === "state") {
+    return "State";
+  }
+  if (value === "city") {
+    return "City";
+  }
+  if (value === "county") {
+    return "County";
+  }
+  if (value === "regional") {
+    return "Regional";
+  }
+  return value;
+}
+
+function formatTrackedSourceMode(value: string): string {
+  if (value === "csv_export_api") {
+    return "CSV export API";
+  }
+  if (value === "csv_export") {
+    return "CSV export";
+  }
+  if (value === "json_api") {
+    return "JSON API";
+  }
+  if (value === "paginated_html") {
+    return "Paginated HTML";
+  }
+  if (value === "html_table") {
+    return "HTML table";
+  }
+  if (value === "html_cards") {
+    return "HTML cards";
+  }
+  if (value === "browser_required") {
+    return "Browser required";
+  }
+  if (value === "anti_bot_blocked") {
+    return "Anti-bot blocked";
+  }
+  if (value === "iframe_embed") {
+    return "Iframe embed";
+  }
+  if (value === "manual_review") {
+    return "Manual review";
+  }
+  return value.split("_").join(" ");
+}
+
+function formatTrackedSourceLoadScope(value: string): string {
+  if (value === "opportunities") {
+    return "Loads opportunities";
+  }
+  if (value === "catalog_only") {
+    return "Catalog and status only";
+  }
+  return value.split("_").join(" ");
+}
+
+function formatTrackedSourceStatus(status?: string | null): string {
+  if (!status) {
+    return "Not checked";
+  }
+  if (status === "completed") {
+    return "Loaded";
+  }
+  if (status === "cataloged") {
+    return "Cataloged";
+  }
+  if (status === "manual_review") {
+    return "Needs review";
+  }
+  if (status === "blocked") {
+    return "Blocked";
+  }
+  if (status === "failed") {
+    return "Failed";
+  }
+  return status.split("_").join(" ");
+}
+
+function getTrackedSourceStatusBadgeClass(status?: string | null): string {
+  if (status === "completed") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "cataloged" || status === "manual_review") {
+    return "status-badge status-badge-warn";
+  }
+  if (status === "blocked" || status === "failed") {
+    return "status-badge status-badge-bad";
+  }
+  return "status-badge status-badge-neutral";
 }
 
 function formatFunnelLabel(contract: GovContractOpportunity): string {
@@ -2863,6 +3394,25 @@ function filterContractsByOpportunitySource(
   return contracts.filter((contract) => matchesOpportunitySourceFilter(contract, sourceFilter));
 }
 
+function matchesOpportunitySourceContextFilter(
+  contract: GovContractOpportunity,
+  sourceContextFilter: string | null,
+): boolean {
+  if (!sourceContextFilter) {
+    return true;
+  }
+  return contract.source_context === sourceContextFilter;
+}
+
+function filterContractsByOpportunitySourceContext(
+  contracts: GovContractOpportunity[],
+  sourceContextFilter: string | null,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) =>
+    matchesOpportunitySourceContextFilter(contract, sourceContextFilter),
+  );
+}
+
 function matchesOpportunityKeywordFilter(
   contract: GovContractOpportunity,
   keywordFilter: string,
@@ -2880,6 +3430,7 @@ function matchesOpportunityKeywordFilter(
       contract.solicitation_id,
       contract.nigp_codes,
       formatContractSource(contract.source),
+      contract.source_context_label,
       ...getOpportunityDisplayTags(contract),
       ...getMatchedAgencyPreferences(contract),
     ]
@@ -2939,11 +3490,12 @@ function getOpportunityCategoryEmptyState(
   sourceLabel: string,
   tab: OpportunityCategoryTab,
   sourceFilter: string | null,
+  sourceContextFilter: string | null,
   tagFilter: OpportunityTagFilter | null,
   keywordFilter: string,
 ): string {
   const normalizedKeywordFilter = keywordFilter.trim();
-  if (tab === "all" && !sourceFilter && !tagFilter && !normalizedKeywordFilter) {
+  if (tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter && !normalizedKeywordFilter) {
     return defaultMessage;
   }
   const pieces = [`No ${sourceLabel.toLowerCase()} opportunities match`];
@@ -2957,16 +3509,23 @@ function getOpportunityCategoryEmptyState(
         : `and the ${formatContractSource(sourceFilter).toLowerCase()} source`,
     );
   }
-  if (tagFilter) {
+  if (sourceContextFilter) {
     pieces.push(
       tab === "all" && !sourceFilter
+        ? `the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`
+        : `and the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`,
+    );
+  }
+  if (tagFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter && !sourceContextFilter
         ? `the "${tagFilter.label}" tag`
         : `and the "${tagFilter.label}" tag`,
     );
   }
   if (normalizedKeywordFilter) {
     pieces.push(
-      tab === "all" && !sourceFilter && !tagFilter
+      tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter
         ? `the keyword "${normalizedKeywordFilter}"`
         : `and the keyword "${normalizedKeywordFilter}"`,
     );
@@ -2977,11 +3536,12 @@ function getOpportunityCategoryEmptyState(
 function buildOpportunityEmptyStateMessage(
   tab: OpportunityCategoryTab,
   sourceFilter: string | null,
+  sourceContextFilter: string | null,
   tagFilter: OpportunityTagFilter | null,
   keywordFilter: string,
 ): string {
   const normalizedKeywordFilter = keywordFilter.trim();
-  if (tab === "all" && !sourceFilter && !tagFilter && !normalizedKeywordFilter) {
+  if (tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter && !normalizedKeywordFilter) {
     return "No opportunities match the current view filters.";
   }
 
@@ -2996,16 +3556,23 @@ function buildOpportunityEmptyStateMessage(
         : `and the ${formatContractSource(sourceFilter).toLowerCase()} source`,
     );
   }
-  if (tagFilter) {
+  if (sourceContextFilter) {
     pieces.push(
       tab === "all" && !sourceFilter
+        ? `the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`
+        : `and the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`,
+    );
+  }
+  if (tagFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter && !sourceContextFilter
         ? `the "${tagFilter.label}" tag`
         : `and the "${tagFilter.label}" tag`,
     );
   }
   if (normalizedKeywordFilter) {
     pieces.push(
-      tab === "all" && !sourceFilter && !tagFilter
+      tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter
         ? `the keyword "${normalizedKeywordFilter}"`
         : `and the keyword "${normalizedKeywordFilter}"`,
     );

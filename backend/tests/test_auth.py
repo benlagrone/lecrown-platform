@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.models.user import User, UserInvite
-from app.services import auth_service
+from app.services import auth_service, invite_email_service
 
 
 class AuthServiceTest(unittest.TestCase):
@@ -74,44 +74,134 @@ class AuthServiceTest(unittest.TestCase):
         ):
             with self.Session() as db:
                 admin_user = auth_service.ensure_bootstrap_admin_user(db)
+                with patch.object(
+                    auth_service.invite_email_service,
+                    "send_user_invite_email",
+                    return_value=invite_email_service.InviteEmailDeliveryResult(
+                        sender_email="benjaminlagrone@gmail.com",
+                        message_id="message-1",
+                    ),
+                ):
+                    invite_result = auth_service.create_user_invite(
+                        db,
+                        current_user=admin_user,
+                        email="member@lecrown.local",
+                    )
+                    accepted_user = auth_service.accept_user_invite(
+                        db,
+                        invite_code=invite_result.invite_code,
+                        username="member",
+                        password="MemberPass123",
+                    )
 
-                invite, invite_code = auth_service.create_user_invite(
-                    db,
-                    current_user=admin_user,
-                    email="member@lecrown.local",
-                )
-                accepted_user = auth_service.accept_user_invite(
-                    db,
-                    invite_code=invite_code,
-                    username="member",
-                    password="MemberPass123",
-                )
+                    self.assertEqual("sent", invite_result.email_delivery_status)
+                    self.assertFalse(accepted_user.is_admin)
+                    self.assertEqual("member", accepted_user.username)
+                    self.assertEqual("member@lecrown.local", accepted_user.email)
+                    self.assertIsNotNone(auth_service.authenticate_user(db, "member", "MemberPass123"))
+                    self.assertIsNotNone(auth_service.authenticate_user(db, "member@lecrown.local", "MemberPass123"))
 
-                self.assertFalse(accepted_user.is_admin)
-                self.assertEqual("member", accepted_user.username)
-                self.assertEqual("member@lecrown.local", accepted_user.email)
-                self.assertIsNotNone(auth_service.authenticate_user(db, "member", "MemberPass123"))
-                self.assertIsNotNone(auth_service.authenticate_user(db, "member@lecrown.local", "MemberPass123"))
+                    stored_invite = db.get(UserInvite, invite_result.invite.id)
+                    self.assertIsNotNone(stored_invite)
+                    self.assertIsNotNone(stored_invite.accepted_at)
+                    self.assertEqual(accepted_user.id, stored_invite.accepted_by_user_id)
 
-                stored_invite = db.get(UserInvite, invite.id)
-                self.assertIsNotNone(stored_invite)
-                self.assertIsNotNone(stored_invite.accepted_at)
-                self.assertEqual(accepted_user.id, stored_invite.accepted_by_user_id)
+                    revoked_result = auth_service.create_user_invite(
+                        db,
+                        current_user=admin_user,
+                        email="second@lecrown.local",
+                    )
+                    auth_service.revoke_user_invite(db, invite_id=revoked_result.invite.id)
 
-                revoked_invite, revoked_code = auth_service.create_user_invite(
-                    db,
-                    current_user=admin_user,
-                    email="second@lecrown.local",
-                )
-                auth_service.revoke_user_invite(db, invite_id=revoked_invite.id)
+                    with self.assertRaises(ValueError):
+                        auth_service.accept_user_invite(
+                            db,
+                            invite_code=revoked_result.invite_code,
+                            username="second-user",
+                            password="SecondPass123",
+                        )
+
+    def test_reinviting_same_email_reissues_a_fresh_invite(self) -> None:
+        with patch.object(auth_service.settings, "admin_username", "admin"), patch.object(
+            auth_service.settings,
+            "admin_password",
+            "InitialPass123",
+        ), patch.object(auth_service.settings, "admin_email", "admin@lecrown.local"), patch.object(
+            auth_service.settings,
+            "user_invite_expire_days",
+            7,
+        ):
+            with self.Session() as db:
+                admin_user = auth_service.ensure_bootstrap_admin_user(db)
+                with patch.object(
+                    auth_service.invite_email_service,
+                    "send_user_invite_email",
+                    return_value=invite_email_service.InviteEmailDeliveryResult(
+                        sender_email="benjaminlagrone@gmail.com",
+                        message_id="message-1",
+                    ),
+                ):
+                    first_result = auth_service.create_user_invite(
+                        db,
+                        current_user=admin_user,
+                        email="member@lecrown.local",
+                    )
+                    second_result = auth_service.create_user_invite(
+                        db,
+                        current_user=admin_user,
+                        email="member@lecrown.local",
+                    )
+
+                self.assertTrue(second_result.reissued_existing)
+                self.assertEqual("sent", second_result.email_delivery_status)
+                self.assertNotEqual(first_result.invite.id, second_result.invite.id)
+
+                first_invite = db.get(UserInvite, first_result.invite.id)
+                self.assertIsNotNone(first_invite)
+                self.assertIsNotNone(first_invite.revoked_at)
 
                 with self.assertRaises(ValueError):
                     auth_service.accept_user_invite(
                         db,
-                        invite_code=revoked_code,
-                        username="second-user",
-                        password="SecondPass123",
+                        invite_code=first_result.invite_code,
+                        username="member",
+                        password="MemberPass123",
                     )
+
+                accepted_user = auth_service.accept_user_invite(
+                    db,
+                    invite_code=second_result.invite_code,
+                    username="member",
+                    password="MemberPass123",
+                )
+                self.assertEqual("member@lecrown.local", accepted_user.email)
+
+    def test_invite_creation_falls_back_to_manual_delivery_when_email_is_not_configured(self) -> None:
+        with patch.object(auth_service.settings, "admin_username", "admin"), patch.object(
+            auth_service.settings,
+            "admin_password",
+            "InitialPass123",
+        ), patch.object(auth_service.settings, "admin_email", "admin@lecrown.local"):
+            with self.Session() as db:
+                admin_user = auth_service.ensure_bootstrap_admin_user(db)
+                with patch.object(
+                    auth_service.invite_email_service,
+                    "send_user_invite_email",
+                    side_effect=invite_email_service.InviteEmailConfigurationError(
+                        "Invite email delivery is not configured."
+                    ),
+                ):
+                    invite_result = auth_service.create_user_invite(
+                        db,
+                        current_user=admin_user,
+                        email="member@lecrown.local",
+                    )
+
+                self.assertEqual("manual", invite_result.email_delivery_status)
+                self.assertEqual(
+                    "Invite email delivery is not configured.",
+                    invite_result.email_delivery_detail,
+                )
 
 
 if __name__ == "__main__":

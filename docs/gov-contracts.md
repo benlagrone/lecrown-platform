@@ -1,6 +1,6 @@
 # Government Contracts
 
-The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federal forecast opportunities from `acquisitiongateway.gov`, grant opportunities from `simpler.grants.gov`, and SBA SUBNet subcontracting opportunities from `sba.gov`, rank them against LeCrown-relevant work, and surface the strongest matches in the admin app.
+The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federal forecast opportunities from `acquisitiongateway.gov`, grant opportunities from `simpler.grants.gov`, SBA SUBNet subcontracting opportunities from `sba.gov`, and a first wave of municipal/county/regional Texas procurement sources, rank them against LeCrown-relevant work, and surface the strongest matches in the admin app.
 
 ## Source
 
@@ -11,8 +11,33 @@ The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federa
 - public grants search page: `https://simpler.grants.gov/search`
 - Grants.gov CSV export used by the page download button: `https://simpler.grants.gov/api/search/export`
 - SBA SUBNet opportunities page: `https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting/subcontracting-opportunities`
+- City of Austin solicitations: `https://financeonline.austintexas.gov/afo/account_services/solicitation/solicitations.cfm`
+- City of San Antonio bidding and contract opportunities: `https://webapp1.sanantonio.gov/BidContractOpps/Default.aspx`
+- Travis County BidNet portal: `https://www.bidnetdirect.com/texas/traviscounty`
+- Dallas County BidNet portal: `https://www.bidnetdirect.com/texas/dallas-county/solicitations/open-bids?selectedContent=BUYER`
+- Houston METRO procurement opportunities: `https://www.ridemetro.org/about/business-to-business/procurement-opportunities`
 
 The backend uses the same `POST` flow the ESBD site uses for `Export to CSV`, bounded to a weekly window by default. For the federal source, the backend uses the same public JSON listing feed the Acquisition Gateway page and its client-side export use. For Grants.gov, the backend uses the same public CSV export endpoint triggered by the page's `Download all` button. For SBA SUBNet, the backend walks the public paginated HTML table because the page exposes server-rendered opportunity rows rather than a documented download endpoint.
+
+The source registry now keeps a record of every procurement feed in the funnel and records whether each source fully loaded, only exposed a reachable shell, or was blocked by anti-bot protections / iframe embedding. The first parser-backed local sources are:
+
+- City of Austin
+- City of San Antonio
+- Travis County BidNet
+- Dallas County BidNet
+- Houston METRO
+
+The first tracked-but-not-fully-loaded sources are:
+
+- City of Fort Worth Bonfire
+- City of El Paso Ion Wave
+- Harris County Bonfire
+- Tarrant County Ion Wave
+- Collin County Ion Wave
+- Dallas County official purchasing page
+- CapMetro PlanetBids
+- DART procurement page
+- H-GAC OpenGov embed
 
 ## Backend API
 
@@ -20,9 +45,11 @@ The backend uses the same `POST` flow the ESBD site uses for `Export to CSV`, bo
 - `POST /contracts/refresh-federal`
 - `POST /contracts/refresh-grants`
 - `POST /contracts/refresh-sba-subnet`
+- `POST /contracts/refresh-tracked-sources`
 - `POST /contracts/{id}/funnel`
 - `GET /contracts/list?limit=12&matches_only=true&open_only=true&min_priority_score=0`
 - `GET /contracts/runs?limit=5`
+- `GET /contracts/sources`
 - `GET /contracts/export.csv?window_days=7`
 - `GET /contracts/export-federal.csv`
 - `GET /contracts/export-grants.csv`
@@ -58,6 +85,14 @@ Optional exact dates:
 
 `POST /contracts/refresh-sba-subnet` refreshes the current SBA SUBNet paginated listing. It does not take a window payload because the upstream source is a live subcontracting board rather than a date-bounded posting feed.
 
+`POST /contracts/refresh-tracked-sources` refreshes the municipal/county/regional tracked-source batch. Parser-backed sources import opportunities. Harder portals still generate a run record with statuses like `manual_review`, `cataloged`, or `blocked` so the admin UI shows coverage gaps instead of silently dropping them.
+
+The admin app now has a dedicated `Sources` page alongside `Opportunities`. The `Sources` page lists all procurement sources in the funnel and spells out the automation path for each one, including whether it is:
+
+- a full opportunity loader
+- a catalog/probe-only integration
+- blocked and still needing a deeper browser or portal-specific pass
+
 Promote one matched contract into the CRM lead funnel:
 
 ```json
@@ -82,7 +117,7 @@ From the repo root:
 make gov-contracts-refresh
 ```
 
-That command now refreshes Texas ESBD, the federal forecast source, Grants.gov, and SBA SUBNet in one run.
+That command now refreshes Texas ESBD, the federal forecast source, Grants.gov, SBA SUBNet, and the tracked municipal/county/regional procurement sources in one run.
 
 Direct command:
 
@@ -97,6 +132,7 @@ Useful variants:
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-federal
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-grants
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-sba
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-tracked-sources
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --include-gmail --gmail-limit 50
 ```
 
@@ -139,6 +175,19 @@ Each stored opportunity now carries a score matrix:
 - `Priority`: weighted overall score used for sorting and the minimum-priority filter
 
 Agency preferences are managed separately from keywords and let operators bias the ranked list toward target buyers without removing non-matching opportunities from storage.
+
+## Tracked Source Status
+
+The sources page now includes the full procurement-source registry. Each source records:
+
+- platform type
+- jurisdiction class
+- whether it is parser-backed or catalog-only
+- latest run status
+- latest run detail
+- current stored opportunity count for that source
+
+This is meant to prevent “false green” coverage. If a portal is JS-only, behind an anti-bot challenge, or hidden in an iframe, the system records that explicitly so it is obvious which sources need a deeper integration pass.
 
 ## Funnel Behavior
 

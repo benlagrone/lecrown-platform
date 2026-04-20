@@ -86,6 +86,7 @@ jobs:
     needs: publish
     if: ${{ github.event_name == 'push' || inputs.deploy_to_prod }}
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
     outputs:
       deploy_path: ${{ steps.resolve.outputs.deploy_path }}
       credential_source: ${{ steps.resolve.outputs.credential_source }}
@@ -184,6 +185,7 @@ jobs:
       - resolve_deploy_path
     if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'direct' }}
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
     env:
       DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
       RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}
@@ -443,6 +445,7 @@ jobs:
       - resolve_deploy_path
     if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'fortress-dispatch' }}
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
     env:
       DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
       RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}

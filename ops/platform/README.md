@@ -57,12 +57,16 @@ Copy [.env.example](/Users/benjaminlagrone/Documents/projects/real-estate/lecrow
 Important production values:
 
 - `VITE_API_BASE_URL=https://api.lecrowndevelopment.com`
+- `PUBLIC_APP_URL=https://app.lecrowndevelopment.com`
 - `CORS_ORIGINS=https://app.lecrowndevelopment.com`
 - `PLATFORM_API_BIND=127.0.0.1:18035`
 - `PLATFORM_FRONTEND_BIND=127.0.0.1:13084`
 - `SECRET_KEY` must be replaced
 - `ADMIN_PASSWORD` must be replaced
+- `ADMIN_EMAIL` should be set to the real admin mailbox
 - `DATABASE_URL=sqlite:///./data/lecrown.db`
+- `ESPOCRM_API_KEY` or `ESPOCRM_USERNAME` and `ESPOCRM_PASSWORD` must be set or CRM delivery will stay disconnected
+- invite emails require `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `INVITE_SENDER_EMAIL`, and a matching Gmail refresh token
 - leave `GMAIL_RFQ_FEED_URL` blank unless that service exists on the server
 
 ## Deploy

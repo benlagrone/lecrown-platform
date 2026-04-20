@@ -58,6 +58,33 @@ class GovContractAgencyPreferenceRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class GovContractTrackedSourceRead(BaseModel):
+    id: str
+    source: str
+    label: str
+    listing_url: str
+    platform_name: str
+    jurisdiction_type: str
+    extraction_mode: str
+    load_scope: str
+    cadence: str
+    active: bool
+    automation_summary: str
+    automation_detail: Optional[str] = None
+    notes: Optional[str] = None
+    latest_run_status: Optional[str] = None
+    latest_run_error_message: Optional[str] = None
+    latest_run_completed_at: Optional[datetime] = None
+    latest_total_records: Optional[int] = None
+    latest_open_records: Optional[int] = None
+    latest_matched_records: Optional[int] = None
+    stored_opportunity_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class GovContractOpportunityRead(BaseModel):
     id: str
     source: str
@@ -83,6 +110,8 @@ class GovContractOpportunityRead(BaseModel):
     matched_keywords: list[str] = Field(default_factory=list)
     opportunity_categories: list[str] = Field(default_factory=list)
     auto_tags: list[str] = Field(default_factory=list)
+    source_context: Optional[str] = None
+    source_context_label: Optional[str] = None
     score_breakdown: Optional[dict[str, Any]] = None
     funnel_status: str
     funnel_submission_id: Optional[str] = None

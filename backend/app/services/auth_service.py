@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_, select
@@ -10,11 +11,21 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.user import User, UserInvite
+from app.services import invite_email_service
 from app.utils.helpers import new_uuid
 
 settings = get_settings()
 PASSWORD_HASH_ITERATIONS = 390_000
 PASSWORD_HASH_PREFIX = "pbkdf2_sha256"
+
+
+@dataclass(frozen=True)
+class UserInviteCreateResult:
+    invite: UserInvite
+    invite_code: str
+    email_delivery_status: str
+    email_delivery_detail: str | None
+    reissued_existing: bool
 
 
 def _clean(value: str | None) -> str:
@@ -154,7 +165,12 @@ def list_user_invites(db: Session) -> list[UserInvite]:
     return list(db.scalars(statement).all())
 
 
-def create_user_invite(db: Session, *, current_user: User, email: str) -> tuple[UserInvite, str]:
+def create_user_invite(
+    db: Session,
+    *,
+    current_user: User,
+    email: str,
+) -> UserInviteCreateResult:
     cleaned_email = _normalize_email(email)
     if not cleaned_email or "@" not in cleaned_email:
         raise ValueError("A valid email is required")
@@ -169,8 +185,10 @@ def create_user_invite(db: Session, *, current_user: User, email: str) -> tuple[
             UserInvite.expires_at >= _utc_now(),
         )
     ).first()
+    reissued_existing = existing_pending_invite is not None
     if existing_pending_invite is not None:
-        raise ValueError("An active invite already exists for that email")
+        existing_pending_invite.revoked_at = _utc_now()
+        db.add(existing_pending_invite)
 
     invite_code, invite_token_hash = make_invite_token()
     invite = UserInvite(
@@ -183,7 +201,32 @@ def create_user_invite(db: Session, *, current_user: User, email: str) -> tuple[
     db.add(invite)
     db.commit()
     db.refresh(invite)
-    return invite, invite_code
+
+    email_delivery_status = "manual"
+    email_delivery_detail: str | None = None
+    try:
+        delivery_result = invite_email_service.send_user_invite_email(
+            recipient_email=invite.email,
+            invite_code=invite_code,
+            expires_at=invite.expires_at,
+            invited_by_email=current_user.email,
+        )
+        email_delivery_status = "sent"
+        email_delivery_detail = (
+            f"Invite email sent from {delivery_result.sender_email}."
+        )
+    except invite_email_service.InviteEmailConfigurationError as exc:
+        email_delivery_detail = str(exc)
+    except invite_email_service.InviteEmailDeliveryError as exc:
+        email_delivery_detail = f"{exc} Copy the invite code manually."
+
+    return UserInviteCreateResult(
+        invite=invite,
+        invite_code=invite_code,
+        email_delivery_status=email_delivery_status,
+        email_delivery_detail=email_delivery_detail,
+        reissued_existing=reissued_existing,
+    )
 
 
 def revoke_user_invite(db: Session, *, invite_id: str) -> UserInvite:

@@ -155,6 +155,9 @@ export interface UserInvite {
 
 export interface UserInviteCreateResponse extends UserInvite {
   invite_code: string;
+  email_delivery_status: string;
+  email_delivery_detail?: string | null;
+  reissued_existing: boolean;
 }
 
 export interface DistributionResponse {
@@ -187,6 +190,8 @@ export interface GovContractOpportunity {
   matched_keywords: string[];
   opportunity_categories: string[];
   auto_tags: string[];
+  source_context?: string | null;
+  source_context_label?: string | null;
   score_breakdown?: Record<string, unknown> | null;
   funnel_status: string;
   funnel_submission_id?: string | null;
@@ -215,6 +220,31 @@ export interface GovContractImportRun {
   csv_bytes: number;
   error_message?: string | null;
   completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GovContractTrackedSource {
+  id: string;
+  source: string;
+  label: string;
+  listing_url: string;
+  platform_name: string;
+  jurisdiction_type: string;
+  extraction_mode: string;
+  load_scope: string;
+  cadence: string;
+  active: boolean;
+  automation_summary: string;
+  automation_detail?: string | null;
+  notes?: string | null;
+  latest_run_status?: string | null;
+  latest_run_error_message?: string | null;
+  latest_run_completed_at?: string | null;
+  latest_total_records?: number | null;
+  latest_open_records?: number | null;
+  latest_matched_records?: number | null;
+  stored_opportunity_count: number;
   created_at: string;
   updated_at: string;
 }

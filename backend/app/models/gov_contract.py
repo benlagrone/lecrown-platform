@@ -119,3 +119,26 @@ class GovContractImportRun(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class GovContractTrackedSource(Base):
+    __tablename__ = "gov_contract_tracked_sources"
+
+    id = Column(String, primary_key=True)
+    source = Column(String, nullable=False, unique=True, index=True)
+    label = Column(String, nullable=False)
+    listing_url = Column(String, nullable=False)
+    platform_name = Column(String, nullable=False)
+    jurisdiction_type = Column(String, nullable=False, index=True)
+    extraction_mode = Column(String, nullable=False)
+    load_scope = Column(String, nullable=False, default="catalog_only")
+    cadence = Column(String, nullable=False, default="weekly")
+    active = Column(Boolean, nullable=False, default=True, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

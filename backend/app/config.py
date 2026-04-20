@@ -10,6 +10,7 @@ load_dotenv()
 class Settings:
     app_name: str = os.getenv("APP_NAME", "LeCrown Platform")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./lecrown.db")
+    public_app_url: str = os.getenv("PUBLIC_APP_URL", "")
     secret_key: str = os.getenv("SECRET_KEY", "change-me-in-production")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
@@ -57,6 +58,7 @@ class Settings:
     admin_username: str = os.getenv("ADMIN_USERNAME", "admin")
     admin_password: str = os.getenv("ADMIN_PASSWORD", "admin123")
     admin_email: str = os.getenv("ADMIN_EMAIL", "")
+    invite_sender_email: str = os.getenv("INVITE_SENDER_EMAIL", "")
     user_invite_expire_days: int = int(os.getenv("USER_INVITE_EXPIRE_DAYS", "7"))
     intake_api_key: str = os.getenv("INTAKE_API_KEY", "")
 
@@ -151,6 +153,15 @@ class Settings:
             "benjaminlagrone@gmail.com": self.gmail_refresh_token_benjaminlagrone_gmail_com,
             "benjamin@lecrownproperties.com": self.gmail_refresh_token_benjamin_lecrownproperties_com,
         }
+
+    @property
+    def resolved_public_app_url(self) -> str:
+        explicit = self.public_app_url.strip()
+        if explicit:
+            return explicit.rstrip("/")
+        if self.cors_origins:
+            return self.cors_origins[0].rstrip("/")
+        return "http://localhost:3000"
 
     @property
     def invoice_output_path(self) -> Path:

@@ -68,6 +68,9 @@ class UserInviteRead(BaseModel):
 
 class UserInviteCreateResponse(UserInviteRead):
     invite_code: str
+    email_delivery_status: str
+    email_delivery_detail: Optional[str] = None
+    reissued_existing: bool = False
 
 
 def _build_token_response(user: User) -> TokenResponse:
@@ -126,15 +129,21 @@ def create_invitation(
     current_user: User = Depends(get_current_admin),
 ) -> UserInviteCreateResponse:
     try:
-        invite, invite_code = auth_service.create_user_invite(
+        result = auth_service.create_user_invite(
             db,
             current_user=current_user,
             email=payload.email,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    invite_response = UserInviteCreateResponse.model_validate(invite)
-    return invite_response.model_copy(update={"invite_code": invite_code})
+    invite_response = UserInviteRead.model_validate(result.invite)
+    return UserInviteCreateResponse(
+        **invite_response.model_dump(),
+        invite_code=result.invite_code,
+        email_delivery_status=result.email_delivery_status,
+        email_delivery_detail=result.email_delivery_detail,
+        reissued_existing=result.reissued_existing,
+    )
 
 
 @router.delete("/invitations/{invite_id}", status_code=204)
