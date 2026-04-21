@@ -384,22 +384,25 @@ export default function App() {
       const capabilities = capabilitiesOverride ?? contractCapabilities;
       const currentUser = currentAdmin ?? (await getCurrentAdmin());
       setCurrentAdmin(currentUser);
-      const [contracts, runs, sources, keywords, agencyPrefs, invites] =
+      const [sources, runs, keywords, agencyPrefs, invites] =
         await Promise.all([
-          listGovContracts(OPPORTUNITY_LIST_LIMIT, undefined, {
-            matchesOnly: matchesOnlyFilter,
-            minPriorityScore: minPriorityScoreFilter,
-            openOnly: openOnlyFilter,
-          }),
-          listGovContractRuns(25),
           listGovContractTrackedSources(),
+          listGovContractRuns(25),
           listGovContractKeywordRules(),
           listGovContractAgencyPreferences(),
           currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
         ]);
-      setGovContracts(
-        capabilities.gmail_rfq_sync_enabled ? contracts : contracts.filter((contract) => contract.source !== "gmail_rfqs"),
+      const sourceKeys = buildOpportunitySourceLoadList(sources, capabilities);
+      const contractLists = await Promise.all(
+        sourceKeys.map((sourceKey) =>
+          listGovContracts(OPPORTUNITY_LIST_LIMIT, sourceKey, {
+            matchesOnly: matchesOnlyFilter,
+            minPriorityScore: minPriorityScoreFilter,
+            openOnly: openOnlyFilter,
+          }),
+        ),
       );
+      setGovContracts(dedupeGovContractsById(contractLists.flat()));
       setContractRuns(runs);
       setTrackedSources(sources);
       setKeywordRules(keywords);
@@ -3290,6 +3293,36 @@ function isOpportunityTagFilterActive(
     currentFilter?.kind === candidate.kind &&
     normalizeOpportunityTagFilterValue(currentFilter.value) === normalizeOpportunityTagFilterValue(candidate.value)
   );
+}
+
+function buildOpportunitySourceLoadList(
+  sources: GovContractTrackedSource[],
+  capabilities: GovContractCapabilities,
+): string[] {
+  const sourceKeys = new Set<string>();
+  if (capabilities.gmail_rfq_sync_enabled) {
+    sourceKeys.add("gmail_rfqs");
+  }
+  for (const source of sources) {
+    if (!source.active || source.load_scope !== "opportunities") {
+      continue;
+    }
+    sourceKeys.add(source.source);
+  }
+  return [...sourceKeys];
+}
+
+function dedupeGovContractsById(contracts: GovContractOpportunity[]): GovContractOpportunity[] {
+  const seenIds = new Set<string>();
+  const deduped: GovContractOpportunity[] = [];
+  for (const contract of contracts) {
+    if (seenIds.has(contract.id)) {
+      continue;
+    }
+    seenIds.add(contract.id);
+    deduped.push(contract);
+  }
+  return sortContractsForDisplay(deduped);
 }
 
 function getOpportunityCategories(contract: GovContractOpportunity): OpportunityCategoryTab[] {
