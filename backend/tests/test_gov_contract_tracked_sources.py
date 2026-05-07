@@ -189,6 +189,10 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
                 runs = gov_contract_service.refresh_tracked_procurement_sources(db)
 
             statuses = {run.source: run.status for run in runs}
+            self.assertEqual(
+                {definition.source for definition in gov_contract_service.TRACKED_PROCUREMENT_SOURCE_DEFINITIONS},
+                set(statuses),
+            )
             self.assertEqual("completed", statuses[gov_contract_service.AUSTIN_AFO_SOURCE_NAME])
             self.assertEqual("completed", statuses[gov_contract_service.SAN_ANTONIO_BIDS_SOURCE_NAME])
             self.assertEqual("completed", statuses[gov_contract_service.TRAVIS_COUNTY_BIDNET_SOURCE_NAME])
@@ -196,8 +200,12 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
             self.assertEqual("completed", statuses[gov_contract_service.HOUSTON_METRO_PROCUREMENT_SOURCE_NAME])
             self.assertEqual("manual_review", statuses[gov_contract_service.FORT_WORTH_BONFIRE_SOURCE_NAME])
             self.assertEqual("blocked", statuses[gov_contract_service.EL_PASO_IONWAVE_SOURCE_NAME])
+            self.assertEqual("manual_review", statuses[gov_contract_service.HARRIS_COUNTY_BONFIRE_SOURCE_NAME])
+            self.assertEqual("blocked", statuses[gov_contract_service.TARRANT_COUNTY_IONWAVE_SOURCE_NAME])
+            self.assertEqual("blocked", statuses[gov_contract_service.COLLIN_COUNTY_IONWAVE_SOURCE_NAME])
             self.assertEqual("cataloged", statuses[gov_contract_service.DALLAS_COUNTY_OFFICIAL_SOURCE_NAME])
             self.assertEqual("manual_review", statuses[gov_contract_service.CAPMETRO_PLANETBIDS_SOURCE_NAME])
+            self.assertEqual("cataloged", statuses[gov_contract_service.DART_PROCUREMENT_SOURCE_NAME])
             self.assertEqual("manual_review", statuses[gov_contract_service.HGAC_PROCUREMENT_SOURCE_NAME])
 
             austin_items = gov_contract_service.list_contracts(

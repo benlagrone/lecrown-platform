@@ -339,6 +339,13 @@ export async function refreshTrackedGovSources(): Promise<GovContractImportRun[]
   });
 }
 
+export async function refreshAllGovSources(windowDays = 7): Promise<GovContractImportRun[]> {
+  return request<GovContractImportRun[]>("/contracts/refresh-all", {
+    method: "POST",
+    body: JSON.stringify({ window_days: windowDays }),
+  });
+}
+
 export async function funnelGovContract(
   contractId: string,
   payload?: { notes?: string; force?: boolean },

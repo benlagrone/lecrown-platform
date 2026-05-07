@@ -229,6 +229,21 @@ def refresh_tracked_sources(
     return gov_contract_service.refresh_tracked_procurement_sources(db)
 
 
+@router.post("/refresh-all", response_model=list[GovContractImportRunRead])
+def refresh_all_sources(
+    payload: Optional[GovContractRefreshRequest] = None,
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> list[GovContractImportRunRead]:
+    request = payload or GovContractRefreshRequest()
+    return gov_contract_service.refresh_all_contract_sources(
+        db,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        window_days=request.window_days,
+    )
+
+
 @router.get("/list", response_model=list[GovContractOpportunityRead])
 def list_contracts(
     limit: int = Query(default=25, ge=1, le=5000),

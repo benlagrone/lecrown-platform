@@ -30,6 +30,7 @@ import {
   publishDistribution,
   publishToLinkedIn,
   refreshFederalContracts,
+  refreshAllGovSources,
   refreshGmailRfqs,
   refreshGovContracts,
   refreshGrantsContracts,
@@ -234,6 +235,7 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [refreshingIntakeDashboard, setRefreshingIntakeDashboard] = useState(false);
   const [refreshingContracts, setRefreshingContracts] = useState(false);
+  const [refreshingAllSources, setRefreshingAllSources] = useState(false);
   const [refreshingFederalContracts, setRefreshingFederalContracts] = useState(false);
   const [refreshingGrantsContracts, setRefreshingGrantsContracts] = useState(false);
   const [refreshingSbaSubnetContracts, setRefreshingSbaSubnetContracts] = useState(false);
@@ -520,6 +522,25 @@ export default function App() {
       setMessage(getErrorMessage(error));
     } finally {
       setRefreshingContracts(false);
+    }
+  }
+
+  async function handleAllSourceRefresh() {
+    setRefreshingAllSources(true);
+    setMessage("");
+    try {
+      const runs = await refreshAllGovSources();
+      await refreshContractsView();
+      const completedCount = runs.filter((run) => run.status === "completed").length;
+      const reviewCount = runs.filter((run) => run.status === "manual_review" || run.status === "cataloged").length;
+      const blockedCount = runs.filter((run) => run.status === "blocked" || run.status === "failed").length;
+      setMessage(
+        `All sources checked. ${completedCount} loaded, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingAllSources(false);
     }
   }
 
@@ -2290,33 +2311,40 @@ export default function App() {
                 <>
                   <button
                     type="button"
+                    onClick={() => void handleAllSourceRefresh()}
+                    disabled={refreshingAllSources}
+                  >
+                    {refreshingAllSources ? "Checking all..." : "Check all sources"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void handleFederalContractRefresh()}
-                    disabled={refreshingFederalContracts}
+                    disabled={refreshingFederalContracts || refreshingAllSources}
                   >
                     {refreshingFederalContracts ? "Refreshing..." : "Refresh Federal"}
                   </button>
                   <button
                     type="button"
                     onClick={() => void handleGrantsContractRefresh()}
-                    disabled={refreshingGrantsContracts}
+                    disabled={refreshingGrantsContracts || refreshingAllSources}
                   >
                     {refreshingGrantsContracts ? "Refreshing..." : "Refresh Grants"}
                   </button>
                   <button
                     type="button"
                     onClick={() => void handleSbaSubnetContractRefresh()}
-                    disabled={refreshingSbaSubnetContracts}
+                    disabled={refreshingSbaSubnetContracts || refreshingAllSources}
                   >
                     {refreshingSbaSubnetContracts ? "Refreshing..." : "Refresh SBA SUBNet"}
                   </button>
-                  <button type="button" onClick={() => void handleContractRefresh()} disabled={refreshingContracts}>
+                  <button type="button" onClick={() => void handleContractRefresh()} disabled={refreshingContracts || refreshingAllSources}>
                     {refreshingContracts ? "Refreshing..." : "Refresh ESBD"}
                   </button>
                   {contractCapabilities.gmail_rfq_sync_enabled ? (
                   <button
                     type="button"
                     onClick={() => void handleGmailContractRefresh()}
-                    disabled={refreshingGmailContracts}
+                    disabled={refreshingGmailContracts || refreshingAllSources}
                   >
                     {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
                   </button>
@@ -2324,7 +2352,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => void handleTrackedSourceRefresh()}
-                    disabled={refreshingTrackedSources}
+                    disabled={refreshingTrackedSources || refreshingAllSources}
                   >
                     {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
                   </button>

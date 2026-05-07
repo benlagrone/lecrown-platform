@@ -3483,6 +3483,47 @@ def refresh_tracked_procurement_sources(db: Session) -> list[GovContractImportRu
     return runs
 
 
+def refresh_all_contract_sources(
+    db: Session,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    window_days: int | None = None,
+) -> list[GovContractImportRun]:
+    _ensure_tracked_sources(db)
+    runs: list[GovContractImportRun] = []
+
+    def run_source(source_name: str, refresh_func) -> None:
+        try:
+            result = refresh_func()
+            if isinstance(result, list):
+                runs.extend(result)
+            else:
+                runs.append(result)
+        except GovContractSourceError:
+            latest_run = _latest_import_run_for_source(db, source_name)
+            if latest_run is not None:
+                runs.append(latest_run)
+
+    run_source(
+        SOURCE_NAME,
+        lambda: refresh_contracts(
+            db,
+            start_date=start_date,
+            end_date=end_date,
+            window_days=window_days,
+        ),
+    )
+    run_source(FEDERAL_FORECAST_SOURCE_NAME, lambda: refresh_federal_contracts(db))
+    run_source(GRANTS_GOV_SOURCE_NAME, lambda: refresh_grants_contracts(db))
+    run_source(SBA_SUBNET_SOURCE_NAME, lambda: refresh_sba_subnet_contracts(db))
+    if settings.gmail_rfq_feed_enabled:
+        run_source(GMAIL_RFQ_SOURCE_NAME, lambda: refresh_gmail_contracts(db))
+    run_source("tracked_sources", lambda: refresh_tracked_procurement_sources(db))
+
+    return runs
+
+
 def export_contracts_csv(
     *,
     start_date: date | None = None,
