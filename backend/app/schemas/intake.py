@@ -133,6 +133,7 @@ class IntakeDashboardRecentContactRead(BaseModel):
     status: str
     delivery_status: str
     delivery_record_id: Optional[str] = None
+    delivery_error: Optional[str] = None
     created_at: datetime
 
 

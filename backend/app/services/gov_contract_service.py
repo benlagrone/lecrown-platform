@@ -2984,6 +2984,198 @@ def serialize_opportunities(opportunities: list[GovContractOpportunity]) -> list
     return [serialize_opportunity(opportunity) for opportunity in opportunities]
 
 
+def _normalized_filter_value(value: str | None) -> str:
+    return _normalize_text(value).replace(" ", "_")
+
+
+def _opportunity_search_tags(opportunity: GovContractOpportunityRead) -> list[str]:
+    return [*(opportunity.auto_tags or []), *(opportunity.matched_keywords or [])]
+
+
+def _matches_search_category(opportunity: GovContractOpportunityRead, category: str | None) -> bool:
+    if not category or category == "all":
+        return True
+    return category in (opportunity.opportunity_categories or [])
+
+
+def _matches_search_source_context(opportunity: GovContractOpportunityRead, source_context: str | None) -> bool:
+    if not source_context:
+        return True
+    return opportunity.source_context == source_context
+
+
+def _matches_search_tag(
+    opportunity: GovContractOpportunityRead,
+    *,
+    tag_kind: str | None,
+    tag_value: str | None,
+) -> bool:
+    if not tag_kind or not tag_value:
+        return True
+    normalized_value = _normalized_filter_value(tag_value)
+    if tag_kind == "source":
+        return _normalized_filter_value(opportunity.source) == normalized_value
+    if tag_kind == "tag":
+        return any(_normalized_filter_value(tag) == normalized_value for tag in _opportunity_search_tags(opportunity))
+    if tag_kind == "preferred_agency":
+        matched_preferences = []
+        breakdown = opportunity.score_breakdown or {}
+        raw_preferences = breakdown.get("matched_agency_preferences")
+        if isinstance(raw_preferences, list):
+            matched_preferences = [str(value) for value in raw_preferences]
+        return any(_normalized_filter_value(value) == normalized_value for value in matched_preferences)
+    return True
+
+
+def _keyword_terms(keyword: str | None) -> list[str]:
+    return [term for term in _normalize_text(keyword).split(" ") if term]
+
+
+def _matches_search_keyword(opportunity: GovContractOpportunityRead, keyword: str | None) -> bool:
+    terms = _keyword_terms(keyword)
+    if not terms:
+        return True
+    text = " ".join(
+        str(value)
+        for value in [
+            opportunity.title,
+            opportunity.agency_name,
+            opportunity.agency_number,
+            opportunity.solicitation_id,
+            opportunity.nigp_codes,
+            SOURCE_LABELS.get(opportunity.source, opportunity.source),
+            opportunity.source_context_label,
+            *_opportunity_search_tags(opportunity),
+        ]
+        if value
+    )
+    words = _normalize_text(text).split(" ")
+    return all(
+        any(word == term or (len(term) >= 4 and word.startswith(term)) for word in words)
+        for term in terms
+    )
+
+
+def _apply_serialized_search_filters(
+    opportunities: list[GovContractOpportunityRead],
+    *,
+    source_context: str | None = None,
+    category: str | None = None,
+    tag_kind: str | None = None,
+    tag_value: str | None = None,
+    keyword: str | None = None,
+) -> list[GovContractOpportunityRead]:
+    return [
+        opportunity
+        for opportunity in opportunities
+        if _matches_search_source_context(opportunity, source_context)
+        and _matches_search_category(opportunity, category)
+        and _matches_search_tag(opportunity, tag_kind=tag_kind, tag_value=tag_value)
+        and _matches_search_keyword(opportunity, keyword)
+    ]
+
+
+def _source_context_label(opportunity: GovContractOpportunityRead) -> str:
+    return opportunity.source_context_label or opportunity.source_context or "Unscoped"
+
+
+def _facet_counts(items: list[tuple[str, str]]) -> list[dict[str, object]]:
+    counts: dict[str, dict[str, object]] = {}
+    for key, label in items:
+        if not key:
+            continue
+        current = counts.setdefault(key, {"key": key, "label": label, "count": 0})
+        current["count"] = int(current["count"]) + 1
+    return sorted(counts.values(), key=lambda item: str(item["label"]).casefold())
+
+
+def search_contracts(
+    db: Session,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    matches_only: bool = True,
+    open_only: bool = True,
+    min_priority_score: int = 0,
+    source: str | None = None,
+    source_context: str | None = None,
+    category: str | None = None,
+    tag_kind: str | None = None,
+    tag_value: str | None = None,
+    keyword: str | None = None,
+) -> dict[str, object]:
+    candidates = serialize_opportunities(
+        list_contracts(
+            db,
+            limit=50000,
+            matches_only=matches_only,
+            open_only=open_only,
+            min_priority_score=min_priority_score,
+            source=source,
+        )
+    )
+    tab_base = _apply_serialized_search_filters(
+        candidates,
+        source_context=source_context,
+        tag_kind=tag_kind,
+        tag_value=tag_value,
+        keyword=keyword,
+    )
+    source_base = _apply_serialized_search_filters(
+        candidates,
+        source_context=source_context,
+        category=category,
+        tag_kind=tag_kind,
+        tag_value=tag_value,
+        keyword=keyword,
+    )
+    context_base = _apply_serialized_search_filters(
+        candidates,
+        category=category,
+        tag_kind=tag_kind,
+        tag_value=tag_value,
+        keyword=keyword,
+    )
+    filtered = _apply_serialized_search_filters(
+        candidates,
+        source_context=source_context,
+        category=category,
+        tag_kind=tag_kind,
+        tag_value=tag_value,
+        keyword=keyword,
+    )
+    page_items = filtered[offset : offset + limit]
+    category_counts = {
+        "all": len(tab_base),
+        IT_SERVICES_CATEGORY: sum(
+            1 for opportunity in tab_base if IT_SERVICES_CATEGORY in opportunity.opportunity_categories
+        ),
+        PROPERTY_SERVICES_CATEGORY: sum(
+            1 for opportunity in tab_base if PROPERTY_SERVICES_CATEGORY in opportunity.opportunity_categories
+        ),
+        OTHER_OPPORTUNITIES_CATEGORY: sum(
+            1 for opportunity in tab_base if OTHER_OPPORTUNITIES_CATEGORY in opportunity.opportunity_categories
+        ),
+    }
+    return {
+        "items": page_items,
+        "total": len(filtered),
+        "limit": limit,
+        "offset": offset,
+        "category_counts": category_counts,
+        "source_counts": _facet_counts(
+            [(opportunity.source, SOURCE_LABELS.get(opportunity.source, opportunity.source)) for opportunity in source_base]
+        ),
+        "source_context_counts": _facet_counts(
+            [
+                (opportunity.source_context or "", _source_context_label(opportunity))
+                for opportunity in context_base
+                if not source or opportunity.source == source
+            ]
+        ),
+    }
+
+
 def list_import_runs(db: Session, *, limit: int = 10) -> list[GovContractImportRun]:
     statement = select(GovContractImportRun).order_by(desc(GovContractImportRun.created_at)).limit(limit)
     return list(db.scalars(statement).all())

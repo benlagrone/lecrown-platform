@@ -24,7 +24,6 @@ import {
   listGovContractTrackedSources,
   listContent,
   listGovContractRuns,
-  listGovContracts,
   listInquiries,
   listUserInvites,
   login,
@@ -37,6 +36,7 @@ import {
   refreshSbaSubnetContracts,
   refreshTrackedGovSources,
   revokeUserInvite,
+  searchGovContracts,
   storeAuthToken,
   updateGovContractAgencyPreference,
   updateGovContractKeywordRule,
@@ -49,6 +49,7 @@ import type {
   GovContractAgencyPreference,
   GovContractImportRun,
   GovContractOpportunity,
+  GovContractOpportunitySearchResponse,
   GovContractCapabilities,
   GovContractKeywordRule,
   GovContractTrackedSource,
@@ -68,6 +69,16 @@ type OpportunityTagFilter = {
   value: string;
   label: string;
 };
+const OPPORTUNITY_PAGE_SIZE = 50;
+const EMPTY_OPPORTUNITY_SEARCH: GovContractOpportunitySearchResponse = {
+  items: [],
+  total: 0,
+  limit: OPPORTUNITY_PAGE_SIZE,
+  offset: 0,
+  category_counts: {},
+  source_counts: [],
+  source_context_counts: [],
+};
 type MetroVendorResource = {
   title: string;
   description: string;
@@ -77,12 +88,11 @@ type MetroVendorResource = {
 };
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
-const OPPORTUNITY_LIST_LIMIT = 200;
 const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
-  { id: "all", label: "All opportunities" },
-  { id: "it_services", label: "IT services" },
-  { id: "property_services", label: "Real estate / property" },
-  { id: "other", label: "Other" },
+  { id: "all", label: "All visible" },
+  { id: "it_services", label: "Visible IT services" },
+  { id: "property_services", label: "Visible real estate / property" },
+  { id: "other", label: "Visible other" },
 ];
 const METRO_VENDOR_RESOURCES: MetroVendorResource[] = [
   {
@@ -207,7 +217,6 @@ export default function App() {
   const [contentItems, setContentItems] = useState<Content[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [intakeDashboard, setIntakeDashboard] = useState<IntakeDashboard | null>(null);
-  const [govContracts, setGovContracts] = useState<GovContractOpportunity[]>([]);
   const [contractRuns, setContractRuns] = useState<GovContractImportRun[]>([]);
   const [trackedSources, setTrackedSources] = useState<GovContractTrackedSource[]>([]);
   const [contractCapabilities, setContractCapabilities] = useState<GovContractCapabilities>({
@@ -220,6 +229,7 @@ export default function App() {
   const [agencyPreferences, setAgencyPreferences] = useState<GovContractAgencyPreference[]>([]);
   const [keywordRules, setKeywordRules] = useState<GovContractKeywordRule[]>([]);
   const [message, setMessage] = useState<string>("");
+  const [showFunnelShortcut, setShowFunnelShortcut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [refreshingIntakeDashboard, setRefreshingIntakeDashboard] = useState(false);
   const [refreshingContracts, setRefreshingContracts] = useState(false);
@@ -234,6 +244,9 @@ export default function App() {
   const [funnelingContractId, setFunnelingContractId] = useState<string | null>(null);
   const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
     useState<OpportunitiesAuthStatus>("unauthenticated");
+  const [opportunitySearch, setOpportunitySearch] =
+    useState<GovContractOpportunitySearchResponse>(EMPTY_OPPORTUNITY_SEARCH);
+  const [opportunityPage, setOpportunityPage] = useState(1);
   const [opportunityCategoryTab, setOpportunityCategoryTab] = useState<OpportunityCategoryTab>("all");
   const [selectedOpportunitySourceFilter, setSelectedOpportunitySourceFilter] = useState<string | null>(null);
   const [selectedOpportunitySourceContextFilter, setSelectedOpportunitySourceContextFilter] = useState<string | null>(null);
@@ -309,11 +322,34 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
+    setOpportunityPage(1);
+  }, [
+    matchesOnlyFilter,
+    minPriorityScoreFilter,
+    openOnlyFilter,
+    opportunityCategoryTab,
+    selectedOpportunitySourceFilter,
+    selectedOpportunitySourceContextFilter,
+    selectedOpportunityTagFilter,
+    opportunityKeywordFilter,
+  ]);
+
+  useEffect(() => {
     if ((view !== "opportunities" && view !== "sources") || opportunitiesAuthStatus !== "authenticated") {
       return;
     }
     void refreshContractsView();
-  }, [matchesOnlyFilter, minPriorityScoreFilter, openOnlyFilter]);
+  }, [
+    matchesOnlyFilter,
+    minPriorityScoreFilter,
+    openOnlyFilter,
+    opportunityCategoryTab,
+    selectedOpportunitySourceFilter,
+    selectedOpportunitySourceContextFilter,
+    selectedOpportunityTagFilter,
+    opportunityKeywordFilter,
+    opportunityPage,
+  ]);
 
   useEffect(() => {
     if (view !== "intake" || opportunitiesAuthStatus !== "authenticated") {
@@ -338,7 +374,7 @@ export default function App() {
       setAuthMessage("");
       setOpportunitiesAuthStatus("authenticated");
       if (view === "opportunities" || view === "sources") {
-        await refreshContractsView(capabilities);
+        await refreshContractsView();
       }
     } catch {
       clearAuthToken();
@@ -379,9 +415,8 @@ export default function App() {
     }
   }
 
-  async function refreshContractsView(capabilitiesOverride?: GovContractCapabilities) {
+  async function refreshContractsView() {
     try {
-      const capabilities = capabilitiesOverride ?? contractCapabilities;
       const currentUser = currentAdmin ?? (await getCurrentAdmin());
       setCurrentAdmin(currentUser);
       const [sources, runs, keywords, agencyPrefs, invites] =
@@ -392,17 +427,20 @@ export default function App() {
           listGovContractAgencyPreferences(),
           currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
         ]);
-      const sourceKeys = buildOpportunitySourceLoadList(sources, capabilities);
-      const contractLists = await Promise.all(
-        sourceKeys.map((sourceKey) =>
-          listGovContracts(OPPORTUNITY_LIST_LIMIT, sourceKey, {
-            matchesOnly: matchesOnlyFilter,
-            minPriorityScore: minPriorityScoreFilter,
-            openOnly: openOnlyFilter,
-          }),
-        ),
-      );
-      setGovContracts(dedupeGovContractsById(contractLists.flat()));
+      const searchResult = await searchGovContracts({
+        limit: OPPORTUNITY_PAGE_SIZE,
+        offset: (opportunityPage - 1) * OPPORTUNITY_PAGE_SIZE,
+        matchesOnly: matchesOnlyFilter,
+        minPriorityScore: minPriorityScoreFilter,
+        openOnly: openOnlyFilter,
+        source: selectedOpportunitySourceFilter,
+        sourceContext: selectedOpportunitySourceContextFilter,
+        category: opportunityCategoryTab,
+        tagKind: selectedOpportunityTagFilter?.kind ?? null,
+        tagValue: selectedOpportunityTagFilter?.value ?? null,
+        keyword: opportunityKeywordFilter,
+      });
+      setOpportunitySearch(searchResult);
       setContractRuns(runs);
       setTrackedSources(sources);
       setKeywordRules(keywords);
@@ -602,13 +640,15 @@ export default function App() {
   async function handleFunnelContract(contract: GovContractOpportunity) {
     setFunnelingContractId(contract.id);
     setMessage("");
+    setShowFunnelShortcut(false);
     try {
       const result = await funnelGovContract(contract.id);
-      await refreshContractsView();
+      await Promise.all([refreshContractsView(), refreshIntakeDashboard()]);
       const syncMessage =
         result.funnel_delivery_status === "delivered"
           ? `Contract sent to CRM lead funnel${result.funnel_record_id ? ` as ${result.funnel_record_id}` : ""}.`
-          : "Contract was recorded in the funnel attempt, but CRM delivery failed.";
+          : "Contract was recorded in the local funnel, but CRM delivery failed.";
+      setShowFunnelShortcut(true);
       setMessage(syncMessage);
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -631,7 +671,7 @@ export default function App() {
       setContractCapabilities(capabilities);
       setOpportunitiesAuthStatus("authenticated");
       if (view === "opportunities" || view === "sources") {
-        await refreshContractsView(capabilities);
+        await refreshContractsView();
       }
       setMessage("Signed in.");
     } catch (error) {
@@ -670,7 +710,7 @@ export default function App() {
       setInvitePassword("");
       setInvitePasswordConfirm("");
       if (view === "opportunities" || view === "sources") {
-        await refreshContractsView(capabilities);
+        await refreshContractsView();
       }
       setMessage("Invite accepted. Your account is ready.");
       navigateToView("profile");
@@ -690,7 +730,8 @@ export default function App() {
     setIntakeDashboard(null);
     setOpportunitiesAuthStatus("unauthenticated");
     setAuthMessage("");
-    setGovContracts([]);
+    setOpportunitySearch(EMPTY_OPPORTUNITY_SEARCH);
+    setOpportunityPage(1);
     setContractRuns([]);
     setTrackedSources([]);
     setAgencyPreferences([]);
@@ -951,6 +992,7 @@ export default function App() {
   const isAdminUser = currentAdmin?.is_admin ?? false;
 
   function handleOpportunityTagFilterClick(filter: OpportunityTagFilter) {
+    setOpportunityPage(1);
     setSelectedOpportunityTagFilter((current) =>
       current && current.kind === filter.kind && current.value === filter.value ? null : filter,
     );
@@ -1150,6 +1192,7 @@ export default function App() {
             }`}
             aria-pressed={selectedOpportunitySourceFilter === contract.source}
             onClick={() => {
+              setOpportunityPage(1);
               setSelectedOpportunitySourceFilter((current) =>
                 current === contract.source ? null : contract.source,
               );
@@ -1167,11 +1210,12 @@ export default function App() {
                   : ""
               }`}
               aria-pressed={selectedOpportunitySourceContextFilter === contract.source_context}
-              onClick={() =>
+              onClick={() => {
+                setOpportunityPage(1);
                 setSelectedOpportunitySourceContextFilter((current) =>
                   current === contract.source_context ? null : contract.source_context ?? null,
-                )
-              }
+                );
+              }}
             >
               {formatContractSourceContextLabel(contract.source_context_label, contract.source_context)}
             </button>
@@ -1952,6 +1996,7 @@ export default function App() {
                           {formatIntakeDeliveryStatus(contact.delivery_status)}
                         </span>
                         {contact.delivery_record_id ? <span>Record: {contact.delivery_record_id}</span> : null}
+                        {contact.delivery_error ? <span>{contact.delivery_error}</span> : null}
                       </td>
                       <td>{formatTimestamp(contact.created_at)}</td>
                     </tr>
@@ -2135,72 +2180,38 @@ export default function App() {
       });
     }
 
-    const allContracts = govContracts;
-    const tagFilteredContracts = filterContractsByOpportunityTag(allContracts, selectedOpportunityTagFilter);
-    const keywordFilteredContracts = filterContractsByOpportunityKeyword(tagFilteredContracts, opportunityKeywordFilter);
-    const sourceScopedContracts = filterContractsByOpportunitySource(
-      keywordFilteredContracts,
-      selectedOpportunitySourceFilter,
-    );
-    const sourceContextScopedContracts = filterContractsByOpportunitySourceContext(
-      sourceScopedContracts,
-      selectedOpportunitySourceContextFilter,
-    );
+    const allContracts = opportunitySearch.items;
     const categoryCounts = {
-      all: sourceContextScopedContracts.length,
-      it_services: filterContractsByOpportunityCategory(sourceContextScopedContracts, "it_services").length,
-      property_services: filterContractsByOpportunityCategory(sourceContextScopedContracts, "property_services").length,
-      other: filterContractsByOpportunityCategory(sourceContextScopedContracts, "other").length,
+      all: opportunitySearch.category_counts.all ?? 0,
+      it_services: opportunitySearch.category_counts.it_services ?? 0,
+      property_services: opportunitySearch.category_counts.property_services ?? 0,
+      other: opportunitySearch.category_counts.other ?? 0,
     };
-    const categoryScopedContracts = filterContractsByOpportunityCategory(
-      sourceContextScopedContracts,
-      opportunityCategoryTab,
-    );
-    const sourceCountBaseContracts = filterContractsByOpportunityCategory(
-      keywordFilteredContracts,
-      opportunityCategoryTab,
-    );
-    const sourceContextCountBaseContracts = filterContractsByOpportunityCategory(
-      sourceScopedContracts,
-      opportunityCategoryTab,
-    );
-    const uniqueSourceKeys = Array.from(new Set(allContracts.map((contract) => contract.source))).sort((left, right) =>
-      formatContractSource(left).localeCompare(formatContractSource(right)),
-    );
     const sourceFilters = [
       {
         key: "all",
         label: "All sources",
-        count: sourceCountBaseContracts.length,
+        count: opportunitySearch.total,
       },
-      ...uniqueSourceKeys.map((sourceKey) => ({
-        key: sourceKey,
-        label: formatContractSource(sourceKey),
-        count: sourceCountBaseContracts.filter((contract) => contract.source === sourceKey).length,
+      ...opportunitySearch.source_counts.map((sourceCount) => ({
+        key: sourceCount.key,
+        label: sourceCount.label,
+        count: sourceCount.count,
       })),
     ];
     const sourceContextFilters = [
       {
         key: "all",
         label: "All contexts",
-        count: sourceContextCountBaseContracts.length,
+        count: opportunitySearch.total,
       },
-      ...Array.from(
-        new Map(
-          sourceContextCountBaseContracts
-            .filter((contract) => contract.source_context && contract.source_context_label)
-            .map((contract) => [contract.source_context as string, contract.source_context_label as string]),
-        ),
-      )
-        .map(([key, label]) => ({
-          key,
-          label,
-          count: sourceContextCountBaseContracts.filter((contract) => contract.source_context === key).length,
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label)),
+      ...opportunitySearch.source_context_counts,
     ];
-    const displayedContracts = sortContractsForDisplay(categoryScopedContracts);
+    const displayedContracts = allContracts;
     const hasVisibleContracts = displayedContracts.length > 0;
+    const totalOpportunityPages = Math.max(1, Math.ceil(opportunitySearch.total / OPPORTUNITY_PAGE_SIZE));
+    const pageStart = opportunitySearch.total === 0 ? 0 : opportunitySearch.offset + 1;
+    const pageEnd = Math.min(opportunitySearch.offset + displayedContracts.length, opportunitySearch.total);
     const latestLoadedContractRun = contractRuns.find((run) => (run.total_records ?? 0) > 0) ?? contractRuns[0] ?? null;
     const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
     const trackedReviewSources = trackedSources.filter(
@@ -2323,12 +2334,22 @@ export default function App() {
               <input
                 type="checkbox"
                 checked={matchesOnlyFilter}
-                onChange={(event) => setMatchesOnlyFilter(event.target.checked)}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setMatchesOnlyFilter(event.target.checked);
+                }}
               />
-              <span>Matched only</span>
+              <span>Fit matches only</span>
             </label>
             <label className="toggle">
-              <input type="checkbox" checked={openOnlyFilter} onChange={(event) => setOpenOnlyFilter(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={openOnlyFilter}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setOpenOnlyFilter(event.target.checked);
+                }}
+              />
               <span>Open only</span>
             </label>
             <label className="priority-filter-field">
@@ -2338,14 +2359,20 @@ export default function App() {
                 min={0}
                 max={100}
                 value={minPriorityScoreFilter}
-                onChange={(event) => setMinPriorityScoreFilter(Number(event.target.value) || 0)}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setMinPriorityScoreFilter(Number(event.target.value) || 0);
+                }}
               />
             </label>
             <label className="keyword-search-field">
               <span>Keyword filter</span>
               <input
                 value={opportunityKeywordFilter}
-                onChange={(event) => setOpportunityKeywordFilter(event.target.value)}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter(event.target.value);
+                }}
                 placeholder="AI, roofing, HUD, cybersecurity"
               />
             </label>
@@ -2353,7 +2380,10 @@ export default function App() {
               <button
                 type="button"
                 className="secondary-link tag-filter-clear-button"
-                onClick={() => setOpportunityKeywordFilter("")}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter("");
+                }}
               >
                 Clear keyword
               </button>
@@ -2364,15 +2394,15 @@ export default function App() {
             <div className="metric-row">
               <div className="metric-pill">
                 <strong>{latestLoadedContractRun.total_records}</strong>
-                <span>loaded</span>
+                <span>rows scanned in latest source</span>
               </div>
               <div className="metric-pill">
                 <strong>{latestLoadedContractRun.matched_records}</strong>
-                <span>matched</span>
+                <span>fit matches in latest source</span>
               </div>
               <div className="metric-pill">
                 <strong>{latestLoadedContractRun.open_records}</strong>
-                <span>still open</span>
+                <span>open in latest source</span>
               </div>
               <div className="metric-pill">
                 <strong>{loadedSourceCount}</strong>
@@ -2399,6 +2429,10 @@ export default function App() {
             </p>
           )}
 
+          <p className="panel-subcopy opportunity-count-explainer">
+            "Fit matches" are records whose title, agency, codes, or scope text met the configured keyword score threshold. The tabs below count visible records after the current filters; they are not the same as the latest-source import totals above.
+          </p>
+
           <div className="opportunity-tab-row" role="tablist" aria-label="Opportunity category tabs">
             {OPPORTUNITY_CATEGORY_TABS.map((tab) => (
               <button
@@ -2407,7 +2441,10 @@ export default function App() {
                 role="tab"
                 aria-selected={opportunityCategoryTab === tab.id}
                 className={`opportunity-tab${opportunityCategoryTab === tab.id ? " opportunity-tab-active" : ""}`}
-                onClick={() => setOpportunityCategoryTab(tab.id)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityCategoryTab(tab.id);
+                }}
               >
                 <span>{tab.label}</span>
                 <strong>{categoryCounts[tab.id]}</strong>
@@ -2429,6 +2466,7 @@ export default function App() {
                   aria-selected={isActive}
                   className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
                   onClick={() => {
+                    setOpportunityPage(1);
                     setSelectedOpportunitySourceFilter(sourceFilter.key === "all" ? null : sourceFilter.key);
                     setSelectedOpportunitySourceContextFilter(null);
                   }}
@@ -2454,11 +2492,12 @@ export default function App() {
                     role="tab"
                     aria-selected={isActive}
                     className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
-                    onClick={() =>
+                    onClick={() => {
+                      setOpportunityPage(1);
                       setSelectedOpportunitySourceContextFilter(
                         contextFilter.key === "all" ? null : contextFilter.key,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <span>{contextFilter.label}</span>
                     <strong>{contextFilter.count}</strong>
@@ -2474,14 +2513,20 @@ export default function App() {
               <button
                 type="button"
                 className="tag filter-tag-button filter-tag-button-active"
-                onClick={() => setSelectedOpportunitySourceFilter(null)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceFilter(null);
+                }}
               >
                 {formatContractSource(selectedOpportunitySourceFilter)}
               </button>
               <button
                 type="button"
                 className="secondary-link tag-filter-clear-button"
-                onClick={() => setSelectedOpportunitySourceFilter(null)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceFilter(null);
+                }}
               >
                 Clear source
               </button>
@@ -2494,7 +2539,10 @@ export default function App() {
               <button
                 type="button"
                 className="tag filter-tag-button filter-tag-button-active"
-                onClick={() => setSelectedOpportunitySourceContextFilter(null)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceContextFilter(null);
+                }}
               >
                 {formatContractSourceContextLabel(
                   sourceContextFilters.find(
@@ -2506,7 +2554,10 @@ export default function App() {
               <button
                 type="button"
                 className="secondary-link tag-filter-clear-button"
-                onClick={() => setSelectedOpportunitySourceContextFilter(null)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceContextFilter(null);
+                }}
               >
                 Clear context
               </button>
@@ -2519,14 +2570,20 @@ export default function App() {
               <button
                 type="button"
                 className="tag filter-tag-button filter-tag-button-active"
-                onClick={() => setSelectedOpportunityTagFilter(null)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunityTagFilter(null);
+                }}
               >
                 {selectedOpportunityTagFilter.label}
               </button>
               <button
                 type="button"
                 className="secondary-link tag-filter-clear-button"
-                onClick={() => setSelectedOpportunityTagFilter(null)}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunityTagFilter(null);
+                }}
               >
                 Clear tag filter
               </button>
@@ -2539,14 +2596,20 @@ export default function App() {
               <button
                 type="button"
                 className="tag filter-tag-button filter-tag-button-active"
-                onClick={() => setOpportunityKeywordFilter("")}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter("");
+                }}
               >
                 {opportunityKeywordFilter.trim()}
               </button>
               <button
                 type="button"
                 className="secondary-link tag-filter-clear-button"
-                onClick={() => setOpportunityKeywordFilter("")}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter("");
+                }}
               >
                 Clear keyword
               </button>
@@ -2800,6 +2863,32 @@ export default function App() {
               All loaded sources are consolidated here. Use the source, category, tag, and keyword filters above to
               narrow the list without switching panels.
             </p>
+            <div className="pagination-row">
+              <span>
+                Showing {pageStart}-{pageEnd} of {opportunitySearch.total}
+              </span>
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="secondary-link"
+                  disabled={opportunityPage <= 1}
+                  onClick={() => setOpportunityPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {opportunityPage} of {totalOpportunityPages}
+                </span>
+                <button
+                  type="button"
+                  className="secondary-link"
+                  disabled={opportunityPage >= totalOpportunityPages}
+                  onClick={() => setOpportunityPage((current) => Math.min(totalOpportunityPages, current + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
             <div className="stack">{displayedContracts.map(renderContractCard)}</div>
           </section>
         )}
@@ -2924,7 +3013,23 @@ export default function App() {
         )}
       </section>
 
-      {message ? <div className="message-banner">{message}</div> : null}
+      {message ? (
+        <div className="message-banner">
+          <span>{message}</span>
+          {showFunnelShortcut && message.toLowerCase().includes("funnel") ? (
+            <button
+              type="button"
+              className="secondary-link message-action"
+              onClick={() => {
+                navigateToView("intake");
+                void refreshIntakeDashboard();
+              }}
+            >
+              View funnel
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {view === "dashboard"
         ? renderDashboard()

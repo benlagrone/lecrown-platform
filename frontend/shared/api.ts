@@ -10,6 +10,7 @@ import type {
   GovContractImportRun,
   GovContractKeywordRule,
   GovContractOpportunity,
+  GovContractOpportunitySearchResponse,
   GovContractTrackedSource,
   InvoiceDefaults,
   InvoiceDraftResult,
@@ -180,6 +181,45 @@ export async function listGovContracts(
     query.set("source", source);
   }
   return request<GovContractOpportunity[]>(`/contracts/list?${query.toString()}`);
+}
+
+export async function searchGovContracts(options: {
+  limit: number;
+  offset: number;
+  matchesOnly?: boolean;
+  openOnly?: boolean;
+  minPriorityScore?: number;
+  source?: string | null;
+  sourceContext?: string | null;
+  category?: string | null;
+  tagKind?: string | null;
+  tagValue?: string | null;
+  keyword?: string | null;
+}): Promise<GovContractOpportunitySearchResponse> {
+  const query = new URLSearchParams({
+    limit: String(options.limit),
+    offset: String(options.offset),
+    matches_only: String(options.matchesOnly ?? true),
+    open_only: String(options.openOnly ?? true),
+    min_priority_score: String(options.minPriorityScore ?? 0),
+  });
+  if (options.source) {
+    query.set("source", options.source);
+  }
+  if (options.sourceContext) {
+    query.set("source_context", options.sourceContext);
+  }
+  if (options.category && options.category !== "all") {
+    query.set("category", options.category);
+  }
+  if (options.tagKind && options.tagValue) {
+    query.set("tag_kind", options.tagKind);
+    query.set("tag_value", options.tagValue);
+  }
+  if (options.keyword?.trim()) {
+    query.set("keyword", options.keyword.trim());
+  }
+  return request<GovContractOpportunitySearchResponse>(`/contracts/search?${query.toString()}`);
 }
 
 export async function listGovContractRuns(limit = 5): Promise<GovContractImportRun[]> {

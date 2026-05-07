@@ -150,6 +150,19 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _delivery_error_message(submission: IntakeLeadSubmission) -> str | None:
+    response = submission.delivery_response
+    if not isinstance(response, dict):
+        return None
+    error = response.get("error")
+    if isinstance(error, str) and error.strip():
+        status_code = response.get("status_code")
+        if status_code:
+            return f"{error} ({status_code})"
+        return error
+    return None
+
+
 def get_dashboard(
     db: Session,
     *,
@@ -204,6 +217,7 @@ def get_dashboard(
                     "status": submission.status,
                     "delivery_status": submission.delivery_status,
                     "delivery_record_id": submission.delivery_record_id,
+                    "delivery_error": _delivery_error_message(submission),
                     "created_at": submission.created_at,
                 }
             )

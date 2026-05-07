@@ -106,6 +106,7 @@ export interface IntakeDashboardRecentContact {
   status: string;
   delivery_status: string;
   delivery_record_id?: string | null;
+  delivery_error?: string | null;
   created_at: string;
 }
 
@@ -205,6 +206,22 @@ export interface GovContractOpportunity {
   last_seen_at: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface GovContractFacetCount {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface GovContractOpportunitySearchResponse {
+  items: GovContractOpportunity[];
+  total: number;
+  limit: number;
+  offset: number;
+  category_counts: Record<string, number>;
+  source_counts: GovContractFacetCount[];
+  source_context_counts: GovContractFacetCount[];
 }
 
 export interface GovContractImportRun {

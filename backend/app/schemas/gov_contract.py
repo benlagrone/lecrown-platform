@@ -129,6 +129,22 @@ class GovContractOpportunityRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class GovContractFacetCount(BaseModel):
+    key: str
+    label: str
+    count: int
+
+
+class GovContractOpportunitySearchRead(BaseModel):
+    items: list[GovContractOpportunityRead] = Field(default_factory=list)
+    total: int
+    limit: int
+    offset: int
+    category_counts: dict[str, int] = Field(default_factory=dict)
+    source_counts: list[GovContractFacetCount] = Field(default_factory=list)
+    source_context_counts: list[GovContractFacetCount] = Field(default_factory=list)
+
+
 class GovContractImportRunRead(BaseModel):
     id: str
     source: str

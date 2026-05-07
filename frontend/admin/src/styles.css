@@ -175,10 +175,18 @@ textarea {
 }
 
 .message-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1rem;
   padding: 0.9rem 1rem;
   border-radius: 18px;
   color: var(--success);
+}
+
+.message-action {
+  flex: 0 0 auto;
 }
 
 .auth-banner {
@@ -480,6 +488,16 @@ textarea {
 
 .opportunity-tab-copy {
   margin-top: 0.15rem;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  flex-wrap: wrap;
 }
 
 .source-filter-row {

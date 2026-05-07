@@ -19,6 +19,7 @@ from app.schemas.gov_contract import (
     GovContractKeywordRuleRead,
     GovContractKeywordRuleWrite,
     GovContractOpportunityRead,
+    GovContractOpportunitySearchRead,
     GovContractRefreshRequest,
     GovContractTrackedSourceRead,
 )
@@ -230,7 +231,7 @@ def refresh_tracked_sources(
 
 @router.get("/list", response_model=list[GovContractOpportunityRead])
 def list_contracts(
-    limit: int = Query(default=25, ge=1, le=200),
+    limit: int = Query(default=25, ge=1, le=5000),
     matches_only: bool = Query(default=True),
     open_only: bool = Query(default=True),
     min_priority_score: int = Query(default=0, ge=0, le=100),
@@ -247,6 +248,38 @@ def list_contracts(
             min_priority_score=min_priority_score,
             source=source,
         )
+    )
+
+
+@router.get("/search", response_model=GovContractOpportunitySearchRead)
+def search_contracts(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    matches_only: bool = Query(default=True),
+    open_only: bool = Query(default=True),
+    min_priority_score: int = Query(default=0, ge=0, le=100),
+    source: Optional[str] = Query(default=None),
+    source_context: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    tag_kind: Optional[str] = Query(default=None),
+    tag_value: Optional[str] = Query(default=None),
+    keyword: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    _: object = Depends(get_current_user),
+) -> GovContractOpportunitySearchRead:
+    return gov_contract_service.search_contracts(
+        db,
+        limit=limit,
+        offset=offset,
+        matches_only=matches_only,
+        open_only=open_only,
+        min_priority_score=min_priority_score,
+        source=source,
+        source_context=source_context,
+        category=category,
+        tag_kind=tag_kind,
+        tag_value=tag_value,
+        keyword=keyword,
     )
 
 
