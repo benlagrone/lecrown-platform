@@ -89,10 +89,10 @@ type MetroVendorResource = {
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
 const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
-  { id: "all", label: "All visible" },
-  { id: "it_services", label: "Visible IT services" },
-  { id: "property_services", label: "Visible real estate / property" },
-  { id: "other", label: "Visible other" },
+  { id: "all", label: "All opportunities" },
+  { id: "it_services", label: "IT services" },
+  { id: "property_services", label: "Real estate / property" },
+  { id: "other", label: "Other" },
 ];
 const METRO_VENDOR_RESOURCES: MetroVendorResource[] = [
   {
