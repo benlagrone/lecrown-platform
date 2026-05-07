@@ -391,6 +391,65 @@ jobs:
 
           cd "${DEPLOY_ROOT}"
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          platform_env = Path("ops/platform/.env")
+          crm_env = Path("ops/espocrm/.env")
+
+          def parse_env(path: Path) -> dict[str, str]:
+              values: dict[str, str] = {}
+              if not path.exists():
+                  return values
+              for raw_line in path.read_text().splitlines():
+                  line = raw_line.strip()
+                  if not line or line.startswith("#") or "=" not in line:
+                      continue
+                  key, value = line.split("=", 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+              return values
+
+          def upsert_env(path: Path, updates: dict[str, str]) -> None:
+              if not updates:
+                  return
+              lines = path.read_text().splitlines() if path.exists() else []
+              remaining = dict(updates)
+              next_lines: list[str] = []
+              for line in lines:
+                  if "=" not in line or line.lstrip().startswith("#"):
+                      next_lines.append(line)
+                      continue
+                  key = line.split("=", 1)[0].strip()
+                  if key in remaining:
+                      next_lines.append(f"{key}={remaining.pop(key)}")
+                  else:
+                      next_lines.append(line)
+              for key, value in remaining.items():
+                  next_lines.append(f"{key}={value}")
+              path.write_text("\n".join(next_lines) + "\n")
+
+          platform_values = parse_env(platform_env)
+          crm_values = parse_env(crm_env)
+          platform_has_credentials = bool(
+              platform_values.get("ESPOCRM_API_KEY")
+              or (platform_values.get("ESPOCRM_USERNAME") and platform_values.get("ESPOCRM_PASSWORD"))
+              or (platform_values.get("ESPOCRM_ADMIN_USERNAME") and platform_values.get("ESPOCRM_ADMIN_PASSWORD"))
+          )
+
+          updates: dict[str, str] = {}
+          if not platform_values.get("ESPOCRM_BASE_URL"):
+              updates["ESPOCRM_BASE_URL"] = "https://crm.lecrowndevelopment.com"
+          if not platform_has_credentials and crm_values.get("ESPOCRM_ADMIN_USERNAME") and crm_values.get("ESPOCRM_ADMIN_PASSWORD"):
+              updates["ESPOCRM_ADMIN_USERNAME"] = crm_values["ESPOCRM_ADMIN_USERNAME"]
+              updates["ESPOCRM_ADMIN_PASSWORD"] = crm_values["ESPOCRM_ADMIN_PASSWORD"]
+
+          upsert_env(platform_env, updates)
+          if updates:
+              print("Updated platform CRM env keys: " + ", ".join(sorted(updates)))
+          else:
+              print("Platform CRM env unchanged.")
+          PY
+
           COMPOSE=(docker compose -f ops/platform/docker-compose.prod.yml --env-file ops/platform/.env)
           LECROWNPLATFORM_API_IMAGE="ghcr.io/benlagrone/lecrown-platform-api:sha-${SOURCE_SHA}" \
           LECROWNPLATFORM_ADMIN_IMAGE="ghcr.io/benlagrone/lecrown-platform-admin:sha-${SOURCE_SHA}" \

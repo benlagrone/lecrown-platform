@@ -64,8 +64,8 @@ class Settings:
 
     espocrm_base_url: str = os.getenv("ESPOCRM_BASE_URL", "")
     espocrm_api_key: str = os.getenv("ESPOCRM_API_KEY", "")
-    espocrm_username: str = os.getenv("ESPOCRM_USERNAME", "")
-    espocrm_password: str = os.getenv("ESPOCRM_PASSWORD", "")
+    espocrm_username: str = os.getenv("ESPOCRM_USERNAME", os.getenv("ESPOCRM_ADMIN_USERNAME", ""))
+    espocrm_password: str = os.getenv("ESPOCRM_PASSWORD", os.getenv("ESPOCRM_ADMIN_PASSWORD", ""))
     espocrm_timeout_seconds: int = int(os.getenv("ESPOCRM_TIMEOUT_SECONDS", "15"))
 
     gov_contract_service_url: str = os.getenv(
