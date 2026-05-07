@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -56,3 +56,15 @@ def list_intake_leads(
     _: dict = Depends(get_current_admin),
 ) -> list[IntakeLeadRead]:
     return intake_service.list_submissions(db, source_site=source_site, limit=limit)
+
+
+@router.post("/{submission_id}/retry", response_model=IntakeLeadRead)
+def retry_intake_lead(
+    submission_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> IntakeLeadRead:
+    try:
+        return intake_service.retry_lead_submission(db, submission_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

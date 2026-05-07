@@ -35,6 +35,7 @@ import {
   refreshGrantsContracts,
   refreshSbaSubnetContracts,
   refreshTrackedGovSources,
+  retryIntakeLead,
   revokeUserInvite,
   searchGovContracts,
   storeAuthToken,
@@ -242,6 +243,7 @@ export default function App() {
   const [downloadingFederalExport, setDownloadingFederalExport] = useState(false);
   const [downloadingGrantsExport, setDownloadingGrantsExport] = useState(false);
   const [funnelingContractId, setFunnelingContractId] = useState<string | null>(null);
+  const [retryingSubmissionId, setRetryingSubmissionId] = useState<string | null>(null);
   const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
     useState<OpportunitiesAuthStatus>("unauthenticated");
   const [opportunitySearch, setOpportunitySearch] =
@@ -654,6 +656,21 @@ export default function App() {
       setMessage(getErrorMessage(error));
     } finally {
       setFunnelingContractId(null);
+    }
+  }
+
+  async function handleRetryIntakeSubmission(submissionId: string) {
+    setRetryingSubmissionId(submissionId);
+    setMessage("");
+    setShowFunnelShortcut(false);
+    try {
+      await retryIntakeLead(submissionId);
+      await Promise.all([refreshIntakeDashboard(), refreshContractsView()]);
+      setMessage("CRM submission retry completed.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRetryingSubmissionId(null);
     }
   }
 
@@ -1943,7 +1960,14 @@ export default function App() {
                       <span>CRM failed: {source.failed_submissions}</span>
                       <span>Latest contact: {source.last_contact_name ?? "Unknown contact"}</span>
                       <span>Last submission: {formatTimestamp(source.last_submission_at)}</span>
-                      {source.last_page_url ? <span>Last page: {source.last_page_url}</span> : null}
+                      {source.last_page_url ? (
+                        <span>
+                          Last page:{" "}
+                          <a className="secondary-link" href={source.last_page_url} target="_blank" rel="noreferrer">
+                            {source.last_page_url}
+                          </a>
+                        </span>
+                      ) : null}
                     </div>
                   </article>
                 ))}
@@ -1984,7 +2008,11 @@ export default function App() {
                       </td>
                       <td>
                         <strong>{contact.source_site}</strong>
-                        {contact.page_url ? <span>{contact.page_url}</span> : null}
+                        {contact.page_url ? (
+                          <a className="secondary-link" href={contact.page_url} target="_blank" rel="noreferrer">
+                            {contact.page_url}
+                          </a>
+                        ) : null}
                         {contact.campaign ? <span>Campaign: {contact.campaign}</span> : null}
                       </td>
                       <td>
@@ -1997,6 +2025,16 @@ export default function App() {
                         </span>
                         {contact.delivery_record_id ? <span>Record: {contact.delivery_record_id}</span> : null}
                         {contact.delivery_error ? <span>{contact.delivery_error}</span> : null}
+                        {contact.delivery_status === "failed" ? (
+                          <button
+                            type="button"
+                            className="secondary-link retry-inline-button"
+                            onClick={() => void handleRetryIntakeSubmission(contact.id)}
+                            disabled={retryingSubmissionId === contact.id}
+                          >
+                            {retryingSubmissionId === contact.id ? "Retrying..." : "Retry CRM"}
+                          </button>
+                        ) : null}
                       </td>
                       <td>{formatTimestamp(contact.created_at)}</td>
                     </tr>

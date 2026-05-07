@@ -166,6 +166,12 @@ export async function getIntakeDashboard(sourceLimit = 12, recentLimit = 12): Pr
   return request<IntakeDashboard>(`/intake/dashboard?${query.toString()}`);
 }
 
+export async function retryIntakeLead(submissionId: string): Promise<void> {
+  await request<Record<string, unknown>>(`/intake/${submissionId}/retry`, {
+    method: "POST",
+  });
+}
+
 export async function listGovContracts(
   limit = 12,
   source?: string,

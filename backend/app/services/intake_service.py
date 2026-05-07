@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.intake import IntakeLeadSubmission
+from app.models.gov_contract import GovContractOpportunity
 from app.schemas.intake import IntakeLeadCreate
 from app.services import espocrm_service
 from app.utils.helpers import new_uuid
@@ -142,6 +143,69 @@ def create_lead_submission(db: Session, payload: IntakeLeadCreate) -> IntakeLead
     db.commit()
     db.refresh(submission)
     return submission
+
+
+def _deliver_submission_to_crm(db: Session, submission: IntakeLeadSubmission) -> IntakeLeadSubmission:
+    delivery_payload = submission.delivery_payload or {}
+    submission.status = "received"
+    submission.delivery_status = "pending"
+    submission.delivery_record_id = None
+    submission.delivery_response = None
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+
+    try:
+        delivery_response = espocrm_service.create_lead(delivery_payload)
+        submission.status = "processed"
+        submission.delivery_status = "delivered"
+        submission.delivery_record_id = delivery_response.get("id")
+        submission.delivery_response = delivery_response
+    except espocrm_service.EspoCRMError as exc:
+        submission.status = "delivery_failed"
+        submission.delivery_status = "failed"
+        submission.delivery_response = {
+            "error": str(exc),
+            "status_code": exc.status_code,
+            "body": exc.body,
+        }
+
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    _sync_contract_funnel_status(db, submission)
+    return submission
+
+
+def _sync_contract_funnel_status(db: Session, submission: IntakeLeadSubmission) -> None:
+    raw_payload = submission.raw_payload if isinstance(submission.raw_payload, dict) else {}
+    metadata = raw_payload.get("metadata") if isinstance(raw_payload.get("metadata"), dict) else {}
+    contract_id = metadata.get("contract_id")
+    if not contract_id:
+        return
+
+    contract = db.get(GovContractOpportunity, contract_id)
+    if contract is None:
+        return
+
+    contract.funnel_status = "funneled" if submission.delivery_status == "delivered" else "failed"
+    contract.funnel_submission_id = submission.id
+    contract.funnel_delivery_target = submission.delivery_target
+    contract.funnel_delivery_status = submission.delivery_status
+    contract.funnel_record_id = submission.delivery_record_id
+    contract.funnel_payload = submission.delivery_payload
+    contract.funnel_response = submission.delivery_response
+    db.add(contract)
+    db.commit()
+
+
+def retry_lead_submission(db: Session, submission_id: str) -> IntakeLeadSubmission:
+    submission = db.get(IntakeLeadSubmission, submission_id)
+    if submission is None:
+        raise ValueError("Intake submission not found")
+    if submission.delivery_status == "delivered":
+        return submission
+    return _deliver_submission_to_crm(db, submission)
 
 
 def _as_utc(value: datetime) -> datetime:
