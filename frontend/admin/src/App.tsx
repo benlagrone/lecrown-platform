@@ -2229,7 +2229,7 @@ export default function App() {
       {
         key: "all",
         label: "All sources",
-        count: opportunitySearch.total,
+        count: categoryCounts.all,
       },
       ...opportunitySearch.source_counts.map((sourceCount) => ({
         key: sourceCount.key,

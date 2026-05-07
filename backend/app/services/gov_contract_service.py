@@ -3124,7 +3124,6 @@ def search_contracts(
     source_base = _apply_serialized_search_filters(
         candidates,
         source_context=source_context,
-        category=category,
         tag_kind=tag_kind,
         tag_value=tag_value,
         keyword=keyword,
