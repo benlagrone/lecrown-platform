@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.core.database import init_db
 from app.routes import auth, billing, content, distribution, gov_contract, intake, inquiry, invoice, linkedin, youtube
+from app.services import espocrm_service
 
 settings = get_settings()
 
@@ -24,8 +25,15 @@ def on_startup() -> None:
 
 
 @app.get("/healthz")
-def healthcheck() -> dict[str, str]:
-    return {"status": "ok"}
+def healthcheck() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "checks": {
+            "espocrm_base_url": espocrm_service.has_base_url(),
+            "espocrm_credentials": espocrm_service.has_credentials(),
+            "espocrm_configured": espocrm_service.is_configured(),
+        },
+    }
 
 
 app.include_router(content.router, prefix="/content", tags=["content"])
