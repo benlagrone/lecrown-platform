@@ -2222,28 +2222,99 @@ def fetch_gmail_rfq_feed(*, limit: int | None = None) -> dict[str, object]:
     if not settings.gmail_rfq_feed_enabled:
         raise GovContractSourceError("Gmail RFQ feed is not configured for this environment")
 
-    params = {
+    requested_limit = limit or settings.gmail_rfq_feed_limit
+    items: list[object] = []
+    page_token: str | None = None
+    page_count = 0
+    source_count: int | None = None
+
+    while len(items) < requested_limit:
+        params = {
+            "label": settings.gmail_rfq_feed_label,
+            "limit": requested_limit - len(items),
+        }
+        if page_token:
+            params["page_token"] = page_token
+
+        try:
+            response = requests.get(
+                settings.gmail_rfq_feed_url,
+                params=params,
+                timeout=settings.gmail_rfq_feed_timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            raise GovContractSourceError(f"Failed to fetch Gmail RFQ feed: {exc}") from exc
+        except ValueError as exc:
+            raise GovContractSourceError("Gmail RFQ feed returned unreadable JSON") from exc
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise GovContractSourceError("Gmail RFQ feed did not include an items list")
+
+        page_items = payload["items"]
+        items.extend(page_items)
+        page_count += 1
+        source_count = _coerce_optional_int(payload.get("count") or payload.get("total")) or source_count or len(items)
+
+        raw_next_token = (
+            payload.get("next_page_token")
+            or payload.get("nextPageToken")
+            or payload.get("next")
+            or payload.get("cursor")
+        )
+        next_token = _clean(raw_next_token)
+        if not next_token or next_token == page_token or not page_items:
+            break
+        page_token = next_token
+
+    return {
+        "items": items[:requested_limit],
+        "count": source_count or len(items),
+        "fetched_count": min(len(items), requested_limit),
+        "page_count": page_count,
         "label": settings.gmail_rfq_feed_label,
-        "limit": limit or settings.gmail_rfq_feed_limit,
     }
 
+
+def _gmail_item_source_key(item: dict[str, object]) -> str:
+    source_key = _clean(
+        item.get("source_key")
+        or item.get("message_id")
+        or item.get("gmail_id")
+        or item.get("id")
+        or item.get("thread_id")
+    )
+    if source_key:
+        return source_key
+
+    fallback_parts = [
+        _clean(item.get("title") or item.get("subject")),
+        _clean(item.get("message_at") or item.get("date")),
+        _clean(item.get("from") or item.get("sender") or item.get("agency_name")),
+    ]
+    return "gmail_rfqs:" + ":".join(part for part in fallback_parts if part)
+
+
+def _gmail_item_source_url(item: dict[str, object], source_key: str) -> str:
+    source_url = _clean(item.get("source_url") or item.get("gmail_url") or item.get("url"))
+    if source_url:
+        return source_url
+
+    gmail_id = _clean(item.get("gmail_id") or item.get("id") or item.get("thread_id"))
+    if gmail_id:
+        return f"https://mail.google.com/mail/u/0/#all/{quote(gmail_id)}"
+
+    return f"https://mail.google.com/mail/u/0/#search/{quote(source_key)}"
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
     try:
-        response = requests.get(
-            settings.gmail_rfq_feed_url,
-            params=params,
-            timeout=settings.gmail_rfq_feed_timeout_seconds,
-        )
-        response.raise_for_status()
-        payload = response.json()
-    except requests.RequestException as exc:
-        raise GovContractSourceError(f"Failed to fetch Gmail RFQ feed: {exc}") from exc
-    except ValueError as exc:
-        raise GovContractSourceError("Gmail RFQ feed returned unreadable JSON") from exc
-
-    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
-        raise GovContractSourceError("Gmail RFQ feed did not include an items list")
-
-    return payload
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _records_from_gmail_feed(feed_payload: dict[str, object]) -> list[GovContractSourceRecord]:
@@ -2254,8 +2325,8 @@ def _records_from_gmail_feed(feed_payload: dict[str, object]) -> list[GovContrac
             continue
 
         title = _clean(item.get("title") or item.get("subject"))
-        source_key = _clean(item.get("source_key"))
-        source_url = _clean(item.get("source_url") or item.get("gmail_url"))
+        source_key = _gmail_item_source_key(item)
+        source_url = _gmail_item_source_url(item, source_key)
         if not title or not source_key or not source_url:
             continue
 

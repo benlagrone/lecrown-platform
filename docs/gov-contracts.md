@@ -11,7 +11,7 @@ The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federa
 - public grants search page: `https://simpler.grants.gov/search`
 - Grants.gov CSV export used by the page download button: `https://simpler.grants.gov/api/search/export`
 - SBA SUBNet opportunities page: `https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting/subcontracting-opportunities`
-- Gmail RFQ label feed: `GMAIL_RFQ_FEED_URL` with label `RFQs/New` by default
+- Gmail RFQ label feed: `GMAIL_RFQ_FEED_URL` with label `RFQs` by default
 - City of Austin solicitations: `https://financeonline.austintexas.gov/afo/account_services/solicitation/solicitations.cfm`
 - City of San Antonio bidding and contract opportunities: `https://webapp1.sanantonio.gov/BidContractOpps/Default.aspx`
 - Travis County BidNet portal: `https://www.bidnetdirect.com/texas/traviscounty`
@@ -87,7 +87,7 @@ Optional exact dates:
 
 `POST /contracts/refresh-sba-subnet` refreshes the current SBA SUBNet paginated listing. It does not take a window payload because the upstream source is a live subcontracting board rather than a date-bounded posting feed.
 
-`POST /contracts/refresh-gmail` checks the Gmail RFQ source every time it is requested. If `GMAIL_RFQ_FEED_URL` is configured, it imports RFQ messages from the configured label. If the feed is missing, it records a `manual_review` source run instead of hiding Gmail RFQs from the source list.
+`POST /contracts/refresh-gmail` checks the Gmail RFQ source every time it is requested. If `GMAIL_RFQ_FEED_URL` is configured, it imports RFQ messages from the configured `RFQs` label by default, follows feed pagination tokens when present, and requests up to 5,000 messages so the full RFQ mailbox is covered. If the feed is missing, it records a `manual_review` source run instead of hiding Gmail RFQs from the source list.
 
 `POST /contracts/refresh-tracked-sources` refreshes the municipal/county/regional tracked-source batch. Parser-backed sources import opportunities. Harder portals still generate a run record with statuses like `manual_review`, `cataloged`, or `blocked` so the admin UI shows coverage gaps instead of silently dropping them.
 

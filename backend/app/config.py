@@ -121,9 +121,9 @@ class Settings:
         "GMAIL_RFQ_FEED_URL",
         "",
     )
-    gmail_rfq_feed_label: str = os.getenv("GMAIL_RFQ_FEED_LABEL", "RFQs/New")
+    gmail_rfq_feed_label: str = os.getenv("GMAIL_RFQ_FEED_LABEL", "RFQs")
     gmail_rfq_feed_timeout_seconds: int = int(os.getenv("GMAIL_RFQ_FEED_TIMEOUT_SECONDS", "20"))
-    gmail_rfq_feed_limit: int = int(os.getenv("GMAIL_RFQ_FEED_LIMIT", "50"))
+    gmail_rfq_feed_limit: int = int(os.getenv("GMAIL_RFQ_FEED_LIMIT", "5000"))
     gmail_rfq_match_score_floor: int = int(os.getenv("GMAIL_RFQ_MATCH_SCORE_FLOOR", "6"))
 
     cors_origins: list[str] = [

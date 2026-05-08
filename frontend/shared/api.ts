@@ -326,7 +326,7 @@ export async function refreshSbaSubnetContracts(): Promise<GovContractImportRun>
   });
 }
 
-export async function refreshGmailRfqs(limit = 50): Promise<GovContractImportRun> {
+export async function refreshGmailRfqs(limit = 5000): Promise<GovContractImportRun> {
   const query = new URLSearchParams({ limit: String(limit) });
   return request<GovContractImportRun>(`/contracts/refresh-gmail?${query.toString()}`, {
     method: "POST",

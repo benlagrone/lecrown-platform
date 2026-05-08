@@ -2371,7 +2371,7 @@ export default function App() {
 
           {!contractCapabilities.gmail_rfq_sync_enabled ? (
             <p className="panel-subcopy">
-              Gmail RFQ sync will report a source status, but email opportunities require GMAIL_RFQ_FEED_URL before label:{contractCapabilities.gmail_rfq_feed_label ?? "RFQs/New"} can be imported.
+              Gmail RFQ sync will report a source status, but email opportunities require GMAIL_RFQ_FEED_URL before label:{contractCapabilities.gmail_rfq_feed_label ?? "RFQs"} can be imported.
             </p>
           ) : null}
 

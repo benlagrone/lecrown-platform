@@ -211,7 +211,7 @@ def refresh_sba_subnet_contracts(
 
 @router.post("/refresh-gmail", response_model=GovContractImportRunRead)
 def refresh_gmail_contracts(
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=5000, ge=1, le=10000),
     db: Session = Depends(get_db),
     _: object = Depends(get_current_admin),
 ) -> GovContractImportRunRead:

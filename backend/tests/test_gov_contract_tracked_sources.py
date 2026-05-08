@@ -20,6 +20,13 @@ def mock_html_response(html: str, *, status_code: int = 200) -> Mock:
     return response
 
 
+def mock_json_response(payload: dict) -> Mock:
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = payload
+    return response
+
+
 class GovContractTrackedSourcesTest(unittest.TestCase):
     def setUp(self) -> None:
         fd, self.db_path = tempfile.mkstemp(prefix="gov-contract-tracked-", suffix=".db")
@@ -254,6 +261,60 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
         self.assertEqual("manual_review", gmail_source["latest_run_status"])
         self.assertEqual("opportunities", gmail_source["load_scope"])
         self.assertIn("Gmail RFQ feed is not configured", run.error_message)
+
+    def test_gmail_rfq_feed_uses_rfq_label_and_pagination(self) -> None:
+        original_feed_url = gov_contract_service.settings.gmail_rfq_feed_url
+        original_label = gov_contract_service.settings.gmail_rfq_feed_label
+        gov_contract_service.settings.gmail_rfq_feed_url = "https://rfq-feed.test/messages"
+        gov_contract_service.settings.gmail_rfq_feed_label = "RFQs"
+        try:
+            pages = [
+                mock_json_response(
+                    {
+                        "count": 3,
+                        "items": [
+                            {
+                                "subject": "Your Response Due 5/12, 5:00 PM CDT for Safe Schools",
+                                "message_id": "message-1",
+                            }
+                        ],
+                        "nextPageToken": "page-2",
+                    }
+                ),
+                mock_json_response(
+                    {
+                        "count": 3,
+                        "items": [
+                            {
+                                "subject": "New Public Notice for Harris County",
+                                "message_id": "message-2",
+                            },
+                            {
+                                "subject": "BidNet Direct solicitation update",
+                                "message_id": "message-3",
+                            },
+                        ],
+                    }
+                ),
+            ]
+
+            with patch("app.services.gov_contract_service.requests.get", side_effect=pages) as mock_get:
+                payload = gov_contract_service.fetch_gmail_rfq_feed(limit=5000)
+                records = gov_contract_service._records_from_gmail_feed(payload)
+        finally:
+            gov_contract_service.settings.gmail_rfq_feed_url = original_feed_url
+            gov_contract_service.settings.gmail_rfq_feed_label = original_label
+
+        self.assertEqual(3, len(payload["items"]))
+        self.assertEqual(3, payload["count"])
+        self.assertEqual(2, payload["page_count"])
+        self.assertEqual(3, len(records))
+        first_params = mock_get.call_args_list[0].kwargs["params"]
+        second_params = mock_get.call_args_list[1].kwargs["params"]
+        self.assertEqual("RFQs", first_params["label"])
+        self.assertEqual(5000, first_params["limit"])
+        self.assertEqual("page-2", second_params["page_token"])
+        self.assertEqual("https://mail.google.com/mail/u/0/#search/message-1", records[0].source_url)
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--gmail-limit",
         type=int,
-        default=50,
+        default=5000,
         help="How many Gmail RFQs to pull unless --skip-gmail is set.",
     )
     parser.add_argument("--limit", type=int, default=10, help="How many top matches to print.")
