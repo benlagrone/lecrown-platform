@@ -38,6 +38,8 @@ Local URLs:
 
 Then sign in with the admin credentials from `ops/espocrm/.env`.
 
+For production, use the same file on the deploy host. The admin username is `ESPOCRM_ADMIN_USERNAME` and the password is `ESPOCRM_ADMIN_PASSWORD`. Do not commit that file or paste the password into tickets/chat.
+
 ## Command Targets
 
 From the repo root:
