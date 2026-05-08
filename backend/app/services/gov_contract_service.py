@@ -364,6 +364,18 @@ CORE_PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, .
         automation_detail="Walks the public SBA SUBNet listing pages, parses subcontract rows, and stores scored opportunities.",
         notes="Subcontracting opportunity board.",
     ),
+    GovContractTrackedSourceDefinition(
+        source=GMAIL_RFQ_SOURCE_NAME,
+        label="Gmail RFQs",
+        listing_url="https://mail.google.com/mail/u/0/#search/label%3Arfqs",
+        platform_name="Gmail RFQ label",
+        jurisdiction_type="email",
+        extraction_mode="gmail_feed",
+        load_scope="opportunities",
+        automation_summary="RFQ email feed sync",
+        automation_detail="Pulls RFQ messages from the configured Gmail RFQ feed/label and stores scored opportunities.",
+        notes="Uses the configured Gmail RFQ feed. A missing feed is recorded as a source status instead of hiding email RFQs.",
+    ),
 )
 
 TRACKED_PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, ...] = (
@@ -2946,6 +2958,24 @@ def refresh_gmail_contracts(db: Session, *, limit: int | None = None) -> GovCont
         raise
 
 
+def refresh_gmail_rfq_source_status(db: Session, *, limit: int | None = None) -> GovContractImportRun:
+    if settings.gmail_rfq_feed_enabled:
+        return refresh_gmail_contracts(db, limit=limit)
+
+    run = _create_single_day_import_run(db, GMAIL_RFQ_SOURCE_NAME)
+    return _complete_non_loading_run(
+        db,
+        run,
+        status="manual_review",
+        detail="Gmail RFQ feed is not configured for this environment. Configure GMAIL_RFQ_FEED_URL so label:rfqs email opportunities can be imported.",
+        request_payload={
+            "label": settings.gmail_rfq_feed_label,
+            "feed_url_configured": False,
+            "limit": limit or settings.gmail_rfq_feed_limit,
+        },
+    )
+
+
 def list_contracts(
     db: Session,
     *,
@@ -3517,8 +3547,7 @@ def refresh_all_contract_sources(
     run_source(FEDERAL_FORECAST_SOURCE_NAME, lambda: refresh_federal_contracts(db))
     run_source(GRANTS_GOV_SOURCE_NAME, lambda: refresh_grants_contracts(db))
     run_source(SBA_SUBNET_SOURCE_NAME, lambda: refresh_sba_subnet_contracts(db))
-    if settings.gmail_rfq_feed_enabled:
-        run_source(GMAIL_RFQ_SOURCE_NAME, lambda: refresh_gmail_contracts(db))
+    run_source(GMAIL_RFQ_SOURCE_NAME, lambda: refresh_gmail_rfq_source_status(db))
     run_source("tracked_sources", lambda: refresh_tracked_procurement_sources(db))
 
     return runs

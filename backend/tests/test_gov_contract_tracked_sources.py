@@ -237,6 +237,24 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
             self.assertEqual(1, austin_source["stored_opportunity_count"])
             self.assertEqual("Weekly HTML card parser", austin_source["automation_summary"])
 
+    def test_gmail_rfqs_are_tracked_even_when_feed_is_not_configured(self) -> None:
+        with self.Session() as db:
+            original_feed_url = gov_contract_service.settings.gmail_rfq_feed_url
+            gov_contract_service.settings.gmail_rfq_feed_url = ""
+            try:
+                run = gov_contract_service.refresh_gmail_rfq_source_status(db)
+                tracked_sources = gov_contract_service.list_tracked_sources(db)
+            finally:
+                gov_contract_service.settings.gmail_rfq_feed_url = original_feed_url
+
+        gmail_source = next(
+            source for source in tracked_sources if source["source"] == gov_contract_service.GMAIL_RFQ_SOURCE_NAME
+        )
+        self.assertEqual("manual_review", run.status)
+        self.assertEqual("manual_review", gmail_source["latest_run_status"])
+        self.assertEqual("opportunities", gmail_source["load_scope"])
+        self.assertIn("Gmail RFQ feed is not configured", run.error_message)
+
 
 if __name__ == "__main__":
     unittest.main()

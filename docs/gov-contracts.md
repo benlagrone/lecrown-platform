@@ -1,6 +1,6 @@
 # Government Contracts
 
-The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federal forecast opportunities from `acquisitiongateway.gov`, grant opportunities from `simpler.grants.gov`, SBA SUBNet subcontracting opportunities from `sba.gov`, and a first wave of municipal/county/regional Texas procurement sources, rank them against LeCrown-relevant work, and surface the strongest matches in the admin app.
+The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federal forecast opportunities from `acquisitiongateway.gov`, grant opportunities from `simpler.grants.gov`, SBA SUBNet subcontracting opportunities from `sba.gov`, Gmail RFQs from the configured RFQ label feed, and a first wave of municipal/county/regional Texas procurement sources, rank them against LeCrown-relevant work, and surface the strongest matches in the admin app.
 
 ## Source
 
@@ -11,6 +11,7 @@ The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federa
 - public grants search page: `https://simpler.grants.gov/search`
 - Grants.gov CSV export used by the page download button: `https://simpler.grants.gov/api/search/export`
 - SBA SUBNet opportunities page: `https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting/subcontracting-opportunities`
+- Gmail RFQ label feed: `GMAIL_RFQ_FEED_URL` with label `RFQs/New` by default
 - City of Austin solicitations: `https://financeonline.austintexas.gov/afo/account_services/solicitation/solicitations.cfm`
 - City of San Antonio bidding and contract opportunities: `https://webapp1.sanantonio.gov/BidContractOpps/Default.aspx`
 - Travis County BidNet portal: `https://www.bidnetdirect.com/texas/traviscounty`
@@ -45,6 +46,7 @@ The first tracked-but-not-fully-loaded sources are:
 - `POST /contracts/refresh-federal`
 - `POST /contracts/refresh-grants`
 - `POST /contracts/refresh-sba-subnet`
+- `POST /contracts/refresh-gmail`
 - `POST /contracts/refresh-tracked-sources`
 - `POST /contracts/{id}/funnel`
 - `GET /contracts/list?limit=12&matches_only=true&open_only=true&min_priority_score=0`
@@ -85,6 +87,8 @@ Optional exact dates:
 
 `POST /contracts/refresh-sba-subnet` refreshes the current SBA SUBNet paginated listing. It does not take a window payload because the upstream source is a live subcontracting board rather than a date-bounded posting feed.
 
+`POST /contracts/refresh-gmail` checks the Gmail RFQ source every time it is requested. If `GMAIL_RFQ_FEED_URL` is configured, it imports RFQ messages from the configured label. If the feed is missing, it records a `manual_review` source run instead of hiding Gmail RFQs from the source list.
+
 `POST /contracts/refresh-tracked-sources` refreshes the municipal/county/regional tracked-source batch. Parser-backed sources import opportunities. Harder portals still generate a run record with statuses like `manual_review`, `cataloged`, or `blocked` so the admin UI shows coverage gaps instead of silently dropping them.
 
 The admin app now has a dedicated `Sources` page alongside `Opportunities`. The `Sources` page lists all procurement sources in the funnel and spells out the automation path for each one, including whether it is:
@@ -117,7 +121,7 @@ From the repo root:
 make gov-contracts-refresh
 ```
 
-That command now refreshes Texas ESBD, the federal forecast source, Grants.gov, SBA SUBNet, and the tracked municipal/county/regional procurement sources in one run.
+That command now refreshes Texas ESBD, the federal forecast source, Grants.gov, SBA SUBNet, Gmail RFQs, and the tracked municipal/county/regional procurement sources in one run.
 
 Direct command:
 
@@ -132,8 +136,9 @@ Useful variants:
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-federal
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-grants
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-sba
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-gmail
 python3 -m app.jobs.refresh_gov_contracts --window-days 7 --skip-tracked-sources
-python3 -m app.jobs.refresh_gov_contracts --window-days 7 --include-gmail --gmail-limit 50
+python3 -m app.jobs.refresh_gov_contracts --window-days 7 --gmail-limit 50
 ```
 
 Example cron entry for every Monday at 8:00 AM server local time:

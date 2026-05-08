@@ -594,7 +594,11 @@ export default function App() {
     try {
       const run = await refreshGmailRfqs();
       await refreshContractsView();
-      setMessage(`Gmail RFQs synced. ${run.matched_records} opportunities updated.`);
+      if (run.status === "completed") {
+        setMessage(`Gmail RFQs synced. ${run.matched_records} opportunities updated.`);
+      } else {
+        setMessage(`Gmail RFQs checked. ${run.error_message ?? "The RFQ email feed needs review before opportunities can be imported."}`);
+      }
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -2340,7 +2344,6 @@ export default function App() {
                   <button type="button" onClick={() => void handleContractRefresh()} disabled={refreshingContracts || refreshingAllSources}>
                     {refreshingContracts ? "Refreshing..." : "Refresh ESBD"}
                   </button>
-                  {contractCapabilities.gmail_rfq_sync_enabled ? (
                   <button
                     type="button"
                     onClick={() => void handleGmailContractRefresh()}
@@ -2348,7 +2351,6 @@ export default function App() {
                   >
                     {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
                   </button>
-                  ) : null}
                   <button
                     type="button"
                     onClick={() => void handleTrackedSourceRefresh()}
@@ -2369,7 +2371,7 @@ export default function App() {
 
           {!contractCapabilities.gmail_rfq_sync_enabled ? (
             <p className="panel-subcopy">
-              Gmail RFQ sync is not configured in this environment. Federal forecast, Grants.gov, SBA SUBNet, ESBD, and the tracked municipal procurement sites remain available.
+              Gmail RFQ sync will report a source status, but email opportunities require GMAIL_RFQ_FEED_URL before label:{contractCapabilities.gmail_rfq_feed_label ?? "RFQs/New"} can be imported.
             </p>
           ) : null}
 

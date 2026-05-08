@@ -33,7 +33,7 @@ settings = get_settings()
 def get_contract_capabilities(_: object = Depends(get_current_user)) -> GovContractCapabilitiesRead:
     return GovContractCapabilitiesRead(
         gmail_rfq_sync_enabled=settings.gmail_rfq_feed_enabled,
-        gmail_rfq_feed_label=settings.gmail_rfq_feed_label if settings.gmail_rfq_feed_enabled else None,
+        gmail_rfq_feed_label=settings.gmail_rfq_feed_label,
     )
 
 
@@ -215,10 +215,7 @@ def refresh_gmail_contracts(
     db: Session = Depends(get_db),
     _: object = Depends(get_current_admin),
 ) -> GovContractImportRunRead:
-    try:
-        return gov_contract_service.refresh_gmail_contracts(db, limit=limit)
-    except gov_contract_service.GovContractSourceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return gov_contract_service.refresh_gmail_rfq_source_status(db, limit=limit)
 
 
 @router.post("/refresh-tracked-sources", response_model=list[GovContractImportRunRead])

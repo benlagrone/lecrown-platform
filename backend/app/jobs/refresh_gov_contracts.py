@@ -33,9 +33,9 @@ def parse_args() -> argparse.Namespace:
         help="Skip the SBA SUBNet refresh.",
     )
     parser.add_argument(
-        "--include-gmail",
+        "--skip-gmail",
         action="store_true",
-        help="Also sync Gmail RFQs if that feed is configured.",
+        help="Skip the Gmail RFQ source status/import.",
     )
     parser.add_argument(
         "--skip-tracked-sources",
@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
         "--gmail-limit",
         type=int,
         default=50,
-        help="How many Gmail RFQs to pull when --include-gmail is set.",
+        help="How many Gmail RFQs to pull unless --skip-gmail is set.",
     )
     parser.add_argument("--limit", type=int, default=10, help="How many top matches to print.")
     args = parser.parse_args()
@@ -55,10 +55,10 @@ def parse_args() -> argparse.Namespace:
         and args.skip_federal
         and args.skip_grants
         and args.skip_sba
+        and args.skip_gmail
         and args.skip_tracked_sources
-        and not args.include_gmail
     ):
-        parser.error("No opportunity sources selected. Remove a skip flag or add --include-gmail.")
+        parser.error("No opportunity sources selected. Remove a skip flag.")
     return args
 
 
@@ -99,8 +99,8 @@ def main() -> None:
             run_step("sba_subnet", lambda: gov_contract_service.refresh_sba_subnet_contracts(db))
         if not args.skip_tracked_sources:
             run_step("tracked_sources", lambda: gov_contract_service.refresh_tracked_procurement_sources(db))
-        if args.include_gmail:
-            run_step("gmail_rfqs", lambda: gov_contract_service.refresh_gmail_contracts(db, limit=args.gmail_limit))
+        if not args.skip_gmail:
+            run_step("gmail_rfqs", lambda: gov_contract_service.refresh_gmail_rfq_source_status(db, limit=args.gmail_limit))
 
         matches = gov_contract_service.list_contracts(db, limit=args.limit, matches_only=True, open_only=True)
 
