@@ -391,6 +391,73 @@ jobs:
 
           cd "${DEPLOY_ROOT}"
 
+          install -d ops/espocrm
+          touch ops/espocrm/.env
+
+          upsert_env_shell() {
+            local path="$1"
+            local key="$2"
+            local value="$3"
+            if grep -qE "^${key}=" "${path}"; then
+              python3 - "$path" "$key" "$value" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          key = sys.argv[2]
+          value = sys.argv[3]
+          lines = path.read_text().splitlines()
+          path.write_text("\n".join(
+              f"{key}={value}" if line.split("=", 1)[0].strip() == key else line
+              for line in lines
+          ) + "\n")
+          PY
+            else
+              printf '%s=%s\n' "${key}" "${value}" >> "${path}"
+            fi
+          }
+
+          read_env_value() {
+            local path="$1"
+            local key="$2"
+            python3 - "$path" "$key" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          key = sys.argv[2]
+          for raw_line in path.read_text().splitlines():
+              line = raw_line.strip()
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              current_key, value = line.split("=", 1)
+              if current_key.strip() == key:
+                  print(value.strip().strip('"').strip("'"))
+                  break
+          PY
+          }
+
+          if [[ -z "$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_USERNAME)" ]]; then
+            upsert_env_shell ops/espocrm/.env ESPOCRM_ADMIN_USERNAME admin
+          fi
+          if [[ -z "$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_PASSWORD)" ]]; then
+            upsert_env_shell ops/espocrm/.env ESPOCRM_ADMIN_PASSWORD "$(openssl rand -base64 24 | tr -d '\n')"
+          fi
+
+          ESPOCRM_ADMIN_USERNAME="$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_USERNAME)"
+          ESPOCRM_ADMIN_PASSWORD="$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_PASSWORD)"
+          CRM_CONTAINER="$(docker ps --format '{{.Names}}\t{{.Image}}' | awk '$1 !~ /(db|daemon|websocket)/ && $2 ~ /espocrm\\/espocrm/ {print $1; exit}')"
+
+          if [[ -z "${CRM_CONTAINER}" ]]; then
+            fail_repo "EspoCRM container was not found; cannot repair CRM credentials"
+          fi
+
+          printf '%s\n%s\n' "${ESPOCRM_ADMIN_PASSWORD}" "${ESPOCRM_ADMIN_PASSWORD}" | \
+            docker exec -i "${CRM_CONTAINER}" php command.php set-password "${ESPOCRM_ADMIN_USERNAME}"
+
+          curl -fsS -u "${ESPOCRM_ADMIN_USERNAME}:${ESPOCRM_ADMIN_PASSWORD}" \
+            https://crm.lecrowndevelopment.com/api/v1/App/user >/dev/null
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -445,27 +512,6 @@ jobs:
           else:
               print("Platform CRM env unchanged.")
           PY
-
-          if [[ -f ops/espocrm/.env ]]; then
-            set -a
-            # shellcheck source=/dev/null
-            source ops/espocrm/.env
-            set +a
-            if [[ -n "${ESPOCRM_ADMIN_USERNAME:-}" && -n "${ESPOCRM_ADMIN_PASSWORD:-}" ]]; then
-              CRM_COMPOSE=(docker compose -f ops/espocrm/docker-compose.yml --env-file ops/espocrm/.env)
-              if [[ "$("${CRM_COMPOSE[@]}" ps --services --status running espocrm 2>/dev/null)" == "espocrm" ]]; then
-                printf '%s\n%s\n' "${ESPOCRM_ADMIN_PASSWORD}" "${ESPOCRM_ADMIN_PASSWORD}" | \
-                  "${CRM_COMPOSE[@]}" exec -T espocrm php command.php set-password "${ESPOCRM_ADMIN_USERNAME}" || \
-                  printf 'WARNING: EspoCRM admin password reset command failed; platform env was still updated.\n' >&2
-              else
-                printf 'WARNING: EspoCRM container is not running; platform CRM env was updated but admin password was not reset.\n' >&2
-              fi
-            else
-              printf 'WARNING: ops/espocrm/.env does not include ESPOCRM_ADMIN_USERNAME and ESPOCRM_ADMIN_PASSWORD.\n' >&2
-            fi
-          else
-            printf 'WARNING: ops/espocrm/.env missing on deploy host; platform CRM env could not be repaired from CRM credentials.\n' >&2
-          fi
 
           COMPOSE=(docker compose -f ops/platform/docker-compose.prod.yml --env-file ops/platform/.env)
           LECROWNPLATFORM_API_IMAGE="ghcr.io/benlagrone/lecrown-platform-api:sha-${SOURCE_SHA}" \
