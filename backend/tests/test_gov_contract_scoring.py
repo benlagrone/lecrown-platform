@@ -9,8 +9,11 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.models.gov_contract import GovContractImportRun, GovContractKeywordRule, GovContractOpportunity
 from app.services.gov_contract_service import (
+    FEDERAL_FORECAST_SOURCE_NAME,
     GovContractFetchResult,
     GovContractSourceRecord,
+    IT_SERVICES_CATEGORY,
+    PROPERTY_SERVICES_CATEGORY,
     SOURCE_NAME,
     _persist_source_records,
     create_agency_preference,
@@ -19,6 +22,7 @@ from app.services.gov_contract_service import (
     list_keyword_rules,
     list_contracts,
     rescore_stored_opportunities,
+    search_contracts,
     serialize_opportunity,
 )
 from app.utils.helpers import new_uuid
@@ -253,6 +257,151 @@ class GovContractScoringTest(unittest.TestCase):
             serialized = serialize_opportunity(opportunity)
             self.assertEqual(["other"], serialized.opportunity_categories)
             self.assertIn("Bid", serialized.auto_tags)
+
+    def test_search_contracts_scopes_source_facets_to_selected_category(self) -> None:
+        with self.Session() as db:
+            now = datetime.now(timezone.utc)
+            db.add_all(
+                [
+                    GovContractOpportunity(
+                        id=new_uuid(),
+                        source=SOURCE_NAME,
+                        source_key="it-esbd",
+                        source_url="https://example.com/it-esbd",
+                        title="Cybersecurity managed services support",
+                        solicitation_id="IT-ESBD",
+                        agency_name="State of Texas",
+                        status_code="1",
+                        status_name="Posted",
+                        due_date=date.today() + timedelta(days=12),
+                        posting_date=date.today(),
+                        nigp_codes="technology; cybersecurity",
+                        score=0,
+                        priority_score=0,
+                        fit_bucket="none",
+                        is_match=False,
+                        is_open=True,
+                        matched_keywords=[],
+                        score_breakdown={},
+                        raw_payload={
+                            "source_context": "q2_forecast",
+                            "source_context_label": "Q2 2026 Forecast",
+                        },
+                        funnel_status="discovered",
+                        first_seen_at=now,
+                        last_seen_at=now,
+                    ),
+                    GovContractOpportunity(
+                        id=new_uuid(),
+                        source=FEDERAL_FORECAST_SOURCE_NAME,
+                        source_key="it-federal",
+                        source_url="https://example.com/it-federal",
+                        title="Cloud services modernization support",
+                        solicitation_id="IT-FED",
+                        agency_name="Federal Agency",
+                        status_code="1",
+                        status_name="Posted",
+                        due_date=date.today() + timedelta(days=18),
+                        posting_date=date.today(),
+                        nigp_codes="cloud services",
+                        score=0,
+                        priority_score=0,
+                        fit_bucket="none",
+                        is_match=False,
+                        is_open=True,
+                        matched_keywords=[],
+                        score_breakdown={},
+                        raw_payload={
+                            "source_context": "q3_forecast",
+                            "source_context_label": "Q3 2026 Forecast",
+                        },
+                        funnel_status="discovered",
+                        first_seen_at=now,
+                        last_seen_at=now,
+                    ),
+                    GovContractOpportunity(
+                        id=new_uuid(),
+                        source=SOURCE_NAME,
+                        source_key="property-esbd",
+                        source_url="https://example.com/property-esbd",
+                        title="Property rehabilitation and facilities maintenance",
+                        solicitation_id="PROP-ESBD",
+                        agency_name="State of Texas",
+                        status_code="1",
+                        status_name="Posted",
+                        due_date=date.today() + timedelta(days=20),
+                        posting_date=date.today(),
+                        nigp_codes="property management; facilities maintenance",
+                        score=0,
+                        priority_score=0,
+                        fit_bucket="none",
+                        is_match=False,
+                        is_open=True,
+                        matched_keywords=[],
+                        score_breakdown={},
+                        raw_payload={
+                            "source_context": "reeves_county",
+                            "source_context_label": "Reeves County",
+                        },
+                        funnel_status="discovered",
+                        first_seen_at=now,
+                        last_seen_at=now,
+                    ),
+                ]
+            )
+            db.commit()
+
+            category_scoped = search_contracts(
+                db,
+                limit=20,
+                offset=0,
+                matches_only=False,
+                open_only=False,
+                category=IT_SERVICES_CATEGORY,
+            )
+            self.assertEqual(2, category_scoped["total"])
+            self.assertEqual(
+                {
+                    SOURCE_NAME: 1,
+                    FEDERAL_FORECAST_SOURCE_NAME: 1,
+                },
+                {item["key"]: item["count"] for item in category_scoped["source_counts"]},
+            )
+
+            source_and_category_scoped = search_contracts(
+                db,
+                limit=20,
+                offset=0,
+                matches_only=False,
+                open_only=False,
+                source=SOURCE_NAME,
+                category=IT_SERVICES_CATEGORY,
+            )
+            self.assertEqual(1, source_and_category_scoped["total"])
+            self.assertEqual(
+                {
+                    SOURCE_NAME: 1,
+                    FEDERAL_FORECAST_SOURCE_NAME: 1,
+                },
+                {item["key"]: item["count"] for item in source_and_category_scoped["source_counts"]},
+            )
+            self.assertEqual(
+                {"q2_forecast": 1},
+                {item["key"]: item["count"] for item in source_and_category_scoped["source_context_counts"]},
+            )
+
+            property_scoped = search_contracts(
+                db,
+                limit=20,
+                offset=0,
+                matches_only=False,
+                open_only=False,
+                category=PROPERTY_SERVICES_CATEGORY,
+            )
+            self.assertEqual(
+                {SOURCE_NAME: 1},
+                {item["key"]: item["count"] for item in property_scoped["source_counts"]},
+            )
 
     def test_persist_source_records_deduplicates_duplicate_source_keys(self) -> None:
         with self.Session() as db:

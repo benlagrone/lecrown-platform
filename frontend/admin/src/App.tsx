@@ -2250,11 +2250,19 @@ export default function App() {
       property_services: opportunitySearch.category_counts.property_services ?? 0,
       other: opportunitySearch.category_counts.other ?? 0,
     };
+    const scopedSourceCountTotal = opportunitySearch.source_counts.reduce(
+      (total, sourceCount) => total + sourceCount.count,
+      0,
+    );
+    const scopedSourceContextCountTotal = opportunitySearch.source_context_counts.reduce(
+      (total, contextCount) => total + contextCount.count,
+      0,
+    );
     const sourceFilters = [
       {
         key: "all",
         label: "All sources",
-        count: categoryCounts.all,
+        count: scopedSourceCountTotal,
       },
       ...opportunitySearch.source_counts.map((sourceCount) => ({
         key: sourceCount.key,
@@ -2266,7 +2274,7 @@ export default function App() {
       {
         key: "all",
         label: "All contexts",
-        count: opportunitySearch.total,
+        count: scopedSourceContextCountTotal || opportunitySearch.total,
       },
       ...opportunitySearch.source_context_counts,
     ];

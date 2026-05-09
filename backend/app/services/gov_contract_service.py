@@ -3099,6 +3099,12 @@ def _matches_search_category(opportunity: GovContractOpportunityRead, category: 
     return category in (opportunity.opportunity_categories or [])
 
 
+def _matches_search_source(opportunity: GovContractOpportunityRead, source: str | None) -> bool:
+    if not source:
+        return True
+    return opportunity.source == source
+
+
 def _matches_search_source_context(opportunity: GovContractOpportunityRead, source_context: str | None) -> bool:
     if not source_context:
         return True
@@ -3160,6 +3166,7 @@ def _matches_search_keyword(opportunity: GovContractOpportunityRead, keyword: st
 def _apply_serialized_search_filters(
     opportunities: list[GovContractOpportunityRead],
     *,
+    source: str | None = None,
     source_context: str | None = None,
     category: str | None = None,
     tag_kind: str | None = None,
@@ -3169,7 +3176,8 @@ def _apply_serialized_search_filters(
     return [
         opportunity
         for opportunity in opportunities
-        if _matches_search_source_context(opportunity, source_context)
+        if _matches_search_source(opportunity, source)
+        and _matches_search_source_context(opportunity, source_context)
         and _matches_search_category(opportunity, category)
         and _matches_search_tag(opportunity, tag_kind=tag_kind, tag_value=tag_value)
         and _matches_search_keyword(opportunity, keyword)
@@ -3212,11 +3220,11 @@ def search_contracts(
             matches_only=matches_only,
             open_only=open_only,
             min_priority_score=min_priority_score,
-            source=source,
         )
     )
     tab_base = _apply_serialized_search_filters(
         candidates,
+        source=source,
         source_context=source_context,
         tag_kind=tag_kind,
         tag_value=tag_value,
@@ -3225,12 +3233,14 @@ def search_contracts(
     source_base = _apply_serialized_search_filters(
         candidates,
         source_context=source_context,
+        category=category,
         tag_kind=tag_kind,
         tag_value=tag_value,
         keyword=keyword,
     )
     context_base = _apply_serialized_search_filters(
         candidates,
+        source=source,
         category=category,
         tag_kind=tag_kind,
         tag_value=tag_value,
@@ -3238,6 +3248,7 @@ def search_contracts(
     )
     filtered = _apply_serialized_search_filters(
         candidates,
+        source=source,
         source_context=source_context,
         category=category,
         tag_kind=tag_kind,
@@ -3270,7 +3281,6 @@ def search_contracts(
             [
                 (opportunity.source_context or "", _source_context_label(opportunity))
                 for opportunity in context_base
-                if not source or opportunity.source == source
             ]
         ),
     }
