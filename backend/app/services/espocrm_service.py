@@ -56,12 +56,48 @@ def _headers() -> dict[str, str]:
         headers["X-Api-Key"] = settings.espocrm_api_key
         return headers
     if settings.espocrm_username and settings.espocrm_password:
-        token = base64.b64encode(
-            f"{settings.espocrm_username}:{settings.espocrm_password}".encode("utf-8")
-        ).decode("ascii")
-        headers["Authorization"] = f"Basic {token}"
+        token = _get_access_token()
+        auth_token = _encode_auth_pair(settings.espocrm_username, token)
+        headers["Espo-Authorization"] = auth_token
         return headers
     raise EspoCRMError("EspoCRM credentials are not configured")
+
+
+def _encode_auth_pair(username: str, password_or_token: str) -> str:
+    return base64.b64encode(f"{username}:{password_or_token}".encode("utf-8")).decode("ascii")
+
+
+def _get_access_token() -> str:
+    url = f"{_base_url()}/App/user"
+    headers = {
+        "Accept": "application/json",
+        "Espo-Authorization": _encode_auth_pair(settings.espocrm_username, settings.espocrm_password),
+    }
+    try:
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=settings.espocrm_timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise EspoCRMError("EspoCRM authentication request failed") from exc
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {"raw": response.text}
+
+    if response.status_code < 200 or response.status_code >= 300:
+        raise EspoCRMError(
+            "EspoCRM authentication returned a non-success response",
+            status_code=response.status_code,
+            body=body,
+        )
+
+    token = body.get("token") if isinstance(body, dict) else None
+    if not isinstance(token, str) or not token:
+        raise EspoCRMError("EspoCRM authentication response did not include a token")
+    return token
 
 
 def create_lead(payload: dict[str, Any]) -> dict[str, Any]:

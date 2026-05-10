@@ -446,7 +446,7 @@ jobs:
 
           ESPOCRM_ADMIN_USERNAME="$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_USERNAME)"
           ESPOCRM_ADMIN_PASSWORD="$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_PASSWORD)"
-          CRM_CONTAINER="$(docker ps --format '{{.Names}}\t{{.Image}}' | awk '$1 !~ /(db|daemon|websocket)/ && $2 ~ /espocrm\\/espocrm/ {print $1; exit}')"
+          CRM_CONTAINER="$(docker ps --format '{{.Names}}\t{{.Image}}' | awk '$1 !~ /(db|daemon|websocket)/ && index($2, "espocrm/espocrm") > 0 {print $1; exit}')"
 
           if [[ -z "${CRM_CONTAINER}" ]]; then
             fail_repo "EspoCRM container was not found; cannot repair CRM credentials"
@@ -455,7 +455,8 @@ jobs:
           printf '%s\n%s\n' "${ESPOCRM_ADMIN_PASSWORD}" "${ESPOCRM_ADMIN_PASSWORD}" | \
             docker exec -i "${CRM_CONTAINER}" php command.php set-password "${ESPOCRM_ADMIN_USERNAME}"
 
-          curl -fsS -u "${ESPOCRM_ADMIN_USERNAME}:${ESPOCRM_ADMIN_PASSWORD}" \
+          ESPOCRM_AUTH_TOKEN="$(printf '%s:%s' "${ESPOCRM_ADMIN_USERNAME}" "${ESPOCRM_ADMIN_PASSWORD}" | base64 | tr -d '\n')"
+          curl -fsS -H "Espo-Authorization: ${ESPOCRM_AUTH_TOKEN}" \
             https://crm.lecrowndevelopment.com/api/v1/App/user >/dev/null
 
           python3 - <<'PY'
