@@ -506,12 +506,20 @@ jobs:
               updates["ESPOCRM_PASSWORD"] = crm_values["ESPOCRM_ADMIN_PASSWORD"]
               updates["ESPOCRM_ADMIN_USERNAME"] = crm_values["ESPOCRM_ADMIN_USERNAME"]
               updates["ESPOCRM_ADMIN_PASSWORD"] = crm_values["ESPOCRM_ADMIN_PASSWORD"]
+          if "ethnicolr-api" in platform_values.get("GMAIL_RFQ_FEED_URL", ""):
+              updates["GMAIL_RFQ_FEED_URL"] = ""
+          if platform_values.get("GMAIL_RFQ_FEED_LABEL") in {"", "RFQs/New"}:
+              updates["GMAIL_RFQ_FEED_LABEL"] = "RFQs"
+          if not platform_values.get("GMAIL_RFQ_SEARCH_QUERY"):
+              updates["GMAIL_RFQ_SEARCH_QUERY"] = "label:rfqs"
+          if platform_values.get("GMAIL_RFQ_FEED_LIMIT") in {"", "50"}:
+              updates["GMAIL_RFQ_FEED_LIMIT"] = "5000"
 
           upsert_env(platform_env, updates)
           if updates:
-              print("Updated platform CRM env keys: " + ", ".join(sorted(updates)))
+              print("Updated platform env keys: " + ", ".join(sorted(updates)))
           else:
-              print("Platform CRM env unchanged.")
+              print("Platform env unchanged.")
           PY
 
           COMPOSE=(docker compose -f ops/platform/docker-compose.prod.yml --env-file ops/platform/.env)

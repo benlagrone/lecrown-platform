@@ -121,7 +121,7 @@ class Settings:
         "GMAIL_RFQ_FEED_URL",
         "",
     )
-    gmail_rfq_mailbox: str = os.getenv("GMAIL_RFQ_MAILBOX", os.getenv("INVITE_SENDER_EMAIL", ""))
+    gmail_rfq_mailbox: str = os.getenv("GMAIL_RFQ_MAILBOX", "")
     gmail_rfq_search_query: str = os.getenv("GMAIL_RFQ_SEARCH_QUERY", "label:rfqs")
     gmail_rfq_feed_label: str = os.getenv("GMAIL_RFQ_FEED_LABEL", "RFQs")
     gmail_rfq_feed_timeout_seconds: int = int(os.getenv("GMAIL_RFQ_FEED_TIMEOUT_SECONDS", "20"))

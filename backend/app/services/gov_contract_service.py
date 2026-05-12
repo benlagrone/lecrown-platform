@@ -2228,7 +2228,7 @@ def fetch_gmail_rfq_feed(*, limit: int | None = None) -> dict[str, object]:
             "Gmail RFQ import is not configured for this environment. Configure GMAIL_RFQ_FEED_URL or Google OAuth refresh tokens."
         )
 
-    if not settings.gmail_rfq_feed_url.strip():
+    if settings.gmail_rfq_direct_enabled:
         return _fetch_gmail_rfq_from_gmail_api(limit=limit)
 
     requested_limit = limit or settings.gmail_rfq_feed_limit
