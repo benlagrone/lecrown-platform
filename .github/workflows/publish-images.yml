@@ -537,6 +537,21 @@ jobs:
             curl -fsS "$url" >/dev/null
           done
 
+          "${COMPOSE[@]}" exec -T backend python - <<'PY' || true
+          from app.core.database import SessionLocal, init_db
+          from app.services import gov_contract_service
+
+          init_db()
+          with SessionLocal() as db:
+              run = gov_contract_service.refresh_gmail_rfq_source_status(db)
+              print(
+                  f"Gmail RFQ refresh status={run.status} "
+                  f"total={run.total_records} matched={run.matched_records} open={run.open_records}"
+              )
+              if run.error_message:
+                  print(f"Gmail RFQ refresh detail={run.error_message}")
+          PY
+
           require_clean_repo "${DEPLOY_ROOT}"
           REMOTE
 
