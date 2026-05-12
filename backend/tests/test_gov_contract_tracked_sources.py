@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import base64
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -247,12 +248,24 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
     def test_gmail_rfqs_are_tracked_even_when_feed_is_not_configured(self) -> None:
         with self.Session() as db:
             original_feed_url = gov_contract_service.settings.gmail_rfq_feed_url
+            original_client_id = gov_contract_service.settings.google_oauth_client_id
+            original_client_secret = gov_contract_service.settings.google_oauth_client_secret
+            original_token_gmail = gov_contract_service.settings.gmail_refresh_token_benjaminlagrone_gmail_com
+            original_token_lecrown = gov_contract_service.settings.gmail_refresh_token_benjamin_lecrownproperties_com
             gov_contract_service.settings.gmail_rfq_feed_url = ""
+            gov_contract_service.settings.google_oauth_client_id = ""
+            gov_contract_service.settings.google_oauth_client_secret = ""
+            gov_contract_service.settings.gmail_refresh_token_benjaminlagrone_gmail_com = ""
+            gov_contract_service.settings.gmail_refresh_token_benjamin_lecrownproperties_com = ""
             try:
                 run = gov_contract_service.refresh_gmail_rfq_source_status(db)
                 tracked_sources = gov_contract_service.list_tracked_sources(db)
             finally:
                 gov_contract_service.settings.gmail_rfq_feed_url = original_feed_url
+                gov_contract_service.settings.google_oauth_client_id = original_client_id
+                gov_contract_service.settings.google_oauth_client_secret = original_client_secret
+                gov_contract_service.settings.gmail_refresh_token_benjaminlagrone_gmail_com = original_token_gmail
+                gov_contract_service.settings.gmail_refresh_token_benjamin_lecrownproperties_com = original_token_lecrown
 
         gmail_source = next(
             source for source in tracked_sources if source["source"] == gov_contract_service.GMAIL_RFQ_SOURCE_NAME
@@ -260,7 +273,7 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
         self.assertEqual("manual_review", run.status)
         self.assertEqual("manual_review", gmail_source["latest_run_status"])
         self.assertEqual("opportunities", gmail_source["load_scope"])
-        self.assertIn("Gmail RFQ feed is not configured", run.error_message)
+        self.assertIn("Gmail RFQ import is not configured", run.error_message)
 
     def test_gmail_rfq_feed_uses_rfq_label_and_pagination(self) -> None:
         original_feed_url = gov_contract_service.settings.gmail_rfq_feed_url
@@ -315,6 +328,76 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
         self.assertEqual(5000, first_params["limit"])
         self.assertEqual("page-2", second_params["page_token"])
         self.assertEqual("https://mail.google.com/mail/u/0/#search/message-1", records[0].source_url)
+
+    def test_gmail_rfq_direct_api_import_splits_euna_bid_links(self) -> None:
+        html = """
+        <html><body>
+          <p>We've found new bid opportunities from your registered agencies.</p>
+          <ul>
+            <li><a href="https://euna.example/opportunities/1">Request for Information (RFI) - Thor Guard Lightning Prediction System</a>, BPRO Electronic Procurement System (12 days until Close)</li>
+            <li><a href="https://euna.example/opportunities/2">Accounts Payable Automation Software</a>, BPRO Electronic Procurement System (14 days until Close)</li>
+          </ul>
+          <a href="https://euna.example/preferences">Manage preferences</a>
+        </body></html>
+        """
+        encoded_html = base64.urlsafe_b64encode(html.encode("utf-8")).decode("ascii").rstrip("=")
+        gmail_message = {
+            "id": "gmail-message-1",
+            "threadId": "thread-1",
+            "internalDate": "1778191200000",
+            "snippet": "We've found new bid opportunities",
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "You have some new Euna bid matches!"},
+                    {"name": "From", "value": "Bonfire No-Reply <no-reply@example.com>"},
+                ],
+                "parts": [
+                    {
+                        "mimeType": "text/html",
+                        "body": {"data": encoded_html},
+                    }
+                ],
+            },
+        }
+        original_feed_url = gov_contract_service.settings.gmail_rfq_feed_url
+        original_mailbox = gov_contract_service.settings.gmail_rfq_mailbox
+        original_client_id = gov_contract_service.settings.google_oauth_client_id
+        original_client_secret = gov_contract_service.settings.google_oauth_client_secret
+        original_token_gmail = gov_contract_service.settings.gmail_refresh_token_benjaminlagrone_gmail_com
+        gov_contract_service.settings.gmail_rfq_feed_url = ""
+        gov_contract_service.settings.gmail_rfq_mailbox = "benjaminlagrone@gmail.com"
+        gov_contract_service.settings.google_oauth_client_id = "client-id"
+        gov_contract_service.settings.google_oauth_client_secret = "client-secret"
+        gov_contract_service.settings.gmail_refresh_token_benjaminlagrone_gmail_com = "refresh-token"
+        try:
+            with patch(
+                "app.services.gov_contract_service.requests.post",
+                return_value=mock_json_response({"access_token": "access-token"}),
+            ) as mock_post:
+                with patch(
+                    "app.services.gov_contract_service.requests.get",
+                    side_effect=[
+                        mock_json_response({"messages": [{"id": "gmail-message-1"}]}),
+                        mock_json_response(gmail_message),
+                    ],
+                ) as mock_get:
+                    payload = gov_contract_service.fetch_gmail_rfq_feed(limit=5000)
+                    records = gov_contract_service._records_from_gmail_feed(payload)
+        finally:
+            gov_contract_service.settings.gmail_rfq_feed_url = original_feed_url
+            gov_contract_service.settings.gmail_rfq_mailbox = original_mailbox
+            gov_contract_service.settings.google_oauth_client_id = original_client_id
+            gov_contract_service.settings.google_oauth_client_secret = original_client_secret
+            gov_contract_service.settings.gmail_refresh_token_benjaminlagrone_gmail_com = original_token_gmail
+
+        self.assertEqual(2, len(payload["items"]))
+        self.assertEqual(2, len(records))
+        self.assertEqual("Request for Information (RFI) - Thor Guard Lightning Prediction System", records[0].title)
+        self.assertEqual("Accounts Payable Automation Software", records[1].title)
+        self.assertEqual("https://euna.example/opportunities/1", records[0].source_url)
+        self.assertEqual("BPRO Electronic Procurement System", records[0].agency_name)
+        self.assertEqual("label:rfqs", mock_get.call_args_list[0].kwargs["params"]["q"])
+        self.assertTrue(mock_post.called)
 
 
 if __name__ == "__main__":

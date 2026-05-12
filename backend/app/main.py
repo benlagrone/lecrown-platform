@@ -32,6 +32,9 @@ def healthcheck() -> dict[str, object]:
             "espocrm_base_url": espocrm_service.has_base_url(),
             "espocrm_credentials": espocrm_service.has_credentials(),
             "espocrm_configured": espocrm_service.is_configured(),
+            "gmail_rfq_feed_url": bool(settings.gmail_rfq_feed_url.strip()),
+            "gmail_rfq_direct": settings.gmail_rfq_direct_enabled,
+            "gmail_rfq_configured": settings.gmail_rfq_feed_enabled,
         },
     }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import base64
 import io
 import re
 from dataclasses import dataclass
@@ -651,7 +652,10 @@ def _parse_unix_timestamp(value: object | None) -> datetime | None:
     if value is None:
         return None
     try:
-        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+        timestamp = int(value)
+        if timestamp > 100_000_000_000:
+            timestamp = timestamp // 1000
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
     except (TypeError, ValueError, OSError):
         return None
 
@@ -2220,7 +2224,12 @@ def fetch_houston_metro_contracts() -> GovContractFetchResult:
 
 def fetch_gmail_rfq_feed(*, limit: int | None = None) -> dict[str, object]:
     if not settings.gmail_rfq_feed_enabled:
-        raise GovContractSourceError("Gmail RFQ feed is not configured for this environment")
+        raise GovContractSourceError(
+            "Gmail RFQ import is not configured for this environment. Configure GMAIL_RFQ_FEED_URL or Google OAuth refresh tokens."
+        )
+
+    if not settings.gmail_rfq_feed_url.strip():
+        return _fetch_gmail_rfq_from_gmail_api(limit=limit)
 
     requested_limit = limit or settings.gmail_rfq_feed_limit
     items: list[object] = []
@@ -2275,6 +2284,303 @@ def fetch_gmail_rfq_feed(*, limit: int | None = None) -> dict[str, object]:
         "page_count": page_count,
         "label": settings.gmail_rfq_feed_label,
     }
+
+
+def _gmail_rfq_mailbox_and_refresh_token() -> tuple[str, str]:
+    refresh_tokens = settings.gmail_refresh_tokens
+    configured_mailbox = settings.gmail_rfq_mailbox.strip()
+    if configured_mailbox:
+        refresh_token = refresh_tokens.get(configured_mailbox, "").strip()
+        if refresh_token:
+            return configured_mailbox, refresh_token
+        raise GovContractSourceError(
+            f"Gmail RFQ mailbox '{configured_mailbox}' does not have a refresh token configured"
+        )
+
+    for mailbox, refresh_token in refresh_tokens.items():
+        cleaned_token = refresh_token.strip()
+        if cleaned_token:
+            return mailbox, cleaned_token
+
+    raise GovContractSourceError("Gmail RFQ import does not have a configured mailbox refresh token")
+
+
+def _fetch_gmail_api_access_token(mailbox: str, refresh_token: str) -> str:
+    try:
+        response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": settings.google_oauth_client_id,
+                "client_secret": settings.google_oauth_client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        raise GovContractSourceError("Failed to refresh the Gmail access token") from exc
+
+    if not response.ok:
+        raise GovContractSourceError(
+            f"Google OAuth token refresh failed for '{mailbox}' with {response.status_code}: {response.text[:200]}"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise GovContractSourceError("Google OAuth token refresh returned unreadable JSON") from exc
+
+    access_token = _clean(payload.get("access_token"))
+    if not access_token:
+        raise GovContractSourceError(f"Google OAuth token refresh for '{mailbox}' did not return an access token")
+    return access_token
+
+
+def _fetch_gmail_rfq_from_gmail_api(*, limit: int | None = None) -> dict[str, object]:
+    mailbox, refresh_token = _gmail_rfq_mailbox_and_refresh_token()
+    requested_limit = limit or settings.gmail_rfq_feed_limit
+    access_token = _fetch_gmail_api_access_token(mailbox, refresh_token)
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    messages: list[dict[str, object]] = []
+    page_token: str | None = None
+
+    while len(messages) < requested_limit:
+        params: dict[str, object] = {
+            "q": settings.gmail_rfq_search_query,
+            "maxResults": min(500, requested_limit - len(messages)),
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        try:
+            response = requests.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                headers=headers,
+                params=params,
+                timeout=settings.gmail_rfq_feed_timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            raise GovContractSourceError(f"Failed to list Gmail RFQ messages: {exc}") from exc
+        except ValueError as exc:
+            raise GovContractSourceError("Gmail messages list returned unreadable JSON") from exc
+
+        page_messages = payload.get("messages") if isinstance(payload, dict) else None
+        if not isinstance(page_messages, list) or not page_messages:
+            break
+        for message_ref in page_messages:
+            if isinstance(message_ref, dict):
+                messages.append(message_ref)
+                if len(messages) >= requested_limit:
+                    break
+
+        next_page_token = _clean(payload.get("nextPageToken") if isinstance(payload, dict) else None)
+        if not next_page_token or next_page_token == page_token:
+            break
+        page_token = next_page_token
+
+    items: list[dict[str, object]] = []
+    for message_ref in messages[:requested_limit]:
+        message_id = _clean(message_ref.get("id"))
+        if not message_id:
+            continue
+        message_payload = _fetch_gmail_message(message_id, headers=headers)
+        items.extend(_items_from_gmail_message(message_payload, mailbox=mailbox))
+
+    return {
+        "items": items,
+        "count": len(items),
+        "fetched_count": len(items),
+        "page_count": 1,
+        "label": settings.gmail_rfq_search_query,
+        "mailbox": mailbox,
+        "source": "gmail_api",
+    }
+
+
+def _fetch_gmail_message(message_id: str, *, headers: dict[str, str]) -> dict[str, object]:
+    try:
+        response = requests.get(
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{quote(message_id)}",
+            headers=headers,
+            params={"format": "full"},
+            timeout=settings.gmail_rfq_feed_timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise GovContractSourceError(f"Failed to fetch Gmail RFQ message {message_id}: {exc}") from exc
+    except ValueError as exc:
+        raise GovContractSourceError(f"Gmail RFQ message {message_id} returned unreadable JSON") from exc
+
+    if not isinstance(payload, dict):
+        raise GovContractSourceError(f"Gmail RFQ message {message_id} returned an invalid payload")
+    return payload
+
+
+def _gmail_header(headers: list[dict[str, object]], name: str) -> str | None:
+    normalized_name = name.lower()
+    for header in headers:
+        if _clean(header.get("name")) and _clean(header.get("name")).lower() == normalized_name:
+            return _clean(header.get("value"))
+    return None
+
+
+def _decode_gmail_body_data(value: object) -> str:
+    encoded = _clean(value)
+    if not encoded:
+        return ""
+    padded = encoded + "=" * (-len(encoded) % 4)
+    try:
+        return base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8", errors="replace")
+    except (ValueError, TypeError):
+        return ""
+
+
+def _extract_gmail_body_parts(payload: dict[str, object]) -> tuple[str, str]:
+    html_parts: list[str] = []
+    text_parts: list[str] = []
+
+    def visit(part: dict[str, object]) -> None:
+        mime_type = _clean(part.get("mimeType")) or ""
+        body = part.get("body") if isinstance(part.get("body"), dict) else {}
+        data = _decode_gmail_body_data(body.get("data") if isinstance(body, dict) else None)
+        if data and mime_type == "text/html":
+            html_parts.append(data)
+        elif data and mime_type == "text/plain":
+            text_parts.append(data)
+        for child in part.get("parts", []) if isinstance(part.get("parts"), list) else []:
+            if isinstance(child, dict):
+                visit(child)
+
+    visit(payload)
+    return "\n".join(html_parts), "\n".join(text_parts)
+
+
+def _items_from_gmail_message(message_payload: dict[str, object], *, mailbox: str) -> list[dict[str, object]]:
+    message_id = _clean(message_payload.get("id")) or "unknown"
+    thread_id = _clean(message_payload.get("threadId"))
+    snippet = _clean(message_payload.get("snippet"))
+    internal_date = _clean(message_payload.get("internalDate"))
+    message_at = _parse_unix_timestamp(internal_date)
+    payload = message_payload.get("payload") if isinstance(message_payload.get("payload"), dict) else {}
+    headers = payload.get("headers", []) if isinstance(payload, dict) and isinstance(payload.get("headers"), list) else []
+    subject = _gmail_header(headers, "Subject") or snippet or "Gmail RFQ"
+    sender = _gmail_header(headers, "From")
+    date_header = _gmail_header(headers, "Date")
+    html_body, text_body = _extract_gmail_body_parts(payload if isinstance(payload, dict) else {})
+    message_url = f"https://mail.google.com/mail/u/0/#all/{quote(message_id)}"
+    base_item = {
+        "message_id": message_id,
+        "thread_id": thread_id,
+        "gmail_url": message_url,
+        "subject": subject,
+        "title": subject,
+        "agency_name": _gmail_sender_name(sender),
+        "message_at": message_at.isoformat() if message_at else date_header,
+        "posting_date": message_at.date().isoformat() if message_at else None,
+        "mailbox": mailbox,
+        "snippet": snippet,
+        "sender": sender,
+    }
+
+    link_items = _opportunity_items_from_gmail_links(
+        html_body=html_body,
+        text_body=text_body,
+        base_item=base_item,
+    )
+    if link_items:
+        return link_items
+    return [
+        {
+            **base_item,
+            "source_key": f"gmail_rfqs:{message_id}",
+            "source_url": message_url,
+            "body_text": text_body[:2000] if text_body else BeautifulSoup(html_body, "html.parser").get_text(" ", strip=True)[:2000],
+        }
+    ]
+
+
+def _gmail_sender_name(sender: str | None) -> str | None:
+    cleaned = _clean(sender)
+    if not cleaned:
+        return None
+    return _clean(cleaned.split("<", 1)[0].strip().strip('"')) or cleaned
+
+
+def _opportunity_items_from_gmail_links(
+    *,
+    html_body: str,
+    text_body: str,
+    base_item: dict[str, object],
+) -> list[dict[str, object]]:
+    if not html_body:
+        return []
+
+    soup = BeautifulSoup(html_body, "html.parser")
+    items: list[dict[str, object]] = []
+    seen_urls: set[str] = set()
+    message_id = _clean(base_item.get("message_id")) or "unknown"
+
+    for index, anchor in enumerate(soup.find_all("a"), start=1):
+        href = _clean(anchor.get("href"))
+        title = _clean(anchor.get_text(" ", strip=True))
+        if not href or not title or not _looks_like_opportunity_anchor(title, href):
+            continue
+        if href in seen_urls:
+            continue
+        seen_urls.add(href)
+        parent_text = anchor.find_parent(["li", "p", "div", "td"])
+        scope_text = parent_text.get_text(" ", strip=True) if parent_text else title
+        items.append(
+            {
+                **base_item,
+                "source_key": f"gmail_rfqs:{message_id}:{index}",
+                "source_url": href,
+                "title": title,
+                "solicitation_id": _solicitation_id_from_title(title) or f"{message_id}:{index}",
+                "agency_name": _agency_from_gmail_scope_text(scope_text) or base_item.get("agency_name"),
+                "body_text": scope_text or text_body[:2000],
+            }
+        )
+    return items
+
+
+def _looks_like_opportunity_anchor(title: str, href: str) -> bool:
+    normalized = _normalize_text(f"{title} {href}")
+    excluded = ("unsubscribe", "privacy", "preferences", "download package", "add to calendar")
+    if any(term in normalized for term in excluded):
+        return False
+    opportunity_terms = (
+        "solicitation",
+        "request for",
+        "rfp",
+        "rfi",
+        "bid",
+        "proposal",
+        "invitation",
+        "addendum",
+        "notice",
+        "euna",
+        "bonfire",
+        "beacon",
+    )
+    return any(term in normalized for term in opportunity_terms)
+
+
+def _solicitation_id_from_title(title: str) -> str | None:
+    match = re.search(r"\b(?:RFP|RFQ|RFI|IFB|ITB|BID|NO\.?)\s*[-#:A-Z0-9_.]+", title, flags=re.IGNORECASE)
+    return _clean(match.group(0)) if match else None
+
+
+def _agency_from_gmail_scope_text(scope_text: str | None) -> str | None:
+    cleaned = _clean(scope_text)
+    if not cleaned:
+        return None
+    parts = [part.strip() for part in cleaned.split(",") if part.strip()]
+    if len(parts) >= 2:
+        return _clean(parts[-1].split("(", 1)[0])
+    return None
 
 
 def _gmail_item_source_key(item: dict[str, object]) -> str:
@@ -3038,10 +3344,12 @@ def refresh_gmail_rfq_source_status(db: Session, *, limit: int | None = None) ->
         db,
         run,
         status="manual_review",
-        detail="Gmail RFQ feed is not configured for this environment. Configure GMAIL_RFQ_FEED_URL so label:rfqs email opportunities can be imported.",
+        detail="Gmail RFQ import is not configured for this environment. Configure GMAIL_RFQ_FEED_URL or Google OAuth refresh tokens so label:rfqs email opportunities can be imported.",
         request_payload={
             "label": settings.gmail_rfq_feed_label,
+            "search_query": settings.gmail_rfq_search_query,
             "feed_url_configured": False,
+            "gmail_api_configured": settings.gmail_rfq_direct_enabled,
             "limit": limit or settings.gmail_rfq_feed_limit,
         },
     )

@@ -121,6 +121,8 @@ class Settings:
         "GMAIL_RFQ_FEED_URL",
         "",
     )
+    gmail_rfq_mailbox: str = os.getenv("GMAIL_RFQ_MAILBOX", os.getenv("INVITE_SENDER_EMAIL", ""))
+    gmail_rfq_search_query: str = os.getenv("GMAIL_RFQ_SEARCH_QUERY", "label:rfqs")
     gmail_rfq_feed_label: str = os.getenv("GMAIL_RFQ_FEED_LABEL", "RFQs")
     gmail_rfq_feed_timeout_seconds: int = int(os.getenv("GMAIL_RFQ_FEED_TIMEOUT_SECONDS", "20"))
     gmail_rfq_feed_limit: int = int(os.getenv("GMAIL_RFQ_FEED_LIMIT", "5000"))
@@ -134,7 +136,15 @@ class Settings:
 
     @property
     def gmail_rfq_feed_enabled(self) -> bool:
-        return bool(self.gmail_rfq_feed_url.strip())
+        return bool(self.gmail_rfq_feed_url.strip() or self.gmail_rfq_direct_enabled)
+
+    @property
+    def gmail_rfq_direct_enabled(self) -> bool:
+        if not (self.google_oauth_client_id.strip() and self.google_oauth_client_secret.strip()):
+            return False
+        if self.gmail_rfq_mailbox.strip():
+            return bool(self.gmail_refresh_tokens.get(self.gmail_rfq_mailbox.strip(), "").strip())
+        return any(token.strip() for token in self.gmail_refresh_tokens.values())
 
     @property
     def billing_service_key_map(self) -> dict[str, str]:
