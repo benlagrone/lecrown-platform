@@ -477,24 +477,26 @@ jobs:
                   values[key.strip()] = value.strip().strip('"').strip("'")
               return values
 
-          def upsert_env(path: Path, updates: dict[str, str]) -> None:
+          def add_missing_env(path: Path, updates: dict[str, str]) -> list[str]:
               if not updates:
-                  return
+                  return []
               lines = path.read_text().splitlines() if path.exists() else []
-              remaining = dict(updates)
-              next_lines: list[str] = []
+              existing_keys: set[str] = set()
               for line in lines:
                   if "=" not in line or line.lstrip().startswith("#"):
-                      next_lines.append(line)
                       continue
                   key = line.split("=", 1)[0].strip()
-                  if key in remaining:
-                      next_lines.append(f"{key}={remaining.pop(key)}")
-                  else:
-                      next_lines.append(line)
-              for key, value in remaining.items():
+                  existing_keys.add(key)
+              added: list[str] = []
+              next_lines = list(lines)
+              for key, value in updates.items():
+                  if key in existing_keys:
+                      continue
                   next_lines.append(f"{key}={value}")
-              path.write_text("\n".join(next_lines) + "\n")
+                  added.append(key)
+              if added:
+                  path.write_text("\n".join(next_lines) + "\n")
+              return added
 
           platform_values = parse_env(platform_env)
           crm_values = parse_env(crm_env)
@@ -514,10 +516,14 @@ jobs:
               updates["GMAIL_RFQ_SEARCH_QUERY"] = "label:rfqs"
           if platform_values.get("GMAIL_RFQ_FEED_LIMIT") in {"", "50"}:
               updates["GMAIL_RFQ_FEED_LIMIT"] = "5000"
+          if "ESPOCRM_LEAD_SOURCE" not in platform_values:
+              updates["ESPOCRM_LEAD_SOURCE"] = "Web Site"
+          if "ESPOCRM_ALLOWED_EXTRA_FIELDS" not in platform_values:
+              updates["ESPOCRM_ALLOWED_EXTRA_FIELDS"] = ""
 
-          upsert_env(platform_env, updates)
-          if updates:
-              print("Updated platform env keys: " + ", ".join(sorted(updates)))
+          added = add_missing_env(platform_env, updates)
+          if added:
+              print("Added platform env keys: " + ", ".join(sorted(added)))
           else:
               print("Platform env unchanged.")
           PY

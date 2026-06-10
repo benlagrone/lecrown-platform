@@ -15,6 +15,15 @@ from app.utils.helpers import new_uuid
 
 settings = get_settings()
 
+ESPO_STANDARD_LEAD_FIELDS = {
+    "firstName",
+    "lastName",
+    "emailAddress",
+    "phoneNumber",
+    "description",
+    "source",
+}
+
 
 def _clean(value: Any) -> str | None:
     if value is None:
@@ -29,20 +38,35 @@ def _build_contact_name(first_name: str | None, last_name: str | None) -> str | 
 
 
 def _build_delivery_payload(payload: IntakeLeadCreate) -> dict[str, Any]:
-    delivery_payload = payload.lead.model_dump(exclude_none=True)
+    raw_lead_payload = payload.lead.model_dump(exclude_none=True)
+    allowed_fields = ESPO_STANDARD_LEAD_FIELDS | set(settings.espocrm_allowed_extra_fields)
+    delivery_payload = {
+        key: value
+        for key, value in raw_lead_payload.items()
+        if key in allowed_fields
+    }
 
     if not _clean(delivery_payload.get("lastName")):
         delivery_payload["lastName"] = "Website Lead"
 
-    if payload.business_context and not _clean(delivery_payload.get("businessUnit")):
-        delivery_payload["businessUnit"] = payload.business_context.strip()
-
-    if payload.product_context and not _clean(delivery_payload.get("productType")):
-        delivery_payload["productType"] = payload.product_context.strip()
+    lead_source = _clean(raw_lead_payload.get("source"))
+    configured_crm_source = _clean(settings.espocrm_lead_source)
+    if configured_crm_source:
+        delivery_payload["source"] = configured_crm_source
+    elif lead_source:
+        delivery_payload.pop("source", None)
 
     description_lines = []
     if _clean(delivery_payload.get("description")):
         description_lines.append(str(delivery_payload["description"]).strip())
+    if lead_source:
+        description_lines.append(f"Lead source: {lead_source}")
+    business_context = _clean(payload.business_context) or _clean(raw_lead_payload.get("businessUnit"))
+    if business_context:
+        description_lines.append(f"Business context: {business_context}")
+    product_context = _clean(payload.product_context) or _clean(raw_lead_payload.get("productType"))
+    if product_context:
+        description_lines.append(f"Product context: {product_context}")
     description_lines.append(f"Source site: {payload.source_site}")
     if payload.page_url:
         description_lines.append(f"Page URL: {payload.page_url}")
@@ -60,9 +84,10 @@ def _build_delivery_payload(payload: IntakeLeadCreate) -> dict[str, Any]:
 
 
 def _normalize(payload: IntakeLeadCreate, delivery_payload: dict[str, Any]) -> dict[str, Any]:
-    business_context = _clean(payload.business_context) or _clean(delivery_payload.get("businessUnit"))
-    product_context = _clean(payload.product_context) or _clean(delivery_payload.get("productType"))
-    lead_source = _clean(delivery_payload.get("source"))
+    raw_lead_payload = payload.lead.model_dump(exclude_none=True)
+    business_context = _clean(payload.business_context) or _clean(raw_lead_payload.get("businessUnit"))
+    product_context = _clean(payload.product_context) or _clean(raw_lead_payload.get("productType"))
+    lead_source = _clean(raw_lead_payload.get("source")) or _clean(delivery_payload.get("source"))
 
     return {
         "source_site": payload.source_site,
@@ -145,8 +170,27 @@ def create_lead_submission(db: Session, payload: IntakeLeadCreate) -> IntakeLead
     return submission
 
 
+def _rebuild_submission_payload(submission: IntakeLeadSubmission) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    if not isinstance(submission.raw_payload, dict):
+        return None
+    try:
+        raw_payload = IntakeLeadCreate.model_validate(submission.raw_payload)
+    except ValueError:
+        return None
+
+    delivery_payload = _build_delivery_payload(raw_payload)
+    normalized_payload = _normalize(raw_payload, delivery_payload)
+    return delivery_payload, normalized_payload
+
+
 def _deliver_submission_to_crm(db: Session, submission: IntakeLeadSubmission) -> IntakeLeadSubmission:
-    delivery_payload = submission.delivery_payload or {}
+    rebuilt_payload = _rebuild_submission_payload(submission)
+    if rebuilt_payload:
+        delivery_payload, normalized_payload = rebuilt_payload
+        submission.delivery_payload = delivery_payload
+        submission.normalized_payload = normalized_payload
+    else:
+        delivery_payload = submission.delivery_payload or {}
     submission.status = "received"
     submission.delivery_status = "pending"
     submission.delivery_record_id = None
