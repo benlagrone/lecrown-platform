@@ -62,7 +62,7 @@ import type {
   UserInviteCreateResponse,
 } from "../../shared/types";
 
-type AdminView = "dashboard" | "intake" | "opportunities" | "sources" | "billing" | "profile";
+type AdminView = "dashboard" | "intake" | "opportunities" | "certifications" | "sources" | "billing" | "profile";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
 type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
 type OpportunityTagFilterKind = "source" | "tag" | "preferred_agency";
@@ -87,6 +87,39 @@ type MetroVendorResource = {
   href: string;
   cta: string;
   tags: string[];
+};
+type CertificationStep = {
+  label: string;
+  state: "ready" | "in_progress" | "blocked" | "pending";
+};
+type CertificationLane = {
+  name: string;
+  company: string;
+  agency: string;
+  status: string;
+  owner: string;
+  due: string;
+  nextAction: string;
+  steps: CertificationStep[];
+};
+type BuyerGate = {
+  name: string;
+  portal: string;
+  requirement: string;
+  nextAction: string;
+  reusableDocs: string[];
+};
+type ReusableDocument = {
+  name: string;
+  purpose: string;
+  status: string;
+  documentPortalSlot: string;
+};
+type CapabilityStatementDraft = {
+  name: string;
+  audience: string;
+  status: string;
+  nextAction: string;
 };
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
@@ -124,6 +157,246 @@ const METRO_VENDOR_RESOURCES: MetroVendorResource[] = [
     href: "https://www.ridemetro.org/about/business-to-business/procurement-opportunities",
     cta: "Open source",
     tags: ["Source", "Forecasts"],
+  },
+];
+const CERTIFICATION_LANES: CertificationLane[] = [
+  {
+    name: "SAM.gov Entity Registration",
+    company: "LeCrown Development",
+    agency: "U.S. General Services Administration",
+    status: "Needs verification",
+    owner: "Benjamin",
+    due: "2026-07-08",
+    nextAction: "Log into SAM.gov, capture the entity status, UEI, CAGE, expiration date, and any renewal blockers.",
+    steps: [
+      { label: "Entity login", state: "pending" },
+      { label: "Core data", state: "pending" },
+      { label: "Assertions", state: "pending" },
+      { label: "Representations", state: "pending" },
+      { label: "Activation proof", state: "blocked" },
+    ],
+  },
+  {
+    name: "MySBA Certifications Account",
+    company: "LeCrown Development",
+    agency: "U.S. Small Business Administration",
+    status: "Not started",
+    owner: "Benjamin",
+    due: "2026-07-09",
+    nextAction: "Create or confirm MySBA login and run the eligibility checks that feed WOSB, EDWOSB, 8(a), and HUBZone.",
+    steps: [
+      { label: "Account", state: "pending" },
+      { label: "Business profile", state: "pending" },
+      { label: "Eligibility checks", state: "pending" },
+      { label: "Document upload", state: "pending" },
+    ],
+  },
+  {
+    name: "WOSB / EDWOSB",
+    company: "LeCrown Development",
+    agency: "SBA",
+    status: "Candidate",
+    owner: "Benjamin / Jie",
+    due: "2026-07-10",
+    nextAction: "Confirm qualifying ownership/control facts and whether EDWOSB financial thresholds are supportable.",
+    steps: [
+      { label: "Ownership proof", state: "pending" },
+      { label: "Control narrative", state: "pending" },
+      { label: "Financial docs", state: "blocked" },
+      { label: "Capability fit", state: "in_progress" },
+    ],
+  },
+  {
+    name: "8(a) Business Development",
+    company: "LeCrown Development",
+    agency: "SBA",
+    status: "Candidate",
+    owner: "Benjamin",
+    due: "2026-07-12",
+    nextAction: "Complete the preliminary 8(a) assessment and list gaps before assembling a full application packet.",
+    steps: [
+      { label: "Eligibility screen", state: "pending" },
+      { label: "Narratives", state: "pending" },
+      { label: "Tax returns", state: "blocked" },
+      { label: "Submission decision", state: "pending" },
+    ],
+  },
+  {
+    name: "HUBZone",
+    company: "LeCrown Development",
+    agency: "SBA",
+    status: "Eligibility unknown",
+    owner: "Benjamin",
+    due: "2026-07-12",
+    nextAction: "Check principal office and employee addresses against the SBA HUBZone map before investing in the packet.",
+    steps: [
+      { label: "Address check", state: "pending" },
+      { label: "Employee roster", state: "blocked" },
+      { label: "Lease proof", state: "pending" },
+    ],
+  },
+  {
+    name: "City of Houston OBO M/WBE or SBE",
+    company: "LeCrown Development",
+    agency: "City of Houston Office of Business Opportunity",
+    status: "In progress",
+    owner: "Benjamin",
+    due: "2026-07-13",
+    nextAction: "Reconcile the portal status with affidavit, personal net worth, tax, and ownership files.",
+    steps: [
+      { label: "Portal account", state: "in_progress" },
+      { label: "Business docs", state: "in_progress" },
+      { label: "Affidavit", state: "pending" },
+      { label: "OBO review", state: "pending" },
+    ],
+  },
+  {
+    name: "Texas HUB / VetHUB",
+    company: "LeCrown Development",
+    agency: "Texas Comptroller",
+    status: "Candidate",
+    owner: "Benjamin",
+    due: "2026-07-15",
+    nextAction: "Confirm whether LeCrown qualifies and prepare CMBL/vendor profile details for state buyer visibility.",
+    steps: [
+      { label: "Eligibility", state: "pending" },
+      { label: "CMBL / VID", state: "pending" },
+      { label: "Packet upload", state: "pending" },
+    ],
+  },
+  {
+    name: "TxDOT DBE / ACDBE",
+    company: "LeCrown Development",
+    agency: "Texas Department of Transportation",
+    status: "Decision needed",
+    owner: "Benjamin",
+    due: "2026-07-17",
+    nextAction: "Decide whether transportation, airport, or federally assisted construction work is a real pursuit lane.",
+    steps: [
+      { label: "Pursuit decision", state: "pending" },
+      { label: "NAICS fit", state: "pending" },
+      { label: "UCP packet", state: "pending" },
+    ],
+  },
+];
+const BUYER_GATES: BuyerGate[] = [
+  {
+    name: "University of Houston",
+    portal: "UH supplier / CMBL / ESBD",
+    requirement: "Vendor profile, CMBL visibility, Form 1295 when applicable, and capability statement aligned to facilities or technology work.",
+    nextAction: "Confirm supplier registration status and map UH solicitations to the reusable document packet.",
+    reusableDocs: ["W-9", "COI", "Capability statement", "References"],
+  },
+  {
+    name: "University of Texas",
+    portal: "UT procurement / Bonfire / VID",
+    requirement: "Supplier setup, VID/CMBL details, conflict forms when required, and buyer-specific capability statement.",
+    nextAction: "Track UT Austin and UT System portal accounts separately so opportunities do not get lost between buyer channels.",
+    reusableDocs: ["W-9", "Certificate of filing", "Capability statement", "Past performance"],
+  },
+  {
+    name: "City of Houston",
+    portal: "BeaconBid / Strategic Purchasing / OBO",
+    requirement: "Vendor setup plus OBO certification packet for M/WBE or SBE pursuit.",
+    nextAction: "Tie BeaconBid opportunity tracking to OBO certification status and document blockers.",
+    reusableDocs: ["OBO packet", "Tax returns", "Personal net worth", "COI"],
+  },
+  {
+    name: "Houston METRO",
+    portal: "METRO procurement / Ariba / SBDBE",
+    requirement: "Vendor registration, SBE assessment, certification portal account, and procurement forecast monitoring.",
+    nextAction: "Confirm whether METRO SBE certification is required before bidding or only improves scoring.",
+    reusableDocs: ["SBE packet", "Capability statement", "Insurance", "References"],
+  },
+  {
+    name: "Katy ISD",
+    portal: "OpenGov",
+    requirement: "OpenGov vendor account, bid notifications, W-9, insurance, and district-ready capability statement.",
+    nextAction: "Add saved searches for facilities, property, maintenance, and technology categories.",
+    reusableDocs: ["W-9", "COI", "Capability statement"],
+  },
+  {
+    name: "TDCJ",
+    portal: "TDCJ procurement / CMBL",
+    requirement: "Texas vendor identity, solicitation monitoring, and correctional-facility buyer readiness documents.",
+    nextAction: "Keep CMBL and TDCJ notices in the same opportunity review lane.",
+    reusableDocs: ["W-9", "CMBL profile", "Capability statement", "References"],
+  },
+];
+const REUSABLE_DOCUMENTS: ReusableDocument[] = [
+  {
+    name: "W-9",
+    purpose: "Baseline vendor setup for universities, districts, city, and state buyers.",
+    status: "Needs current signed copy",
+    documentPortalSlot: "Vendor documents / Tax",
+  },
+  {
+    name: "Certificate of filing and company formation docs",
+    purpose: "Ownership, business age, and legal entity proof for certifications.",
+    status: "Locate existing copy",
+    documentPortalSlot: "Company records",
+  },
+  {
+    name: "Insurance certificate",
+    purpose: "Required for facilities, maintenance, property, and service contracts.",
+    status: "Needs carrier-issued COI",
+    documentPortalSlot: "Vendor documents / Insurance",
+  },
+  {
+    name: "Tax returns and financial statements",
+    purpose: "EDWOSB, 8(a), OBO, DBE, bonding, and capacity checks.",
+    status: "Sensitive docs pending",
+    documentPortalSlot: "Restricted certification evidence",
+  },
+  {
+    name: "Ownership and control affidavit",
+    purpose: "Women-owned, disadvantaged, and local certification proof.",
+    status: "Draft needed",
+    documentPortalSlot: "Certification packets",
+  },
+  {
+    name: "Past performance and references",
+    purpose: "Reusable proof for buyer onboarding and capability statements.",
+    status: "Collect and normalize",
+    documentPortalSlot: "Marketing / Past performance",
+  },
+  {
+    name: "NAICS and service code matrix",
+    purpose: "Keeps SAM, CMBL, university, and buyer profiles aligned.",
+    status: "Draft needed",
+    documentPortalSlot: "Vendor profile data",
+  },
+];
+const CAPABILITY_STATEMENT_DRAFTS: CapabilityStatementDraft[] = [
+  {
+    name: "Master LeCrown capability statement",
+    audience: "Reusable base for all government and institutional buyers",
+    status: "Needs drafting",
+    nextAction: "Write one-page master with NAICS, differentiators, contacts, insurance, past performance, and core services.",
+  },
+  {
+    name: "City of Houston / OBO version",
+    audience: "City departments and Strategic Purchasing",
+    status: "Needs buyer tailoring",
+    nextAction: "Emphasize local delivery, real estate/property services, compliance, and OBO certification path.",
+  },
+  {
+    name: "Houston METRO version",
+    audience: "METRO procurement and SBE program",
+    status: "Needs buyer tailoring",
+    nextAction: "Align to facilities, maintenance, construction support, IT, and transit-adjacent support services.",
+  },
+  {
+    name: "UH / UT version",
+    audience: "Higher education procurement teams",
+    status: "Needs buyer tailoring",
+    nextAction: "Focus on campus facilities, asset support, technology services, compliance, and reliable vendor onboarding.",
+  },
+  {
+    name: "TDCJ version",
+    audience: "State correctional procurement buyers",
+    status: "Needs buyer tailoring",
+    nextAction: "Write a conservative state-buyer version with capacity, insurance, security awareness, and references.",
   },
 ];
 
@@ -164,6 +437,9 @@ function getCurrentView(): AdminView {
   if (window.location.hash.startsWith("#/billing")) {
     return "billing";
   }
+  if (window.location.hash.startsWith("#/certifications")) {
+    return "certifications";
+  }
   if (window.location.hash.startsWith("#/sources")) {
     return "sources";
   }
@@ -180,6 +456,10 @@ function navigateToView(view: AdminView): void {
   }
   if (view === "sources") {
     window.location.hash = "#/sources";
+    return;
+  }
+  if (view === "certifications") {
+    window.location.hash = "#/certifications";
     return;
   }
   if (view === "intake") {
@@ -319,7 +599,14 @@ export default function App() {
   }, [tenant]);
 
   useEffect(() => {
-    if (view !== "opportunities" && view !== "sources" && view !== "profile" && view !== "intake" && view !== "billing") {
+    if (
+      view !== "opportunities" &&
+      view !== "certifications" &&
+      view !== "sources" &&
+      view !== "profile" &&
+      view !== "intake" &&
+      view !== "billing"
+    ) {
       return;
     }
     void ensureProtectedAccess();
@@ -339,7 +626,10 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if ((view !== "opportunities" && view !== "sources") || opportunitiesAuthStatus !== "authenticated") {
+    if (
+      (view !== "opportunities" && view !== "certifications" && view !== "sources") ||
+      opportunitiesAuthStatus !== "authenticated"
+    ) {
       return;
     }
     void refreshContractsView();
@@ -377,7 +667,7 @@ export default function App() {
       setContractCapabilities(capabilities);
       setAuthMessage("");
       setOpportunitiesAuthStatus("authenticated");
-      if (view === "opportunities" || view === "sources") {
+      if (view === "opportunities" || view === "certifications" || view === "sources") {
         await refreshContractsView();
       }
     } catch {
@@ -712,7 +1002,7 @@ export default function App() {
       const capabilities = await getGovContractCapabilities();
       setContractCapabilities(capabilities);
       setOpportunitiesAuthStatus("authenticated");
-      if (view === "opportunities" || view === "sources") {
+      if (view === "opportunities" || view === "certifications" || view === "sources") {
         await refreshContractsView();
       }
       setMessage("Signed in.");
@@ -751,7 +1041,7 @@ export default function App() {
       setInviteUsername("");
       setInvitePassword("");
       setInvitePasswordConfirm("");
-      if (view === "opportunities" || view === "sources") {
+      if (view === "opportunities" || view === "certifications" || view === "sources") {
         await refreshContractsView();
       }
       setMessage("Invite accepted. Your account is ready.");
@@ -1579,6 +1869,23 @@ export default function App() {
             Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs now live on a separate page and require an invited account sign-in.
           </p>
         </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Certifications</p>
+              <h2>Dedicated progress page</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("certifications")}>
+                Open certifications page
+              </button>
+            </div>
+          </div>
+          <p className="panel-subcopy">
+            Track SAM.gov, SBA, City of Houston, Texas HUB, buyer portal gates, reusable evidence, document portal slots, and capability statement drafts.
+          </p>
+        </section>
       </>
     );
   }
@@ -2068,6 +2375,201 @@ export default function App() {
               </table>
             </div>
           )}
+        </section>
+      </>
+    );
+  }
+
+  function renderCertificationsPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking certification tracker access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Protected certification tracker",
+        subcopy: "Sign in with your username or email, or accept an invite code to review certification progress, buyer gates, reusable documents, and capability statement work.",
+      });
+    }
+
+    const blockedStepCount = CERTIFICATION_LANES.reduce(
+      (total, lane) => total + lane.steps.filter((step) => step.state === "blocked").length,
+      0,
+    );
+    const inProgressCertificationCount = CERTIFICATION_LANES.filter(
+      (lane) => lane.status === "In progress" || lane.steps.some((step) => step.state === "in_progress"),
+    ).length;
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Certification Progress</p>
+              <h2>Certification, buyer, document, and capability-statement tracker</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("opportunities")}>
+                Review opportunities
+              </button>
+              <button type="button" className="secondary-link" onClick={() => navigateToView("sources")}>
+                Check source coverage
+              </button>
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            This page keeps the government-contracting prerequisites visible before bids get urgent: entity registration,
+            SBA and local certification lanes, buyer-specific portals, reusable evidence, document portal slots, and the
+            capability statements that still need to be written.
+          </p>
+
+          <div className="metric-row">
+            <div className="metric-pill">
+              <strong>1</strong>
+              <span>active company</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{CERTIFICATION_LANES.length}</strong>
+              <span>certification lanes</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{inProgressCertificationCount}</strong>
+              <span>lanes started</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{BUYER_GATES.length}</strong>
+              <span>buyer gates tracked</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{REUSABLE_DOCUMENTS.length}</strong>
+              <span>reusable docs</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{blockedStepCount}</strong>
+              <span>blocked evidence steps</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid certification-grid">
+          {CERTIFICATION_LANES.map((lane) => (
+            <article className="panel certification-card" key={lane.name}>
+              <div className="certification-card-header">
+                <div>
+                  <p className="eyebrow">{lane.company}</p>
+                  <h2>{lane.name}</h2>
+                  <span>{lane.agency}</span>
+                </div>
+                <span className={getCertificationStatusBadgeClass(lane.status)}>{lane.status}</span>
+              </div>
+
+              <div className="certification-meta-row">
+                <span>Owner: {lane.owner}</span>
+                <span>Target: {lane.due}</span>
+              </div>
+
+              <p className="certification-next-action">{lane.nextAction}</p>
+
+              <div className="certification-step-list">
+                {lane.steps.map((step) => (
+                  <span className={getCertificationStepBadgeClass(step.state)} key={`${lane.name}-${step.label}`}>
+                    {step.label}
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Buyer Gates</p>
+              <h2>Portals and buyer-specific requirements</h2>
+            </div>
+            <span>{BUYER_GATES.length} tracked</span>
+          </div>
+
+          <div className="table-shell">
+            <table className="sources-table">
+              <thead>
+                <tr>
+                  <th>Buyer</th>
+                  <th>Portal</th>
+                  <th>Requirement</th>
+                  <th>Next Action</th>
+                  <th>Reusable Docs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BUYER_GATES.map((gate) => (
+                  <tr key={gate.name}>
+                    <td>
+                      <strong>{gate.name}</strong>
+                    </td>
+                    <td>{gate.portal}</td>
+                    <td>{gate.requirement}</td>
+                    <td>{gate.nextAction}</td>
+                    <td>
+                      {gate.reusableDocs.map((doc) => (
+                        <span key={`${gate.name}-${doc}`}>{doc}</span>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="grid certification-support-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Document Portal</p>
+                <h2>Common reusable documents</h2>
+              </div>
+            </div>
+            <div className="certification-list">
+              {REUSABLE_DOCUMENTS.map((document) => (
+                <div className="certification-list-row" key={document.name}>
+                  <div>
+                    <strong>{document.name}</strong>
+                    <span>{document.purpose}</span>
+                    <span>Portal slot: {document.documentPortalSlot}</span>
+                  </div>
+                  <span className="status-badge status-badge-neutral">{document.status}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Capability Statements</p>
+                <h2>Draft queue</h2>
+              </div>
+            </div>
+            <div className="certification-list">
+              {CAPABILITY_STATEMENT_DRAFTS.map((draft) => (
+                <div className="certification-list-row" key={draft.name}>
+                  <div>
+                    <strong>{draft.name}</strong>
+                    <span>{draft.audience}</span>
+                    <span>{draft.nextAction}</span>
+                  </div>
+                  <span className="status-badge status-badge-warn">{draft.status}</span>
+                </div>
+              ))}
+            </div>
+          </article>
         </section>
       </>
     );
@@ -2998,6 +3500,13 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={`nav-pill${view === "certifications" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("certifications")}
+        >
+          Certifications
+        </button>
+        <button
+          type="button"
           className={`nav-pill${view === "sources" ? " nav-pill-active" : ""}`}
           onClick={() => navigateToView("sources")}
         >
@@ -3027,6 +3536,8 @@ export default function App() {
               ? "Multi-tenant content and inquiry control room"
               : view === "intake"
               ? "Marketing intake and CRM funnel"
+              : view === "certifications"
+              ? "Government certification progress tracker"
               : view === "sources"
               ? "eProcurement source automation registry"
               : view === "billing"
@@ -3040,6 +3551,8 @@ export default function App() {
               ? "One backend, two business surfaces. Switch tenants, create content, and push live when the publishing path is ready."
               : view === "intake"
               ? "Inspect intake health across connected sites, confirm CRM delivery is wired, and review the newest contacts entering the funnel."
+              : view === "certifications"
+              ? "Track certification lanes, buyer portal requirements, reusable evidence, document portal slots, and capability statement drafts before bid deadlines start compressing the work."
               : view === "sources"
               ? "Review every procurement source feeding the funnel, see what automation is active for each one, and identify which portals still need a deeper integration."
               : view === "billing"
@@ -3111,6 +3624,8 @@ export default function App() {
         ? renderDashboard()
         : view === "intake"
           ? renderIntakePage()
+          : view === "certifications"
+            ? renderCertificationsPage()
           : view === "sources"
             ? renderSourcesPage()
           : view === "billing"
@@ -3223,6 +3738,32 @@ function getIntakeStatusBadgeClass(status: string): string {
     return "status-badge status-badge-warn";
   }
   if (status === "attention" || status === "failed") {
+    return "status-badge status-badge-bad";
+  }
+  return "status-badge status-badge-neutral";
+}
+
+function getCertificationStatusBadgeClass(status: string): string {
+  if (status === "In progress") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "Needs verification" || status === "Decision needed" || status === "Eligibility unknown") {
+    return "status-badge status-badge-warn";
+  }
+  if (status === "Not started") {
+    return "status-badge status-badge-neutral";
+  }
+  return "status-badge status-badge-warn";
+}
+
+function getCertificationStepBadgeClass(state: CertificationStep["state"]): string {
+  if (state === "ready") {
+    return "status-badge status-badge-good";
+  }
+  if (state === "in_progress") {
+    return "status-badge status-badge-warn";
+  }
+  if (state === "blocked") {
     return "status-badge status-badge-bad";
   }
   return "status-badge status-badge-neutral";
