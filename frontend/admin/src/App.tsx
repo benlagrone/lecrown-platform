@@ -251,6 +251,22 @@ const CERTIFICATION_LANES: CertificationLane[] = [
     ],
   },
   {
+    name: "Houston METRO Certification",
+    company: "LeCrown Development",
+    agency: "Houston METRO",
+    status: "Certified",
+    owner: "Benjamin / Jie",
+    due: "2029-07-15",
+    nextAction:
+      "Save the certificate proof to the document portal, keep the METRO portal account current, and schedule renewal before 2029-07-15.",
+    steps: [
+      { label: "Certification received", state: "ready" },
+      { label: "Renewal date recorded", state: "ready" },
+      { label: "Certificate proof saved", state: "pending" },
+      { label: "Portal account maintained", state: "in_progress" },
+    ],
+  },
+  {
     name: "Texas HUB / VetHUB",
     company: "LeCrown Development",
     agency: "Texas Comptroller",
@@ -304,8 +320,8 @@ const BUYER_GATES: BuyerGate[] = [
   {
     name: "Houston METRO",
     portal: "METRO procurement / Ariba / SBDBE",
-    requirement: "Vendor registration, SBE assessment, certification portal account, and procurement forecast monitoring.",
-    nextAction: "Confirm whether METRO SBE certification is required before bidding or only improves scoring.",
+    requirement: "METRO certification is confirmed; keep vendor registration, portal access, and procurement forecast monitoring current.",
+    nextAction: "Save the certificate proof to the document portal and schedule renewal before 2029-07-15.",
     reusableDocs: ["SBE packet", "Capability statement", "Insurance", "References"],
   },
   {
@@ -2402,7 +2418,10 @@ export default function App() {
       0,
     );
     const inProgressCertificationCount = CERTIFICATION_LANES.filter(
-      (lane) => lane.status === "In progress" || lane.steps.some((step) => step.state === "in_progress"),
+      (lane) =>
+        lane.status === "Certified" ||
+        lane.status === "In progress" ||
+        lane.steps.some((step) => step.state === "in_progress"),
     ).length;
 
     return (
@@ -3744,7 +3763,7 @@ function getIntakeStatusBadgeClass(status: string): string {
 }
 
 function getCertificationStatusBadgeClass(status: string): string {
-  if (status === "In progress") {
+  if (status === "Certified" || status === "In progress") {
     return "status-badge status-badge-good";
   }
   if (status === "Needs verification" || status === "Decision needed" || status === "Eligibility unknown") {

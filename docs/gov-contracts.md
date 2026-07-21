@@ -97,6 +97,11 @@ The admin app now has a dedicated `Sources` page alongside `Opportunities`. The 
 - a catalog/probe-only integration
 - blocked and still needing a deeper browser or portal-specific pass
 
+The admin app also has a dedicated `Certifications` page at `#/certifications`.
+As of Jessica Huang's July 21, 2026 email, LeCrown Development is marked
+certified for Houston METRO with renewal due 2029-07-15. City of Houston OBO
+remains in progress and should be worked next.
+
 Promote one matched contract into the CRM lead funnel:
 
 ```json
