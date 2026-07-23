@@ -121,6 +121,14 @@ type CapabilityStatementDraft = {
   status: string;
   nextAction: string;
 };
+type CertificationActivity = {
+  date: string;
+  actor: string;
+  title: string;
+  summary: string;
+  status: "done" | "next" | "info";
+  source: string;
+};
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
 const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
@@ -413,6 +421,44 @@ const CAPABILITY_STATEMENT_DRAFTS: CapabilityStatementDraft[] = [
     audience: "State correctional procurement buyers",
     status: "Needs buyer tailoring",
     nextAction: "Write a conservative state-buyer version with capacity, insurance, security awareness, and references.",
+  },
+];
+const CERTIFICATION_ACTIVITY: CertificationActivity[] = [
+  {
+    date: "2026-07-21",
+    actor: "Jessica Huang",
+    title: "Houston METRO certification received",
+    summary:
+      "LeCrown Development received METRO Certification. Renewal date is recorded as 2029-07-15.",
+    status: "done",
+    source: "Gmail message 19f848b56634c415",
+  },
+  {
+    date: "2026-07-21",
+    actor: "Jessica Huang",
+    title: "City of Houston certification started",
+    summary:
+      "COH certification has been started and should continue as the next active local certification lane.",
+    status: "next",
+    source: "Gmail message 19f848b56634c415",
+  },
+  {
+    date: "2026-07-21",
+    actor: "Jessica Huang",
+    title: "COH completion request sent",
+    summary:
+      "Jessica sent a separate request to complete the COH certification. Portal credentials stay outside the tracker.",
+    status: "next",
+    source: "Gmail message 19f849397ab03b33",
+  },
+  {
+    date: "2026-07-21",
+    actor: "LeCrown tracker",
+    title: "Document follow-up created",
+    summary:
+      "Certificate proof still needs to be saved to the document portal and linked to the certification evidence map.",
+    status: "next",
+    source: "Certification tracker",
   },
 ];
 
@@ -2476,6 +2522,33 @@ export default function App() {
           </div>
         </section>
 
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Activity</p>
+              <h2>Recent certification activity</h2>
+            </div>
+            <span>{CERTIFICATION_ACTIVITY.length} events</span>
+          </div>
+
+          <div className="certification-list">
+            {CERTIFICATION_ACTIVITY.map((activity) => (
+              <div className="certification-list-row" key={`${activity.date}-${activity.title}`}>
+                <div>
+                  <strong>{activity.title}</strong>
+                  <span>{activity.summary}</span>
+                  <span>
+                    {activity.date} by {activity.actor} - {activity.source}
+                  </span>
+                </div>
+                <span className={getCertificationActivityBadgeClass(activity.status)}>
+                  {formatCertificationActivityStatus(activity.status)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section className="grid certification-grid">
           {CERTIFICATION_LANES.map((lane) => (
             <article className="panel certification-card" key={lane.name}>
@@ -3786,6 +3859,26 @@ function getCertificationStepBadgeClass(state: CertificationStep["state"]): stri
     return "status-badge status-badge-bad";
   }
   return "status-badge status-badge-neutral";
+}
+
+function getCertificationActivityBadgeClass(status: CertificationActivity["status"]): string {
+  if (status === "done") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "next") {
+    return "status-badge status-badge-warn";
+  }
+  return "status-badge status-badge-neutral";
+}
+
+function formatCertificationActivityStatus(status: CertificationActivity["status"]): string {
+  if (status === "done") {
+    return "Recorded";
+  }
+  if (status === "next") {
+    return "Next action";
+  }
+  return "Info";
 }
 
 function formatNigpPreview(value: string): string {

@@ -102,6 +102,10 @@ As of Jessica Huang's July 21, 2026 email, LeCrown Development is marked
 certified for Houston METRO with renewal due 2029-07-15. City of Houston OBO
 remains in progress and should be worked next.
 
+The Certifications page includes a recent activity feed for status changes and
+follow-ups. The first activity records mirror the Metro LeCrown tracker activity
+CSV at `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/certification-activity.csv`.
+
 Promote one matched contract into the CRM lead funnel:
 
 ```json
