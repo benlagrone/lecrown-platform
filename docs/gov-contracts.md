@@ -108,6 +108,21 @@ The Certifications page includes a recent activity feed for status changes and
 follow-ups. The first activity records mirror the Metro LeCrown tracker activity
 CSV at `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/certification-activity.csv`.
 
+## Knowledge and Operating Playbook
+
+The tracked government-contracting knowledge package now includes the original
+UH APEX materials, a source/freshness inventory, a certification and
+market-access map, and a 90-day operating plan:
+
+- [Government Contracting Knowledge Base](./government-contracting/README.md)
+- [Subcontracting and Market-Access Plan](./government-contracting/subcontracting-market-access-plan.md)
+- [Original source materials](./government-contracting/source-materials/)
+
+The source materials are reference evidence, not live proof of current program
+rules. The knowledge base links to official program pages and records the
+required verification boundary. Credentials and sensitive certification
+evidence must remain outside Git.
+
 Promote one matched contract into the CRM lead funnel:
 
 ```json

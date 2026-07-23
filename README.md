@@ -227,6 +227,18 @@ See:
 - [docs/billing-platform-strategy.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/billing-platform-strategy.md)
 - [docs/lecrown-billing-workflow-spec.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/lecrown-billing-workflow-spec.md)
 
+## Government Contracting Knowledge
+
+The platform's government-contracting knowledge package preserves the UH APEX
+source documents and turns them into a certification, buyer, prime-contractor,
+subcontracting, and supplier-diversity operating plan.
+
+See:
+
+- [Government Contracting Knowledge Base](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/government-contracting/README.md)
+- [Subcontracting and Market-Access Plan](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/government-contracting/subcontracting-market-access-plan.md)
+- [Government Contracts Platform Guide](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/gov-contracts.md)
+
 ## CRM Direction
 
 `lecrown-platform` should not be treated as the final cross-business CRM.
