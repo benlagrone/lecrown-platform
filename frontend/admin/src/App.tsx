@@ -247,12 +247,14 @@ const CERTIFICATION_LANES: CertificationLane[] = [
     name: "City of Houston OBO M/WBE or SBE",
     company: "LeCrown Development",
     agency: "City of Houston Office of Business Opportunity",
-    status: "In progress",
-    owner: "Benjamin",
-    due: "2026-07-13",
-    nextAction: "Reconcile the portal status with affidavit, personal net worth, tax, and ownership files.",
+    status: "Credentials received",
+    owner: "Benjamin / Jie",
+    due: "2026-07-23",
+    nextAction:
+      "Log into the COH certification portal with its separate login and continue the application without storing credentials in tracker files.",
     steps: [
-      { label: "Portal account", state: "in_progress" },
+      { label: "Portal URL confirmed", state: "ready" },
+      { label: "Separate COH login received", state: "ready" },
       { label: "Business docs", state: "in_progress" },
       { label: "Affidavit", state: "pending" },
       { label: "OBO review", state: "pending" },
@@ -443,11 +445,11 @@ const CERTIFICATION_ACTIVITY: CertificationActivity[] = [
     source: "Gmail message 19f848b56634c415",
   },
   {
-    date: "2026-07-21",
+    date: "2026-07-22",
     actor: "Jessica Huang",
-    title: "COH completion request sent",
+    title: "COH login received",
     summary:
-      "Jessica sent a separate request to complete the COH certification. Portal credentials stay outside the tracker.",
+      "COH certification login information was received for the same portal URL as METRO, but it uses a separate credential set. Credentials stay outside the tracker.",
     status: "next",
     source: "Gmail message 19f849397ab03b33",
   },
@@ -3836,7 +3838,7 @@ function getIntakeStatusBadgeClass(status: string): string {
 }
 
 function getCertificationStatusBadgeClass(status: string): string {
-  if (status === "Certified" || status === "In progress") {
+  if (status === "Certified" || status === "Credentials received" || status === "In progress") {
     return "status-badge status-badge-good";
   }
   if (status === "Needs verification" || status === "Decision needed" || status === "Eligibility unknown") {

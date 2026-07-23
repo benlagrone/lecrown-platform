@@ -100,7 +100,9 @@ The admin app now has a dedicated `Sources` page alongside `Opportunities`. The 
 The admin app also has a dedicated `Certifications` page at `#/certifications`.
 As of Jessica Huang's July 21, 2026 email, LeCrown Development is marked
 certified for Houston METRO with renewal due 2029-07-15. City of Houston OBO
-remains in progress and should be worked next.
+has a separate login for the same portal URL as METRO and should be worked
+next. Credentials must stay out of tracked files and should live only in the
+private credential store.
 
 The Certifications page includes a recent activity feed for status changes and
 follow-ups. The first activity records mirror the Metro LeCrown tracker activity
