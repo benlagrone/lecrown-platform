@@ -247,14 +247,15 @@ const CERTIFICATION_LANES: CertificationLane[] = [
     name: "City of Houston OBO M/WBE or SBE",
     company: "LeCrown Development",
     agency: "City of Houston Office of Business Opportunity",
-    status: "Credentials received",
+    status: "Incomplete 52%",
     owner: "Benjamin / Jie",
-    due: "2026-07-23",
+    due: "2026-07-24",
     nextAction:
-      "Log into the COH certification portal with its separate login and continue the application without storing credentials in tracker files.",
+      "Fill in City of Houston B2Gnow application 6369689 and identify the missing required sections/documents.",
     steps: [
       { label: "Portal URL confirmed", state: "ready" },
       { label: "Separate COH login received", state: "ready" },
+      { label: "Application 6369689 recorded", state: "ready" },
       { label: "Business docs", state: "in_progress" },
       { label: "Affidavit", state: "pending" },
       { label: "OBO review", state: "pending" },
@@ -264,13 +265,14 @@ const CERTIFICATION_LANES: CertificationLane[] = [
     name: "Houston METRO Certification",
     company: "LeCrown Development",
     agency: "Houston METRO",
-    status: "Certified",
+    status: "Certified - portal verified",
     owner: "Benjamin / Jie",
     due: "2029-07-15",
     nextAction:
-      "Save the certificate proof to the document portal, keep the METRO portal account current, and schedule renewal before 2029-07-15.",
+      "Save the certificate proof to the document portal, add renewal alerts, and keep the METRO B2Gnow vendor account current.",
     steps: [
       { label: "Certification received", state: "ready" },
+      { label: "Portal status verified", state: "ready" },
       { label: "Renewal date recorded", state: "ready" },
       { label: "Certificate proof saved", state: "pending" },
       { label: "Portal account maintained", state: "in_progress" },
@@ -426,6 +428,24 @@ const CAPABILITY_STATEMENT_DRAFTS: CapabilityStatementDraft[] = [
   },
 ];
 const CERTIFICATION_ACTIVITY: CertificationActivity[] = [
+  {
+    date: "2026-07-24",
+    actor: "B2Gnow portal",
+    title: "COH application status verified",
+    summary:
+      "City of Houston application 6369689 is incomplete at 52% for MBE/WBE/SBE/PDBE New Application under B2G Vendor ID 20922339.",
+    status: "next",
+    source: "B2Gnow VID 20922339",
+  },
+  {
+    date: "2026-07-24",
+    actor: "B2Gnow portal",
+    title: "METRO SBE portal status verified",
+    summary:
+      "LeCrown Development Corporation has active Houston METRO SBE certification effective 2026-07-15 with renewal due 2029-07-15.",
+    status: "done",
+    source: "B2Gnow VID 20922339",
+  },
   {
     date: "2026-07-21",
     actor: "Jessica Huang",

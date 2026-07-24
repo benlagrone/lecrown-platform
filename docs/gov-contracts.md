@@ -98,11 +98,12 @@ The admin app now has a dedicated `Sources` page alongside `Opportunities`. The 
 - blocked and still needing a deeper browser or portal-specific pass
 
 The admin app also has a dedicated `Certifications` page at `#/certifications`.
-As of Jessica Huang's July 21, 2026 email, LeCrown Development is marked
-certified for Houston METRO with renewal due 2029-07-15. City of Houston OBO
-has a separate login for the same portal URL as METRO and should be worked
-next. Credentials must stay out of tracked files and should live only in the
-private credential store.
+As of the July 24, 2026 B2Gnow portal check, LeCrown Development Corporation
+has active Houston METRO SBE certification effective 2026-07-15 with renewal
+due 2029-07-15. City of Houston OBO application `6369689` is incomplete at 52%
+for MBE/WBE/SBE/PDBE New Application and should be the next completion lane.
+Credentials must stay out of tracked files and should live only in the private
+credential store.
 
 The Certifications page includes a recent activity feed for status changes and
 follow-ups. The first activity records mirror the Metro LeCrown tracker activity
