@@ -251,13 +251,13 @@ const CERTIFICATION_LANES: CertificationLane[] = [
     owner: "Benjamin / Jie",
     due: "2026-07-24",
     nextAction:
-      "Fill in City of Houston B2Gnow application 6369689 and identify the missing required sections/documents.",
+      "Complete six incomplete form sections and prepare the 13 mandatory document attachments for City of Houston B2Gnow application 6369689.",
     steps: [
       { label: "Portal URL confirmed", state: "ready" },
       { label: "Separate COH login received", state: "ready" },
       { label: "Application 6369689 recorded", state: "ready" },
-      { label: "Business docs", state: "in_progress" },
-      { label: "Affidavit", state: "pending" },
+      { label: "Six form sections incomplete", state: "in_progress" },
+      { label: "13 mandatory docs missing", state: "blocked" },
       { label: "OBO review", state: "pending" },
     ],
   },
@@ -428,6 +428,15 @@ const CAPABILITY_STATEMENT_DRAFTS: CapabilityStatementDraft[] = [
   },
 ];
 const CERTIFICATION_ACTIVITY: CertificationActivity[] = [
+  {
+    date: "2026-07-24",
+    actor: "B2Gnow portal",
+    title: "COH document blockers extracted",
+    summary:
+      "Application 6369689 shows 0 of 13 mandatory documents attached and six incomplete form sections; it cannot be signed or submitted yet.",
+    status: "next",
+    source: "B2Gnow CertAppID 1218660",
+  },
   {
     date: "2026-07-24",
     actor: "B2Gnow portal",
