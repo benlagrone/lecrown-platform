@@ -143,14 +143,6 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
         </html>
         """
         blank_shell_html = ""
-        dart_html = """
-        <html>
-          <body>
-            <h2>Upcoming Procurements</h2>
-            <div>Upcoming Procurement Opportunities is a list of requirements expected within 30 to 60 days.</div>
-          </body>
-        </html>
-        """
         hgac_html = """
         <html>
           <body>
@@ -183,7 +175,7 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
             "https://www.ridemetro.org/about/business-to-business/procurement-opportunities": mock_html_response(
                 houston_metro_html
             ),
-            "https://dart.org/about/doing-business/procurement#upcomingprocurements": mock_html_response(dart_html),
+            "https://dart.bonfirehub.com/portal": mock_html_response(bonfire_html),
             "https://www.h-gac.com/procurement": mock_html_response(hgac_html),
         }
 
@@ -213,7 +205,7 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
             self.assertEqual("blocked", statuses[gov_contract_service.COLLIN_COUNTY_IONWAVE_SOURCE_NAME])
             self.assertEqual("cataloged", statuses[gov_contract_service.DALLAS_COUNTY_OFFICIAL_SOURCE_NAME])
             self.assertEqual("manual_review", statuses[gov_contract_service.CAPMETRO_PLANETBIDS_SOURCE_NAME])
-            self.assertEqual("cataloged", statuses[gov_contract_service.DART_PROCUREMENT_SOURCE_NAME])
+            self.assertEqual("manual_review", statuses[gov_contract_service.DART_PROCUREMENT_SOURCE_NAME])
             self.assertEqual("manual_review", statuses[gov_contract_service.HGAC_PROCUREMENT_SOURCE_NAME])
 
             austin_items = gov_contract_service.list_contracts(
@@ -244,6 +236,28 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
             self.assertEqual("completed", austin_source["latest_run_status"])
             self.assertEqual(1, austin_source["stored_opportunity_count"])
             self.assertEqual("Weekly HTML card parser", austin_source["automation_summary"])
+
+            resources_by_source = {source["source"]: source for source in tracked_sources}
+            self.assertEqual(
+                "opportunity_feed",
+                resources_by_source[gov_contract_service.CITY_HOUSTON_BEACONBID_RESOURCE_NAME]["resource_type"],
+            )
+            self.assertEqual(
+                "certification_portal",
+                resources_by_source[gov_contract_service.MYSBA_CERTIFICATIONS_RESOURCE_NAME]["resource_type"],
+            )
+            self.assertEqual(
+                "advisory_organization",
+                resources_by_source[gov_contract_service.UH_APEX_RESOURCE_NAME]["resource_type"],
+            )
+            self.assertEqual(
+                "https://www.uh.edu/office-of-finance/purchasing/",
+                resources_by_source[gov_contract_service.UH_PURCHASING_RESOURCE_NAME]["listing_url"],
+            )
+            self.assertEqual(
+                "https://houston.mwdbe.com/",
+                resources_by_source[gov_contract_service.CITY_HOUSTON_OBO_HOME_RESOURCE_NAME]["listing_url"],
+            )
 
     def test_gmail_rfqs_are_tracked_even_when_feed_is_not_configured(self) -> None:
         with self.Session() as db:

@@ -250,6 +250,7 @@ export interface GovContractTrackedSource {
   jurisdiction_type: string;
   extraction_mode: string;
   load_scope: string;
+  resource_type: string;
   cadence: string;
   active: boolean;
   automation_summary: string;

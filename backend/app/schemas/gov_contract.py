@@ -67,6 +67,7 @@ class GovContractTrackedSourceRead(BaseModel):
     jurisdiction_type: str
     extraction_mode: str
     load_scope: str
+    resource_type: str
     cadence: str
     active: bool
     automation_summary: str

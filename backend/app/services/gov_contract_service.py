@@ -49,6 +49,35 @@ CAPMETRO_PLANETBIDS_SOURCE_NAME = "capmetro_planetbids"
 HOUSTON_METRO_PROCUREMENT_SOURCE_NAME = "houston_metro_procurement"
 DART_PROCUREMENT_SOURCE_NAME = "dart_procurement"
 HGAC_PROCUREMENT_SOURCE_NAME = "h_gac_procurement"
+SAM_ENTITY_REGISTRATION_RESOURCE_NAME = "sam_entity_registration"
+MYSBA_CERTIFICATIONS_RESOURCE_NAME = "mysba_certifications"
+SBA_WOSB_RESOURCE_NAME = "sba_wosb_program"
+SBA_8A_RESOURCE_NAME = "sba_8a_program"
+SBA_HUBZONE_RESOURCE_NAME = "sba_hubzone_program"
+SBA_PRIME_SUBCONTRACTING_RESOURCE_NAME = "sba_prime_subcontracting"
+TEXAS_CMBL_RESOURCE_NAME = "texas_cmbl"
+TEXAS_HUB_RESOURCE_NAME = "texas_hub_certification"
+UH_PURCHASING_RESOURCE_NAME = "uh_purchasing"
+UH_FORMAL_SOLICITATIONS_RESOURCE_NAME = "uh_formal_solicitations"
+UH_VENDOR_SETUP_RESOURCE_NAME = "uh_vendor_setup"
+UH_VENDOR_CERTIFICATE_RESOURCE_NAME = "uh_vendor_certificate"
+UH_APEX_RESOURCE_NAME = "uh_apex"
+UT_AUSTIN_BONFIRE_RESOURCE_NAME = "ut_austin_bonfire"
+UT_VENDOR_PORTAL_RESOURCE_NAME = "ut_vendor_portal"
+UT_VID_RESOURCE_NAME = "ut_vendor_identification"
+UT_SMALL_BUSINESS_RESOURCE_NAME = "ut_small_business"
+UT_VENDOR_RESOURCES_RESOURCE_NAME = "ut_vendor_resources"
+CITY_HOUSTON_BEACONBID_RESOURCE_NAME = "city_houston_beaconbid"
+CITY_HOUSTON_OBO_HOME_RESOURCE_NAME = "city_houston_obo_home"
+CITY_HOUSTON_OBO_RESOURCE_NAME = "city_houston_obo"
+METRO_ARIBA_RESOURCE_NAME = "houston_metro_ariba"
+METRO_SBE_PORTAL_RESOURCE_NAME = "houston_metro_sbe_portal"
+METRO_BUSINESS_ASSESSMENT_RESOURCE_NAME = "houston_metro_business_assessment"
+GOVSPEND_QUOTES_RESOURCE_NAME = "govspend_quote_requests"
+OPEN_GOV_VENDOR_PORTAL_RESOURCE_NAME = "opengov_vendor_portal"
+TDCJ_CONTRACTS_RESOURCE_NAME = "tdcj_contracts"
+WBENC_RESOURCE_NAME = "wbenc_certification"
+WBEA_RESOURCE_NAME = "wbea_supplier_diversity"
 HOUSTON_METRO_OPEN_CONTEXT = "metro_open_procurement"
 HOUSTON_METRO_RECENTLY_ADDED_CONTEXT = "metro_recently_added"
 HOUSTON_METRO_Q2_FORECAST_CONTEXT = "metro_q2_2026_forecast"
@@ -287,6 +316,8 @@ class GovContractTrackedSourceDefinition:
     automation_summary: str
     automation_detail: str | None = None
     notes: str | None = None
+    resource_type: str = "opportunity_feed"
+    cadence: str = "weekly"
 
 
 @dataclass
@@ -527,14 +558,14 @@ TRACKED_PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition
     GovContractTrackedSourceDefinition(
         source=DART_PROCUREMENT_SOURCE_NAME,
         label="DART",
-        listing_url="https://dart.org/about/doing-business/procurement#upcomingprocurements",
-        platform_name="DART procurement page",
+        listing_url="https://dart.bonfirehub.com/portal",
+        platform_name="Bonfire",
         jurisdiction_type="regional",
-        extraction_mode="manual_review",
+        extraction_mode="browser_required",
         load_scope="catalog_only",
-        automation_summary="Weekly manual-review probe",
-        automation_detail="The job records that the page is reachable but the upcoming procurement data is not yet exposed in a reliably parseable structure.",
-        notes="The page is reachable, but the upcoming procurement data is not exposed cleanly enough yet for reliable ingestion.",
+        automation_summary="Weekly Bonfire portal probe",
+        automation_detail="The public Bonfire portal is tracked, but the preserved JSON-loader work is incomplete and is not represented as automated.",
+        notes="Use the DART Bonfire portal for current opportunities. A tested portal-specific loader is still required.",
     ),
     GovContractTrackedSourceDefinition(
         source=HGAC_PROCUREMENT_SOURCE_NAME,
@@ -549,9 +580,384 @@ TRACKED_PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition
         notes="The official page embeds the OpenGov project list in an iframe and needs a deeper parser or browser pass.",
     ),
 )
+REFERENCE_RESOURCE_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, ...] = (
+    GovContractTrackedSourceDefinition(
+        source=SAM_ENTITY_REGISTRATION_RESOURCE_NAME,
+        label="SAM.gov Entity Registration",
+        listing_url="https://sam.gov/entity-registration",
+        platform_name="SAM.gov",
+        jurisdiction_type="federal",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Registration reference",
+        automation_detail="Tracks the federal entity-registration entry point; it does not load opportunities.",
+        notes="Source: metroLecrown company-certification tracker.",
+        resource_type="vendor_registration",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=MYSBA_CERTIFICATIONS_RESOURCE_NAME,
+        label="MySBA Certifications",
+        listing_url="https://certifications.sba.gov/",
+        platform_name="U.S. Small Business Administration",
+        jurisdiction_type="federal",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Certification portal reference",
+        automation_detail="Tracks the common SBA certification application portal.",
+        notes="Source: metroLecrown company-certification tracker.",
+        resource_type="certification_portal",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=SBA_WOSB_RESOURCE_NAME,
+        label="SBA WOSB/EDWOSB Program",
+        listing_url="https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program",
+        platform_name="U.S. Small Business Administration",
+        jurisdiction_type="federal",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Eligibility and program reference",
+        notes="Use current SBA requirements before making an eligibility decision.",
+        resource_type="certification_program",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=SBA_8A_RESOURCE_NAME,
+        label="SBA 8(a) Business Development",
+        listing_url="https://www.sba.gov/federal-contracting/contracting-assistance-programs/8a-business-development-program",
+        platform_name="U.S. Small Business Administration",
+        jurisdiction_type="federal",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Eligibility and program reference",
+        notes="Use current SBA requirements and UH APEX review before applying.",
+        resource_type="certification_program",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=SBA_HUBZONE_RESOURCE_NAME,
+        label="SBA HUBZone Program",
+        listing_url="https://www.sba.gov/federal-contracting/contracting-assistance-programs/hubzone-program",
+        platform_name="U.S. Small Business Administration",
+        jurisdiction_type="federal",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Eligibility and program reference",
+        notes="Check current principal-office and employee-residency rules before applying.",
+        resource_type="certification_program",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=SBA_PRIME_SUBCONTRACTING_RESOURCE_NAME,
+        label="SBA Prime and Subcontracting Guide",
+        listing_url="https://www.sba.gov/federal-contracting/contracting-guide/prime-subcontracting",
+        platform_name="U.S. Small Business Administration",
+        jurisdiction_type="federal",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Prime-contractor and subcontracting directory reference",
+        notes="Use with SUBNet and prime-contractor award research.",
+        resource_type="subcontracting_directory",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=TEXAS_CMBL_RESOURCE_NAME,
+        label="Texas CMBL",
+        listing_url="https://comptroller.texas.gov/purchasing/vendor/cmbl/",
+        platform_name="Texas Comptroller",
+        jurisdiction_type="state",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="State vendor-registration reference",
+        notes="Tracks CMBL registration, NIGP-code visibility, and renewal work.",
+        resource_type="vendor_registration",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=TEXAS_HUB_RESOURCE_NAME,
+        label="Texas HUB Certification",
+        listing_url="https://comptroller.texas.gov/purchasing/vendor/hub/certification-process.php",
+        platform_name="Texas Comptroller",
+        jurisdiction_type="state",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Certification-process reference",
+        notes="Use the current state process and eligibility rules.",
+        resource_type="certification_program",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UH_PURCHASING_RESOURCE_NAME,
+        label="University of Houston Purchasing",
+        listing_url="https://www.uh.edu/office-of-finance/purchasing/",
+        platform_name="University of Houston Purchasing",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Buyer purchasing-hub reference",
+        notes="Supplied as the procurement portal in the metroLecrown buyer tracker.",
+        resource_type="buyer_resource",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UH_FORMAL_SOLICITATIONS_RESOURCE_NAME,
+        label="University of Houston Formal Solicitations",
+        listing_url="https://www.uh.edu/office-of-finance/purchasing/vendor-resources/formal-procurement-solicitations/",
+        platform_name="University of Houston Purchasing",
+        jurisdiction_type="university",
+        extraction_mode="manual_review",
+        load_scope="catalog_only",
+        automation_summary="Buyer opportunity-page reference",
+        notes="Supplied in the metroLecrown buyer tracker; review for current UH solicitations.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UH_VENDOR_SETUP_RESOURCE_NAME,
+        label="University of Houston Vendor Setup",
+        listing_url="https://www.uh.edu/office-of-finance/purchasing/vendor-resources/ap-vendor-setup/",
+        platform_name="University of Houston Purchasing",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Buyer onboarding reference",
+        notes="Tracks UH vendor-setup requirements.",
+        resource_type="vendor_registration",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UH_VENDOR_CERTIFICATE_RESOURCE_NAME,
+        label="University of Houston Vendor Resources",
+        listing_url="https://www.uh.edu/office-of-finance/purchasing/vendor-resources/certificate/index.php",
+        platform_name="University of Houston Purchasing",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Buyer document reference",
+        notes="Tracks the certificate and vendor-document resource supplied in the buyer tracker.",
+        resource_type="buyer_resource",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UH_APEX_RESOURCE_NAME,
+        label="UH APEX Accelerator",
+        listing_url="https://www.uhapex.uh.edu/APEX/default.asp",
+        platform_name="University of Houston",
+        jurisdiction_type="advisory",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Advising and training reference",
+        notes="One-on-one procurement assistance, training, and market research.",
+        resource_type="advisory_organization",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UT_AUSTIN_BONFIRE_RESOURCE_NAME,
+        label="UT Austin Open Opportunities",
+        listing_url="https://utexas.bonfirehub.com/portal/?tab=openOpportunities",
+        platform_name="Bonfire",
+        jurisdiction_type="university",
+        extraction_mode="browser_required",
+        load_scope="catalog_only",
+        automation_summary="Buyer portal reference",
+        automation_detail="Tracks the supplied UT Austin Bonfire portal without claiming a server-side loader.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UT_VENDOR_PORTAL_RESOURCE_NAME,
+        label="UT Austin Vendor Portal",
+        listing_url="https://procurement.utexas.edu/affiliated-subunits/vendor-management-office/vendor-portal",
+        platform_name="UT Austin Procurement",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Buyer onboarding reference",
+        resource_type="vendor_registration",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UT_VID_RESOURCE_NAME,
+        label="UT Austin Vendor Identification",
+        listing_url="https://procurement.utexas.edu/vendor-identification-vid-section",
+        platform_name="UT Austin Procurement",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Buyer requirement reference",
+        resource_type="buyer_resource",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UT_SMALL_BUSINESS_RESOURCE_NAME,
+        label="UT Austin Small Business Program",
+        listing_url="https://procurement.utexas.edu/affiliated-subunits/vendor-management-office/small-business",
+        platform_name="UT Austin Procurement",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Small-business program reference",
+        resource_type="supplier_diversity",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=UT_VENDOR_RESOURCES_RESOURCE_NAME,
+        label="UT Austin Vendor Resources",
+        listing_url="https://procurement.utexas.edu/affiliated-subunits/vendor-management-office/resources",
+        platform_name="UT Austin Procurement",
+        jurisdiction_type="university",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Buyer resource library",
+        resource_type="buyer_resource",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=CITY_HOUSTON_BEACONBID_RESOURCE_NAME,
+        label="City of Houston BeaconBid",
+        listing_url="https://www.beaconbid.com/solicitations/city-of-houston",
+        platform_name="BeaconBid",
+        jurisdiction_type="city",
+        extraction_mode="manual_review",
+        load_scope="catalog_only",
+        automation_summary="Buyer opportunity-page reference",
+        notes="Supplied in the metroLecrown buyer tracker; not represented as an automated loader.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=CITY_HOUSTON_OBO_HOME_RESOURCE_NAME,
+        label="City of Houston OBO Portal",
+        listing_url="https://houston.mwdbe.com/",
+        platform_name="B2Gnow",
+        jurisdiction_type="city",
+        extraction_mode="login_required",
+        load_scope="catalog_only",
+        automation_summary="Certification portal entry point",
+        notes="Supplied in the metroLecrown company-certification tracker; credentials stay outside the tracker.",
+        resource_type="certification_portal",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=CITY_HOUSTON_OBO_RESOURCE_NAME,
+        label="City of Houston OBO Certification",
+        listing_url="https://houston.mwdbe.com/FrontPage/VendorMain.asp",
+        platform_name="B2Gnow",
+        jurisdiction_type="city",
+        extraction_mode="login_required",
+        load_scope="catalog_only",
+        automation_summary="Certification and certified-vendor portal",
+        notes="Credentials stay outside the tracker.",
+        resource_type="certification_portal",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=METRO_ARIBA_RESOURCE_NAME,
+        label="Houston METRO Ariba Sourcing",
+        listing_url="https://s3.ariba.com/Sourcing/Main/aw?awh=r&awssk=8Zgv3KidKouY4TkM&realm=ridemetro&dard=1",
+        platform_name="SAP Ariba",
+        jurisdiction_type="regional",
+        extraction_mode="login_required",
+        load_scope="catalog_only",
+        automation_summary="Buyer sourcing-portal reference",
+        notes="Supplied in the metroLecrown buyer tracker; verify access and current realm before use.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=METRO_SBE_PORTAL_RESOURCE_NAME,
+        label="Houston METRO SBE Portal",
+        listing_url="https://ridemetro.sbdbe.com/",
+        platform_name="B2Gnow",
+        jurisdiction_type="regional",
+        extraction_mode="login_required",
+        load_scope="catalog_only",
+        automation_summary="Certification and certified-vendor portal",
+        notes="Tracks certification, renewal, and certified-vendor search access.",
+        resource_type="certification_portal",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=METRO_BUSINESS_ASSESSMENT_RESOURCE_NAME,
+        label="Houston METRO Business Assessment",
+        listing_url="https://ridemetro.qualtrics.com/jfe/form/SV_e3C1E0X9CM61Kx8",
+        platform_name="Qualtrics",
+        jurisdiction_type="regional",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Business-development assessment",
+        resource_type="advisory_organization",
+        cadence="on_demand",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=GOVSPEND_QUOTES_RESOURCE_NAME,
+        label="GovSpend Open Quote Requests",
+        listing_url="https://app.govspend.com/quoteRequests/allOpenRequests",
+        platform_name="GovSpend",
+        jurisdiction_type="aggregator",
+        extraction_mode="login_required",
+        load_scope="catalog_only",
+        automation_summary="Authenticated opportunity-portal reference",
+        notes="Verify subscription and access before relying on this source.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=OPEN_GOV_VENDOR_PORTAL_RESOURCE_NAME,
+        label="OpenGov Procurement",
+        listing_url="https://procurement.opengov.com/",
+        platform_name="OpenGov",
+        jurisdiction_type="aggregator",
+        extraction_mode="browser_required",
+        load_scope="catalog_only",
+        automation_summary="Multi-buyer portal reference",
+        notes="Buyer-specific OpenGov pages should be added separately when identified.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=TDCJ_CONTRACTS_RESOURCE_NAME,
+        label="TDCJ Contracts and Procurement",
+        listing_url="https://www.tdcj.texas.gov/divisions/bfd/bfd_contracts.html",
+        platform_name="Texas Department of Criminal Justice",
+        jurisdiction_type="state",
+        extraction_mode="manual_review",
+        load_scope="catalog_only",
+        automation_summary="State buyer opportunity-page reference",
+        notes="Supplied in the metroLecrown buyer tracker.",
+        resource_type="opportunity_feed",
+        cadence="weekly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=WBENC_RESOURCE_NAME,
+        label="WBENC Certification",
+        listing_url="https://www.wbenc.org/certification/certification-benefits/",
+        platform_name="WBENC",
+        jurisdiction_type="corporate",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Supplier-diversity certification reference",
+        resource_type="supplier_diversity",
+        cadence="monthly",
+    ),
+    GovContractTrackedSourceDefinition(
+        source=WBEA_RESOURCE_NAME,
+        label="Women's Business Enterprise Alliance",
+        listing_url="https://www.wbea-texas.org/",
+        platform_name="WBEA",
+        jurisdiction_type="corporate",
+        extraction_mode="reference_link",
+        load_scope="catalog_only",
+        automation_summary="Regional supplier-diversity organization",
+        resource_type="supplier_diversity",
+        cadence="monthly",
+    ),
+)
 PROCUREMENT_SOURCE_DEFINITIONS: tuple[GovContractTrackedSourceDefinition, ...] = (
     *CORE_PROCUREMENT_SOURCE_DEFINITIONS,
     *TRACKED_PROCUREMENT_SOURCE_DEFINITIONS,
+    *REFERENCE_RESOURCE_SOURCE_DEFINITIONS,
 )
 TRACKED_PROCUREMENT_SOURCES = {
     definition.source: definition for definition in TRACKED_PROCUREMENT_SOURCE_DEFINITIONS
@@ -3625,7 +4031,7 @@ def _ensure_tracked_sources(db: Session) -> None:
                     jurisdiction_type=definition.jurisdiction_type,
                     extraction_mode=definition.extraction_mode,
                     load_scope=definition.load_scope,
-                    cadence="weekly",
+                    cadence=definition.cadence,
                     active=True,
                     notes=definition.notes,
                 )
@@ -3645,8 +4051,8 @@ def _ensure_tracked_sources(db: Session) -> None:
             if getattr(tracked_source, field_name) != value:
                 setattr(tracked_source, field_name, value)
                 changed = True
-        if tracked_source.cadence != "weekly":
-            tracked_source.cadence = "weekly"
+        if tracked_source.cadence != definition.cadence:
+            tracked_source.cadence = definition.cadence
             changed = True
         db.add(tracked_source)
 
@@ -3690,6 +4096,7 @@ def list_tracked_sources(db: Session) -> list[dict[str, object]]:
                 "jurisdiction_type": tracked_source.jurisdiction_type,
                 "extraction_mode": tracked_source.extraction_mode,
                 "load_scope": tracked_source.load_scope,
+                "resource_type": definition.resource_type if definition else "opportunity_feed",
                 "cadence": tracked_source.cadence,
                 "active": tracked_source.active,
                 "automation_summary": definition.automation_summary if definition else "Recorded in source registry",

@@ -8,6 +8,11 @@ supplier-diversity introductions.
 The original files are retained unchanged under
 [`source-materials/`](./source-materials/). The operating plan is in
 [`subcontracting-market-access-plan.md`](./subcontracting-market-access-plan.md).
+The platform source registry also catalogs the links already supplied in the
+Metro LeCrown buyer and certification CSV trackers. Those catalog entries
+separate opportunity feeds from vendor registration, certification,
+subcontracting, advisory, buyer-resource, and supplier-diversity channels, and
+do not imply that a portal has a working automated loader.
 
 ## Source material inventory
 

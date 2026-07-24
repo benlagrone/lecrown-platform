@@ -2796,7 +2796,16 @@ export default function App() {
     }
 
     const automatedSourceCount = trackedSources.filter((source) => source.load_scope === "opportunities").length;
-    const probeOnlySourceCount = trackedSources.filter((source) => source.load_scope !== "opportunities").length;
+    const catalogSourceCount = trackedSources.filter((source) => source.load_scope !== "opportunities").length;
+    const opportunitySourceCount = trackedSources.filter((source) => source.resource_type === "opportunity_feed").length;
+    const certificationResourceCount = trackedSources.filter((source) =>
+      ["certification_portal", "certification_program", "vendor_registration"].includes(source.resource_type),
+    ).length;
+    const businessDevelopmentResourceCount = trackedSources.filter((source) =>
+      ["subcontracting_directory", "advisory_organization", "supplier_diversity", "buyer_resource"].includes(
+        source.resource_type,
+      ),
+    ).length;
     const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
     const needsReviewCount = trackedSources.filter(
       (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
@@ -2811,7 +2820,7 @@ export default function App() {
           <div className="panel-heading contract-toolbar">
             <div>
               <p className="eyebrow">Source Registry</p>
-              <h2>All eProcurement sources and their automation paths</h2>
+              <h2>Government contracting resources and automation paths</h2>
             </div>
             <div className="action-row">
               {isAdminUser ? (
@@ -2827,24 +2836,37 @@ export default function App() {
           </div>
 
           <p className="panel-subcopy">
-            This page is the coverage map for the opportunities funnel. It shows every automated procurement source,
-            what the job does for that source, and which portals still need a deeper integration before they can load opportunities.
-            The `Refresh tracked sites` action probes the local municipal, county, and regional portals; core feeds like ESBD,
-            federal forecast, Grants.gov, and SBA SUBNet still refresh through their source-specific jobs.
+            This page reconciles the opportunity feeds, buyer registrations, certification programs, subcontracting channels,
+            and supplier-diversity organizations supplied in the operating trackers and knowledge package. A listed resource is
+            not automatically represented as a working data feed. The `Refresh tracked sites` action probes the local municipal,
+            county, and regional portals; core feeds like ESBD, federal forecast, Grants.gov, and SBA SUBNet still refresh through
+            their source-specific jobs.
           </p>
 
           <div className="metric-row">
             <div className="metric-pill">
               <strong>{trackedSources.length}</strong>
-              <span>sources tracked</span>
+              <span>resources tracked</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{opportunitySourceCount}</strong>
+              <span>opportunity sources</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{certificationResourceCount}</strong>
+              <span>registration and certification</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{businessDevelopmentResourceCount}</strong>
+              <span>subcontracting and business development</span>
             </div>
             <div className="metric-pill">
               <strong>{automatedSourceCount}</strong>
               <span>automation-backed</span>
             </div>
             <div className="metric-pill">
-              <strong>{probeOnlySourceCount}</strong>
-              <span>probe only</span>
+              <strong>{catalogSourceCount}</strong>
+              <span>catalog or reference</span>
             </div>
             <div className="metric-pill">
               <strong>{loadedSourceCount}</strong>
@@ -2892,6 +2914,7 @@ export default function App() {
                     </td>
                     <td>
                       <strong>{formatTrackedSourceJurisdiction(trackedSource.jurisdiction_type)}</strong>
+                      <span>{formatTrackedSourceResourceType(trackedSource.resource_type)}</span>
                       <span>{formatTrackedSourceMode(trackedSource.extraction_mode)}</span>
                       <span>{formatTrackedSourceLoadScope(trackedSource.load_scope)}</span>
                     </td>
@@ -2902,7 +2925,7 @@ export default function App() {
                     </td>
                     <td>
                       <span className={getTrackedSourceStatusBadgeClass(trackedSource.latest_run_status)}>
-                        {formatTrackedSourceStatus(trackedSource.latest_run_status)}
+                        {formatTrackedSourceStatus(trackedSource.latest_run_status, trackedSource.resource_type)}
                       </span>
                       <span>{trackedSource.stored_opportunity_count} stored</span>
                       {trackedSource.latest_total_records != null ? (
@@ -4106,7 +4129,33 @@ function formatTrackedSourceJurisdiction(value: string): string {
   if (value === "regional") {
     return "Regional";
   }
+  if (value === "university") {
+    return "University";
+  }
+  if (value === "advisory") {
+    return "Advisory";
+  }
+  if (value === "aggregator") {
+    return "Aggregator";
+  }
+  if (value === "corporate") {
+    return "Corporate";
+  }
   return value;
+}
+
+function formatTrackedSourceResourceType(value: string): string {
+  const labels: Record<string, string> = {
+    opportunity_feed: "Opportunity source",
+    vendor_registration: "Vendor registration",
+    certification_portal: "Certification portal",
+    certification_program: "Certification program",
+    subcontracting_directory: "Subcontracting channel",
+    advisory_organization: "Advisory organization",
+    supplier_diversity: "Supplier diversity",
+    buyer_resource: "Buyer resource",
+  };
+  return labels[value] ?? value.split("_").join(" ");
 }
 
 function formatTrackedSourceMode(value: string): string {
@@ -4140,6 +4189,12 @@ function formatTrackedSourceMode(value: string): string {
   if (value === "manual_review") {
     return "Manual review";
   }
+  if (value === "reference_link") {
+    return "Reference link";
+  }
+  if (value === "login_required") {
+    return "Login required";
+  }
   return value.split("_").join(" ");
 }
 
@@ -4153,9 +4208,9 @@ function formatTrackedSourceLoadScope(value: string): string {
   return value.split("_").join(" ");
 }
 
-function formatTrackedSourceStatus(status?: string | null): string {
+function formatTrackedSourceStatus(status?: string | null, resourceType = "opportunity_feed"): string {
   if (!status) {
-    return "Not checked";
+    return resourceType === "opportunity_feed" ? "Not checked" : "Reference";
   }
   if (status === "completed") {
     return "Loaded";

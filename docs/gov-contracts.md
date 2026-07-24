@@ -20,7 +20,12 @@ The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federa
 
 The backend uses the same `POST` flow the ESBD site uses for `Export to CSV`, bounded to a weekly window by default. For the federal source, the backend uses the same public JSON listing feed the Acquisition Gateway page and its client-side export use. For Grants.gov, the backend uses the same public CSV export endpoint triggered by the page's `Download all` button. For SBA SUBNet, the backend walks the public paginated HTML table because the page exposes server-rendered opportunity rows rather than a documented download endpoint.
 
-The source registry now keeps a record of every procurement feed in the funnel and records whether each source fully loaded, only exposed a reachable shell, or was blocked by anti-bot protections / iframe embedding. The first parser-backed local sources are:
+The source registry now contains 48 resources: 19 original opportunity-source definitions plus 29 buyer,
+registration, certification, subcontracting, advisory, and supplier-diversity references recovered from the
+Metro LeCrown operating trackers and the government-contracting knowledge package. The registry records whether
+each opportunity source fully loaded, only exposed a reachable shell, or was blocked by anti-bot protections /
+iframe embedding. Reference resources remain catalog entries unless a tested loader exists. The first parser-backed
+local sources are:
 
 - City of Austin
 - City of San Antonio
@@ -91,10 +96,13 @@ Optional exact dates:
 
 `POST /contracts/refresh-tracked-sources` refreshes the municipal/county/regional tracked-source batch. Parser-backed sources import opportunities. Harder portals still generate a run record with statuses like `manual_review`, `cataloged`, or `blocked` so the admin UI shows coverage gaps instead of silently dropping them.
 
-The admin app now has a dedicated `Sources` page alongside `Opportunities`. The `Sources` page lists all procurement sources in the funnel and spells out the automation path for each one, including whether it is:
+The admin app now has a dedicated `Sources` page alongside `Opportunities`. The `Sources` page lists the full
+government-contracting resource catalog, groups it by purpose, and spells out the automation path for each one,
+including whether it is:
 
 - a full opportunity loader
 - a catalog/probe-only integration
+- a buyer-registration, certification, subcontracting, advisory, or supplier-diversity reference
 - blocked and still needing a deeper browser or portal-specific pass
 
 The admin app also has a dedicated `Certifications` page at `#/certifications`.
@@ -126,6 +134,13 @@ The source materials are reference evidence, not live proof of current program
 rules. The knowledge base links to official program pages and records the
 required verification boundary. Credentials and sensitive certification
 evidence must remain outside Git.
+
+The tracker reconciliation uses the links already supplied in:
+
+- `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/buyers.csv`
+- `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/buyer-certification-requirements.csv`
+- `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/company-certifications.csv`
+- `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/certification-steps.csv`
 
 Promote one matched contract into the CRM lead funnel:
 
@@ -211,12 +226,13 @@ Each stored opportunity now carries a score matrix:
 
 Agency preferences are managed separately from keywords and let operators bias the ranked list toward target buyers without removing non-matching opportunities from storage.
 
-## Tracked Source Status
+## Tracked Resource Status
 
-The sources page now includes the full procurement-source registry. Each source records:
+The sources page now includes the full opportunity and business-development resource registry. Each resource records:
 
 - platform type
 - jurisdiction class
+- resource type
 - whether it is parser-backed or catalog-only
 - latest run status
 - latest run detail
