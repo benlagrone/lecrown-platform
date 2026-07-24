@@ -107,8 +107,10 @@ shows `0 attached of 13 mandatory; 0 attached of 13 required`. Credentials must
 stay out of tracked files and should live only in the private credential store.
 
 The Certifications page includes a recent activity feed for status changes and
-follow-ups. The first activity records mirror the Metro LeCrown tracker activity
-CSV at `/Users/benjaminlagrone/Documents/projects/metroLecrown/data/certification-activity.csv`.
+follow-ups plus a City of Houston blocker panel with the six incomplete form
+sections and 13 mandatory documents. The first activity records mirror the Metro
+LeCrown tracker activity CSV at
+`/Users/benjaminlagrone/Documents/projects/metroLecrown/data/certification-activity.csv`.
 
 ## Knowledge and Operating Playbook
 

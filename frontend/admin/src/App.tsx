@@ -129,6 +129,14 @@ type CertificationActivity = {
   status: "done" | "next" | "info";
   source: string;
 };
+type CertificationBlockerDetail = {
+  title: string;
+  status: string;
+  summary: string;
+  meta: string[];
+  incompleteSections: string[];
+  mandatoryDocuments: string[];
+};
 const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
 const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
@@ -492,6 +500,41 @@ const CERTIFICATION_ACTIVITY: CertificationActivity[] = [
     source: "Certification tracker",
   },
 ];
+const COH_APPLICATION_BLOCKERS: CertificationBlockerDetail = {
+  title: "City of Houston application 6369689",
+  status: "Cannot sign or submit yet",
+  summary:
+    "The B2Gnow application is 52% complete. The next dev/workflow step is document packet preparation plus targeted form completion.",
+  meta: [
+    "Type: MBE/WBE/SBE/PDBE New Application",
+    "B2G Vendor ID: 20922339",
+    "CertAppID: 1218660",
+    "Deletion date: 2026-09-12",
+  ],
+  incompleteSections: [
+    "Section 1: Business Profile - 9 of 10 required complete",
+    "Section 3: Ownership - 0 of 1 required complete",
+    "Section 4: Officers & Board of Directors - 2 of 4 required complete",
+    "Section 4: Inventory - 1 of 5 required complete",
+    "Section 4: Licenses & Contracts - 1 of 3 required complete",
+    "Section 5: Additional Information - 4 of 5 required complete",
+  ],
+  mandatoryDocuments: [
+    "Current minutes of stockholders and board meetings",
+    "Signed and notarized Affidavit of Certification",
+    "Signed and notarized Affidavit of Non-Interest for each owner",
+    "Customer references with contact name, phone, and email",
+    "Proof business existed six months before application date, or invoice/payment proof if newer",
+    "Five years of company federal tax returns with related schedules",
+    "Proof of contributions used to acquire ownership for each owner",
+    "Resumes for all owners, officers, and key personnel",
+    "Both sides of corporate stock certificates and stock transfer ledger",
+    "Corporate bank resolution and bank signature cards",
+    "Corporate bylaws and amendments",
+    "Official Articles of Incorporation or Certificate of Formation",
+    "City of Houston Strategic Purchasing vendor/supplier registration proof",
+  ],
+};
 
 function buildInitialForm(tenant: Tenant = "development"): ContentCreate {
   return {
@@ -2577,6 +2620,43 @@ export default function App() {
                 </span>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="panel certification-blocker-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Active Blocker</p>
+              <h2>{COH_APPLICATION_BLOCKERS.title}</h2>
+            </div>
+            <span className="status-badge status-badge-bad">{COH_APPLICATION_BLOCKERS.status}</span>
+          </div>
+
+          <p className="panel-subcopy">{COH_APPLICATION_BLOCKERS.summary}</p>
+
+          <div className="certification-blocker-meta">
+            {COH_APPLICATION_BLOCKERS.meta.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+
+          <div className="certification-blocker-grid">
+            <div>
+              <h3>Incomplete sections</h3>
+              <ul className="certification-checklist">
+                {COH_APPLICATION_BLOCKERS.incompleteSections.map((section) => (
+                  <li key={section}>{section}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3>Mandatory documents not attached</h3>
+              <ul className="certification-checklist">
+                {COH_APPLICATION_BLOCKERS.mandatoryDocuments.map((document) => (
+                  <li key={document}>{document}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 
