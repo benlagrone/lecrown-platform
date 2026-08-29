@@ -1,17 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import desc, select
 
 from app.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.models.gov_contract import GovContractImportRun
-from app.routes import auth, billing, content, distribution, gov_contract, intake, inquiry, invoice, linkedin, youtube
+from app.routes import auth, backoffice, billing, content, distribution, documents, gov_contract, intake, inquiry, invoice, linkedin, youtube
 from app.services import gov_contract_service
 from app.services import espocrm_service
 
 settings = get_settings()
 
 app = FastAPI(title=settings.app_name)
+
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,3 +75,5 @@ app.include_router(linkedin.router, prefix="/linkedin", tags=["linkedin"])
 app.include_router(youtube.router, prefix="/youtube", tags=["youtube"])
 app.include_router(distribution.router, prefix="/distribution", tags=["distribution"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(backoffice.router, prefix="/backoffice", tags=["backoffice"])
+app.include_router(documents.router, prefix="/documents", tags=["documents"])

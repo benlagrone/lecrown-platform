@@ -32,6 +32,19 @@ README.md
 - Intake pipeline that stores inbound site leads and forwards them to `EspoCRM`
 - Video worker client that can call a separate render server over HTTP or run in stub mode
 
+## Licensed HAR Back Office
+
+The platform-owned handoff for an agents-only Repliers / HAR property
+intelligence workspace starts at:
+
+- [docs/repliers-har/README.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/repliers-har/README.md)
+
+Current state is `licensing approved`, while the portal remains `sample-only`
+and no HAR response has been validated. The initial implementation must use
+synthetic fixtures and the existing authenticated admin boundary. Live provider
+calls, credentials, deployment, CRM writes, outreach, public listing display,
+and bulk export remain separately gated.
+
 ## API overview
 
 - `POST /content/create`
@@ -92,8 +105,10 @@ Copy `.env.example` to `.env` before running the stack locally.
 
 For production:
 
-- set `VITE_API_BASE_URL` to the public API origin
+- build the back office with `VITE_API_BASE_URL=/api`
+- set `PUBLIC_APP_URL=https://backoffice.lecrownproperties.com`
 - set `CORS_ORIGINS` to the public admin origin
+- include `backoffice.lecrownproperties.com` in `ALLOWED_HOSTS`
 - replace the default `SECRET_KEY` and `ADMIN_PASSWORD`
 - set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BILLING_SERVICE_KEYS` before enabling billing flows
 - leave `GMAIL_RFQ_FEED_URL` blank unless the Gmail RFQ sidecar service exists in that environment

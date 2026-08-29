@@ -23,6 +23,7 @@ def get_db() -> Generator:
 
 
 def init_db() -> None:
+    import app.models.backoffice  # noqa: F401
     import app.models.billing  # noqa: F401
     import app.models.content  # noqa: F401
     import app.models.gov_contract  # noqa: F401

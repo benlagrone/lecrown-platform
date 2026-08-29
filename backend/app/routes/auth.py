@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import create_access_token, get_current_admin, get_current_user
+from app.core.security import create_access_token, create_privileged_token, get_current_admin, get_current_user
 from app.models.user import User
 from app.services import auth_service
 
@@ -41,6 +41,15 @@ class TokenResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1)
     new_password: str = Field(min_length=8)
+
+
+class PrivilegedAuthRequest(BaseModel):
+    password: str = Field(min_length=1)
+
+
+class PrivilegedAuthResponse(BaseModel):
+    privileged_token: str
+    token_type: str = "bearer"
 
 
 class UserInviteCreateRequest(BaseModel):
@@ -94,6 +103,16 @@ def login(
 @router.get("/me", response_model=AuthUserRead)
 def me(current_user: User = Depends(get_current_user)) -> AuthUserRead:
     return AuthUserRead.model_validate(current_user)
+
+
+@router.post("/privileged-auth", response_model=PrivilegedAuthResponse)
+def privileged_auth(
+    payload: PrivilegedAuthRequest,
+    current_user: User = Depends(get_current_user),
+) -> PrivilegedAuthResponse:
+    if not auth_service.verify_password(payload.password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return PrivilegedAuthResponse(privileged_token=create_privileged_token(current_user))
 
 
 @router.post("/change-password", response_model=AuthUserRead)

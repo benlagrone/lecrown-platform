@@ -2,11 +2,11 @@ FROM node:20-slim AS build
 
 WORKDIR /app/admin
 
-ARG VITE_API_BASE_URL=http://localhost:8000
+ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 COPY admin/package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY admin/index.html ./
 COPY admin/tsconfig.json ./

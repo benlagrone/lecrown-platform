@@ -94,8 +94,13 @@ Other businesses should not force themselves into the wrong tenant. If the busin
 
 Expected long-term public hostnames:
 
+- `backoffice.lecrownproperties.com` for the authenticated employee back office
 - `app.lecrowndevelopment.com`
 - `api.lecrowndevelopment.com`
+
+`app.lecrowndevelopment.com` is a legacy platform-admin hostname. The canonical
+LeCrown Properties employee surface is `backoffice.lecrownproperties.com`, and
+its browser uses same-origin `/api/*` routes.
 - `crm.lecrowndevelopment.com`
 
 Current live CRM hostname:

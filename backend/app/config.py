@@ -31,6 +31,9 @@ class Settings:
         "",
     )
     invoice_output_dir: str = os.getenv("INVOICE_OUTPUT_DIR", "./invoice-output")
+    document_storage_dir: str = os.getenv("DOCUMENT_STORAGE_DIR", "./document-storage")
+    document_max_bytes: int = int(os.getenv("DOCUMENT_MAX_BYTES", str(25 * 1024 * 1024)))
+    privileged_auth_expire_minutes: int = int(os.getenv("PRIVILEGED_AUTH_EXPIRE_MINUTES", "10"))
 
     linkedin_token: str = os.getenv("LINKEDIN_TOKEN", "")
     linkedin_org_id_dev: str = os.getenv("LINKEDIN_ORG_ID_DEV", "")
@@ -139,6 +142,11 @@ class Settings:
         for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
         if origin.strip()
     ]
+    allowed_hosts: list[str] = [
+        host.strip()
+        for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
+        if host.strip()
+    ]
 
     @property
     def gmail_rfq_feed_enabled(self) -> bool:
@@ -182,6 +190,10 @@ class Settings:
     @property
     def invoice_output_path(self) -> Path:
         return Path(self.invoice_output_dir).expanduser()
+
+    @property
+    def document_storage_path(self) -> Path:
+        return Path(self.document_storage_dir).expanduser()
 
 
 @lru_cache

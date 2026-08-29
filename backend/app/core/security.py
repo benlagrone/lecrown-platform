@@ -28,6 +28,19 @@ def create_access_token(user: User) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 
+def create_privileged_token(user: User) -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.privileged_auth_expire_minutes
+    )
+    payload = {
+        "sub": user.id,
+        "purpose": "privileged_action",
+        "auth_time": datetime.now(timezone.utc).timestamp(),
+        "exp": expires_at,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+
+
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
@@ -63,6 +76,18 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
+    return current_user
+
+
+def require_privileged_token(
+    current_user: User = Depends(get_current_user),
+    x_privileged_token: Optional[str] = Header(default=None),
+) -> User:
+    if not x_privileged_token:
+        raise HTTPException(status_code=401, detail="Recent authentication required")
+    payload = decode_access_token(x_privileged_token)
+    if payload.get("purpose") != "privileged_action" or payload.get("sub") != current_user.id:
+        raise HTTPException(status_code=401, detail="Invalid privileged token")
     return current_user
 
 

@@ -1,5 +1,10 @@
 # Feature Roadmap
 
+This document covers the platform's publishing and multi-site intake direction.
+The detailed brokerage operations, transaction-management, Repliers/HAR, and
+first-party electronic-signature execution plan is maintained separately in
+[LeCrown Properties Back-Office Execution Roadmap](./real-estate-backoffice-execution-roadmap.md).
+
 `lecrown-platform` should evolve into the internet publishing focal point and site-capture hub for the business.
 
 That means the platform should become the central place where teams:

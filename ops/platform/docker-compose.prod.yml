@@ -8,10 +8,16 @@ services:
       - ${PLATFORM_ENV_FILE:-./.env}
     environment:
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/lecrown.db}
+      DOCUMENT_STORAGE_DIR: ${DOCUMENT_STORAGE_DIR:-/app/data/documents}
     ports:
       - "${PLATFORM_API_BIND:-127.0.0.1:18035}:8000"
     volumes:
       - lecrown-platform-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   frontend:
     image: ${LECROWNPLATFORM_ADMIN_IMAGE:-ghcr.io/benlagrone/lecrown-platform-admin:latest}
@@ -19,12 +25,18 @@ services:
       context: ../../frontend
       dockerfile: admin/Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     restart: unless-stopped
     ports:
       - "${PLATFORM_FRONTEND_BIND:-127.0.0.1:13084}:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/container-healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   lecrown-platform-data:

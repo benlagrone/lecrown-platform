@@ -44,7 +44,7 @@ jobs:
             dockerfile: ./frontend/admin/Dockerfile
             image: ghcr.io/benlagrone/lecrown-platform-admin
             build_args: |
-              VITE_API_BASE_URL=https://api.lecrowndevelopment.com
+              VITE_API_BASE_URL=/api
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -437,6 +437,15 @@ jobs:
           PY
           }
 
+          touch ops/platform/.env
+          upsert_env_shell ops/platform/.env PUBLIC_APP_URL https://backoffice.lecrownproperties.com
+          upsert_env_shell ops/platform/.env CORS_ORIGINS https://backoffice.lecrownproperties.com
+          upsert_env_shell ops/platform/.env ALLOWED_HOSTS backoffice.lecrownproperties.com,api.lecrowndevelopment.com,backend,localhost,127.0.0.1
+          upsert_env_shell ops/platform/.env VITE_API_BASE_URL /api
+          upsert_env_shell ops/platform/.env DOCUMENT_STORAGE_DIR /app/data/documents
+          upsert_env_shell ops/platform/.env DOCUMENT_MAX_BYTES 26214400
+          upsert_env_shell ops/platform/.env PRIVILEGED_AUTH_EXPIRE_MINUTES 10
+
           if [[ -z "$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_USERNAME)" ]]; then
             upsert_env_shell ops/espocrm/.env ESPOCRM_ADMIN_USERNAME admin
           fi
@@ -551,6 +560,24 @@ jobs:
             curl -fsS "$url" >/dev/null
           done
 
+          run_privileged() {
+            if [[ "$(id -u)" -eq 0 ]]; then
+              "$@"
+            else
+              sudo -n "$@"
+            fi
+          }
+
+          command -v nginx >/dev/null
+          command -v certbot >/dev/null
+          run_privileged ./ops/platform/install-backoffice-vhost.sh
+          run_privileged certbot --nginx \
+            --non-interactive \
+            --agree-tos \
+            --register-unsafely-without-email \
+            --redirect \
+            -d backoffice.lecrownproperties.com
+
           "${COMPOSE[@]}" exec -T backend python - <<'PY' || true
           from app.core.database import SessionLocal, init_db
           from app.services import gov_contract_service
@@ -574,8 +601,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS https://api.lecrowndevelopment.com/healthz >/dev/null
-          curl -fsSIL https://app.lecrowndevelopment.com/ >/dev/null
+          curl -fsS https://backoffice.lecrownproperties.com/api/healthz >/dev/null
+          curl -fsSIL https://backoffice.lecrownproperties.com/ >/dev/null
 
       - name: Deployment Summary
         shell: bash
@@ -587,8 +614,8 @@ jobs:
             echo "- Environment: \`${DEPLOY_ENVIRONMENT}\`"
             echo "- Public smoke: \`${RUN_PUBLIC_SMOKE}\`"
             echo "- Deploy credential source: \`${{ steps.resolve_deploy.outputs.credential_source }}\`"
-            echo "- App URL: https://app.lecrowndevelopment.com/"
-            echo "- API URL: https://api.lecrowndevelopment.com/healthz"
+            echo "- Back-office URL: https://backoffice.lecrownproperties.com/"
+            echo "- Same-origin API health: https://backoffice.lecrownproperties.com/api/healthz"
           } >> "$GITHUB_STEP_SUMMARY"
 
   dispatch_fortress_deploy:
