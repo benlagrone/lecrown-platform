@@ -54,6 +54,7 @@ def _run_lightweight_migrations() -> bool:
         existing_user_columns = {column["name"] for column in inspector.get_columns("users")}
         user_migrations = {
             "username": "username VARCHAR",
+            "google_subject": "google_subject VARCHAR",
             "is_admin": "is_admin BOOLEAN DEFAULT 0 NOT NULL",
             "updated_at": "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL",
         }
@@ -75,6 +76,12 @@ def _run_lightweight_migrations() -> bool:
                 )
             connection.execute(
                 text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)")
+            )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_subject "
+                    "ON users (google_subject)"
+                )
             )
 
     if not inspector.has_table("gov_contract_opportunities"):

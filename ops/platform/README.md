@@ -75,6 +75,10 @@ Important production values:
 - `CORS_ORIGINS=https://backoffice.lecrownproperties.com`
 - `ALLOWED_HOSTS` must include `backoffice.lecrownproperties.com`
 - `DOCUMENT_STORAGE_DIR=/app/data/documents`
+- `GOOGLE_LOGIN_CLIENT_ID` must be a Google Web OAuth client that authorizes `https://backoffice.lecrownproperties.com`
+- `WORKSPACE_AUTH_REQUIRED=true`
+- `WORKSPACE_ALLOWED_DOMAINS=lecrownproperties.com`
+- `WORKSPACE_ADMIN_EMAILS=benjamin@lecrownproperties.com`
 - `PLATFORM_API_BIND=127.0.0.1:18035`
 - `PLATFORM_FRONTEND_BIND=127.0.0.1:13084`
 - `SECRET_KEY` must be replaced

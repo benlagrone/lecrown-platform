@@ -17,12 +17,13 @@ settings = get_settings()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-def create_access_token(user: User) -> str:
+def create_access_token(user: User, *, auth_source: str = "password") -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": user.id,
         "username": user.username,
         "is_admin": user.is_admin,
+        "auth_source": auth_source,
         "exp": expires_at,
     }
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
@@ -51,10 +52,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
         ) from exc
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User:
+def authenticate_access_token(db: Session, token: str) -> User:
     payload = decode_access_token(token)
     auth_service.ensure_bootstrap_admin_user(db)
 
@@ -67,7 +65,25 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+    if settings.workspace_auth_required:
+        email_domain = user.email.strip().casefold().rpartition("@")[2]
+        if (
+            payload.get("auth_source") != "google_workspace"
+            or not (user.google_subject or "").strip()
+            or email_domain not in settings.workspace_allowed_domains
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google Workspace sign-in required",
+            )
     return user
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    return authenticate_access_token(db, token)
 
 
 def get_current_admin(current_user: User = Depends(get_current_user)) -> User:

@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     app_name: str = os.getenv("APP_NAME", "LeCrown Platform")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./lecrown.db")
@@ -22,6 +29,25 @@ class Settings:
     billing_service_keys: str = os.getenv("BILLING_SERVICE_KEYS", "")
     google_oauth_client_id: str = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
     google_oauth_client_secret: str = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    google_login_client_id: str = os.getenv(
+        "GOOGLE_LOGIN_CLIENT_ID",
+        os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""),
+    )
+    workspace_auth_required: bool = _env_bool("WORKSPACE_AUTH_REQUIRED")
+    workspace_auth_host: str = os.getenv(
+        "WORKSPACE_AUTH_HOST",
+        "backoffice.lecrownproperties.com",
+    ).strip().casefold()
+    workspace_allowed_domains: list[str] = [
+        domain.strip().casefold()
+        for domain in os.getenv("WORKSPACE_ALLOWED_DOMAINS", "lecrownproperties.com").split(",")
+        if domain.strip()
+    ]
+    workspace_admin_emails: list[str] = [
+        email.strip().casefold()
+        for email in os.getenv("WORKSPACE_ADMIN_EMAILS", "").split(",")
+        if email.strip()
+    ]
     gmail_refresh_token_benjaminlagrone_gmail_com: str = os.getenv(
         "GMAIL_REFRESH_TOKEN_BENJAMINLAGRONE_GMAIL_COM",
         "",

@@ -122,6 +122,18 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface AuthConfig {
+  mode: "password" | "google_workspace";
+  google_client_id?: string | null;
+  allowed_domains: string[];
+  ready: boolean;
+}
+
+export interface GoogleLoginRequest {
+  credential: string;
+  nonce?: string;
+}
+
 export interface AuthUser {
   id: string;
   username: string;

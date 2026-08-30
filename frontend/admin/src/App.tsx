@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import BillingPage from "./BillingPage";
 import {
@@ -15,6 +15,7 @@ import {
   downloadGovContractsExport,
   downloadGrantsContractsExport,
   funnelGovContract,
+  getAuthConfig,
   getIntakeDashboard,
   getCurrentAdmin,
   getGovContractCapabilities,
@@ -27,6 +28,7 @@ import {
   listInquiries,
   listUserInvites,
   login,
+  loginWithGoogle,
   publishDistribution,
   publishToLinkedIn,
   refreshFederalContracts,
@@ -44,6 +46,7 @@ import {
   updateGovContractKeywordRule,
 } from "../../shared/api";
 import type {
+  AuthConfig,
   AuthUser,
   Content,
   ContentCreate,
@@ -61,6 +64,31 @@ import type {
   UserInvite,
   UserInviteCreateResponse,
 } from "../../shared/types";
+
+type GoogleCredentialResponse = { credential: string };
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+            nonce?: string;
+            hd?: string;
+            auto_select?: boolean;
+          }) => void;
+          renderButton: (
+            element: HTMLElement,
+            options: { theme: string; size: string; text: string; shape: string; width: number },
+          ) => void;
+          disableAutoSelect: () => void;
+        };
+      };
+    };
+  }
+}
 
 type AdminView = "dashboard" | "intake" | "opportunities" | "certifications" | "sources" | "billing" | "profile";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
@@ -641,6 +669,8 @@ export default function App() {
     gmail_rfq_sync_enabled: false,
     gmail_rfq_feed_label: null,
   });
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
+  const [authInitializing, setAuthInitializing] = useState(true);
   const [currentAdmin, setCurrentAdmin] = useState<AuthUser | null>(null);
   const [userInvites, setUserInvites] = useState<UserInvite[]>([]);
   const [latestInvite, setLatestInvite] = useState<UserInviteCreateResponse | null>(null);
@@ -663,7 +693,9 @@ export default function App() {
   const [funnelingContractId, setFunnelingContractId] = useState<string | null>(null);
   const [retryingSubmissionId, setRetryingSubmissionId] = useState<string | null>(null);
   const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
-    useState<OpportunitiesAuthStatus>("unauthenticated");
+    useState<OpportunitiesAuthStatus>("checking");
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleNonceRef = useRef(createGoogleNonce());
   const [opportunitySearch, setOpportunitySearch] =
     useState<GovContractOpportunitySearchResponse>(EMPTY_OPPORTUNITY_SEARCH);
   const [opportunityPage, setOpportunityPage] = useState(1);
@@ -728,25 +760,72 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void initializeAuthentication();
+  }, []);
+
+  useEffect(() => {
+    if (opportunitiesAuthStatus !== "authenticated") {
+      return;
+    }
     void refreshContent(tenant);
     if (tenant === "properties") {
       void refreshInquiries();
     }
-  }, [tenant]);
+  }, [tenant, opportunitiesAuthStatus]);
 
   useEffect(() => {
     if (
-      view !== "opportunities" &&
-      view !== "certifications" &&
-      view !== "sources" &&
-      view !== "profile" &&
-      view !== "intake" &&
-      view !== "billing"
+      authConfig?.mode !== "google_workspace" ||
+      !authConfig.ready ||
+      !authConfig.google_client_id ||
+      opportunitiesAuthStatus !== "unauthenticated" ||
+      !googleButtonRef.current
     ) {
       return;
     }
-    void ensureProtectedAccess();
-  }, [view]);
+
+    const scriptId = "google-identity-services";
+    const mountGoogleButton = () => {
+      if (!window.google || !googleButtonRef.current || !authConfig.google_client_id) {
+        return;
+      }
+      googleNonceRef.current = createGoogleNonce();
+      googleButtonRef.current.replaceChildren();
+      window.google.accounts.id.initialize({
+        client_id: authConfig.google_client_id,
+        callback: (response) => void handleWorkspaceCredential(response),
+        nonce: googleNonceRef.current,
+        hd: authConfig.allowed_domains[0],
+        auto_select: false,
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        text: "signin_with",
+        shape: "rectangular",
+        width: 320,
+      });
+    };
+
+    const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (existingScript) {
+      if (window.google) {
+        mountGoogleButton();
+      } else {
+        existingScript.addEventListener("load", mountGoogleButton, { once: true });
+      }
+      return () => existingScript.removeEventListener("load", mountGoogleButton);
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.addEventListener("load", mountGoogleButton, { once: true });
+    script.addEventListener("error", () => setAuthMessage("Google sign-in could not be loaded."), { once: true });
+    document.head.appendChild(script);
+    return () => script.removeEventListener("load", mountGoogleButton);
+  }, [authConfig, opportunitiesAuthStatus]);
 
   useEffect(() => {
     setOpportunityPage(1);
@@ -788,6 +867,28 @@ export default function App() {
     void refreshIntakeDashboard();
   }, [view, opportunitiesAuthStatus]);
 
+  async function initializeAuthentication() {
+    setAuthInitializing(true);
+    setOpportunitiesAuthStatus("checking");
+    try {
+      const config = await getAuthConfig();
+      setAuthConfig(config);
+      if (!hasStoredAuthToken()) {
+        setCurrentAdmin(null);
+        setOpportunitiesAuthStatus("unauthenticated");
+        return;
+      }
+      await ensureProtectedAccess();
+    } catch (error) {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setAuthInitializing(false);
+    }
+  }
+
   async function ensureProtectedAccess() {
     if (!hasStoredAuthToken()) {
       setOpportunitiesAuthStatus("unauthenticated");
@@ -812,6 +913,31 @@ export default function App() {
       setIntakeDashboard(null);
       setOpportunitiesAuthStatus("unauthenticated");
       setAuthMessage("Sign in to continue.");
+    }
+  }
+
+  async function handleWorkspaceCredential(response: GoogleCredentialResponse) {
+    setLoggingIn(true);
+    setAuthMessage("");
+    setMessage("");
+    try {
+      const token = await loginWithGoogle({
+        credential: response.credential,
+        nonce: googleNonceRef.current,
+      });
+      storeAuthToken(token.access_token);
+      setCurrentAdmin(token.user);
+      const capabilities = await getGovContractCapabilities();
+      setContractCapabilities(capabilities);
+      setOpportunitiesAuthStatus("authenticated");
+      setMessage("Signed in with LeCrown Google Workspace.");
+    } catch (error) {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setLoggingIn(false);
     }
   }
 
@@ -1193,6 +1319,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    window.google?.accounts.id.disableAutoSelect();
     clearAuthToken();
     setCurrentAdmin(null);
     setIntakeDashboard(null);
@@ -2002,7 +2129,8 @@ export default function App() {
             </div>
           </div>
           <p className="panel-subcopy">
-            Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs now live on a separate page and require an invited account sign-in.
+            Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs live on a separate page and
+            require LeCrown Google Workspace sign-in.
           </p>
         </section>
 
@@ -2041,6 +2169,56 @@ export default function App() {
         title: "Profile and password",
         subcopy: "Sign in with your existing account or accept an invite code to activate a new login.",
       });
+    }
+
+    if (authConfig?.mode === "google_workspace") {
+      return (
+        <section className="grid profile-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Workspace Identity</p>
+                <h2>Profile summary</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Identity is verified by LeCrown Properties Google Workspace. Passwords and invitations are not stored in
+              this back office.
+            </p>
+            <div className="profile-stat-grid">
+              <div className="metric-pill">
+                <strong>{currentAdmin.username}</strong>
+                <span>workspace user</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.email}</strong>
+                <span>verified email</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.is_admin ? "Admin" : "Member"}</strong>
+                <span>application role</span>
+              </div>
+              <div className="metric-pill">
+                <strong>Google Workspace</strong>
+                <span>identity provider</span>
+              </div>
+            </div>
+          </article>
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Access Policy</p>
+                <h2>LeCrown users only</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Access requires a currently valid Google identity issued for @{authConfig.allowed_domains[0]}. Workspace
+              removal or account deactivation prevents future sign-in; application roles still control what members can
+              do after authentication.
+            </p>
+          </article>
+        </section>
+      );
     }
 
     return (
@@ -3700,6 +3878,72 @@ export default function App() {
     );
   }
 
+  if (authInitializing || !authConfig || opportunitiesAuthStatus === "checking") {
+    return (
+      <main className="page-shell workspace-gate-shell">
+        <section className="panel auth-panel workspace-auth-panel">
+          <p className="eyebrow">LeCrown Properties</p>
+          <h1>Checking workspace access</h1>
+          <p className="panel-subcopy">Verifying your protected back-office session.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+    if (authConfig.mode === "google_workspace") {
+      const allowedDomain = authConfig.allowed_domains[0] ?? "lecrownproperties.com";
+      return (
+        <main className="page-shell workspace-gate-shell">
+          <section className="hero-card workspace-auth-hero">
+            <div>
+              <p className="eyebrow">LeCrown Properties</p>
+              <h1>Private company workspace</h1>
+              <p className="hero-copy">
+                Sign in with an active @{allowedDomain} Google Workspace account to open the back office.
+              </p>
+            </div>
+            <span className="hero-badge">Workspace only</span>
+          </section>
+
+          {authMessage ? <div className="message-banner auth-banner">{authMessage}</div> : null}
+
+          <section className="panel auth-panel workspace-auth-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Protected Access</p>
+                <h2>Continue with Google</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Personal Gmail accounts and users outside the LeCrown Properties Workspace are rejected by the server.
+            </p>
+            {authConfig.ready ? (
+              <div className="google-signin-stack">
+                <div ref={googleButtonRef} className="google-signin-button" aria-live="polite" />
+                {loggingIn ? <span>Verifying Workspace membership...</span> : null}
+              </div>
+            ) : (
+              <div className="message-banner auth-banner">
+                Workspace sign-in is not configured. Contact the LeCrown administrator.
+              </div>
+            )}
+          </section>
+        </main>
+      );
+    }
+
+    return (
+      <main className="page-shell workspace-gate-shell">
+        {renderProtectedAuthPanel({
+          eyebrow: "Back-office Access",
+          title: "Sign in to LeCrown Platform",
+          subcopy: "Use your existing invited account to continue.",
+        })}
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <nav className="view-nav">
@@ -3769,7 +4013,7 @@ export default function App() {
               : view === "billing"
                 ? "Protected invoice creation and Gmail draft workflow"
               : view === "profile"
-                ? "Profile, password, and invite-only access"
+                ? "Profile and Workspace access"
                 : "Opportunity list and lead-funnel review"}
           </h1>
           <p className="hero-copy">
@@ -3784,7 +4028,7 @@ export default function App() {
               : view === "billing"
                 ? "Prepare LeCrown invoices, generate the exact platform PDF on the backend, and create a Gmail draft with the PDF attached without leaving the admin surface."
               : view === "profile"
-                ? "Manage your login inside the app. Admins can invite new users and keep access locked down to invited accounts only."
+                ? "Review your verified LeCrown Google Workspace identity and application role."
                 : "Review matched federal forecast opportunities, Grants.gov opportunities, SBA SUBNet subcontracting opportunities, ESBD opportunities, and Gmail RFQs, then push strong fits into the CRM lead funnel."}
           </p>
         </div>
@@ -3811,7 +4055,9 @@ export default function App() {
                 ? currentAdmin?.is_admin
                   ? "Admin signed in"
                   : "Member signed in"
-                : "Invite-only access"}
+                : authConfig.mode === "google_workspace"
+                  ? "Workspace access"
+                  : "Invite-only access"}
             </span>
             {currentAdmin ? (
               <div className="hero-account-copy">
@@ -4251,6 +4497,15 @@ function formatFunnelLabel(contract: GovContractOpportunity): string {
     return "CRM sync failed";
   }
   return contract.funnel_status;
+}
+
+function createGoogleNonce(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 function formatInviteStatus(invite: UserInvite): string {

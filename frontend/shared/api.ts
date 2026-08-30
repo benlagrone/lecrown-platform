@@ -1,4 +1,5 @@
 import type {
+  AuthConfig,
   AuthUser,
   ChangePasswordRequest,
   Content,
@@ -12,6 +13,7 @@ import type {
   GovContractOpportunity,
   GovContractOpportunitySearchResponse,
   GovContractTrackedSource,
+  GoogleLoginRequest,
   InvoiceDefaults,
   InvoiceDraftResult,
   InvoiceRenderRequest,
@@ -482,6 +484,17 @@ export async function publishDistribution(
 
 export async function login(payload: LoginRequest): Promise<TokenResponse> {
   return request<TokenResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+  return request<AuthConfig>("/auth/config");
+}
+
+export async function loginWithGoogle(payload: GoogleLoginRequest): Promise<TokenResponse> {
+  return request<TokenResponse>("/auth/google", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -5,6 +5,7 @@ SQLAlchemy==2.0.39
 requests==2.32.3
 beautifulsoup4==4.13.4
 PyJWT==2.10.1
+google-auth==2.40.3
 python-dotenv==1.0.1
 python-multipart==0.0.20
 stripe==14.0.1

@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import desc, select
 
 from app.config import get_settings
 from app.core.database import SessionLocal, init_db
+from app.core.security import authenticate_access_token
 from app.models.gov_contract import GovContractImportRun
 from app.routes import auth, backoffice, billing, content, distribution, documents, gov_contract, intake, inquiry, invoice, linkedin, youtube
 from app.services import gov_contract_service
@@ -23,6 +25,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PUBLIC_BACKOFFICE_PATHS = {
+    "/healthz",
+    "/auth/config",
+    "/auth/google",
+    "/auth/login",
+    "/auth/accept-invite",
+}
+
+
+@app.middleware("http")
+async def require_backoffice_workspace_identity(request: Request, call_next):
+    host = request.headers.get("host", "").partition(":")[0].strip().casefold()
+    if (
+        settings.workspace_auth_required
+        and host == settings.workspace_auth_host
+        and request.method != "OPTIONS"
+        and request.url.path not in PUBLIC_BACKOFFICE_PATHS
+    ):
+        authorization = request.headers.get("authorization", "")
+        scheme, _, token = authorization.partition(" ")
+        if scheme.casefold() != "bearer" or not token.strip():
+            return JSONResponse(status_code=401, content={"detail": "Google Workspace sign-in required"})
+        try:
+            with SessionLocal() as db:
+                authenticate_access_token(db, token.strip())
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    return await call_next(request)
 
 
 @app.on_event("startup")

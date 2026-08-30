@@ -302,11 +302,13 @@ jobs:
         shell: bash
         env:
           WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_LOGIN_CLIENT_ID_SECRET: ${{ secrets.GOOGLE_LOGIN_CLIENT_ID }}
         run: |
           set -euo pipefail
+          GOOGLE_LOGIN_CLIENT_ID_B64="$(printf '%s' "${GOOGLE_LOGIN_CLIENT_ID_SECRET}" | base64 | tr -d '\n')"
 
           ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "DEPLOY_ROOT='${DEPLOY_ROOT}' REPO_URL='https://github.com/${GITHUB_REPOSITORY}.git' REPO_SLUG='${GITHUB_REPOSITORY}' SOURCE_SHA='${GITHUB_SHA}' REPO_TOKEN='${WORKFLOW_TOKEN}' GHCR_TOKEN='${WORKFLOW_TOKEN}' bash -s" <<'REMOTE'
+            "DEPLOY_ROOT='${DEPLOY_ROOT}' REPO_URL='https://github.com/${GITHUB_REPOSITORY}.git' REPO_SLUG='${GITHUB_REPOSITORY}' SOURCE_SHA='${GITHUB_SHA}' REPO_TOKEN='${WORKFLOW_TOKEN}' GHCR_TOKEN='${WORKFLOW_TOKEN}' GOOGLE_LOGIN_CLIENT_ID_B64='${GOOGLE_LOGIN_CLIENT_ID_B64}' bash -s" <<'REMOTE'
           set -euo pipefail
 
           fail_repo() {
@@ -445,6 +447,25 @@ jobs:
           upsert_env_shell ops/platform/.env DOCUMENT_STORAGE_DIR /app/data/documents
           upsert_env_shell ops/platform/.env DOCUMENT_MAX_BYTES 26214400
           upsert_env_shell ops/platform/.env PRIVILEGED_AUTH_EXPIRE_MINUTES 10
+
+          GOOGLE_LOGIN_CLIENT_ID=""
+          if [[ -n "${GOOGLE_LOGIN_CLIENT_ID_B64:-}" ]]; then
+            GOOGLE_LOGIN_CLIENT_ID="$(printf '%s' "${GOOGLE_LOGIN_CLIENT_ID_B64}" | base64 --decode)"
+          fi
+          if [[ -z "${GOOGLE_LOGIN_CLIENT_ID}" ]]; then
+            GOOGLE_LOGIN_CLIENT_ID="$(read_env_value ops/platform/.env GOOGLE_LOGIN_CLIENT_ID)"
+          fi
+          if [[ -z "${GOOGLE_LOGIN_CLIENT_ID}" ]]; then
+            GOOGLE_LOGIN_CLIENT_ID="$(read_env_value ops/platform/.env GOOGLE_OAUTH_CLIENT_ID)"
+          fi
+          if [[ -z "${GOOGLE_LOGIN_CLIENT_ID}" ]]; then
+            fail_repo "GOOGLE_LOGIN_CLIENT_ID is required before Workspace-only access can be enabled"
+          fi
+          upsert_env_shell ops/platform/.env GOOGLE_LOGIN_CLIENT_ID "${GOOGLE_LOGIN_CLIENT_ID}"
+          upsert_env_shell ops/platform/.env WORKSPACE_AUTH_REQUIRED true
+          upsert_env_shell ops/platform/.env WORKSPACE_AUTH_HOST backoffice.lecrownproperties.com
+          upsert_env_shell ops/platform/.env WORKSPACE_ALLOWED_DOMAINS lecrownproperties.com
+          upsert_env_shell ops/platform/.env WORKSPACE_ADMIN_EMAILS benjamin@lecrownproperties.com
 
           if [[ -z "$(read_env_value ops/espocrm/.env ESPOCRM_ADMIN_USERNAME)" ]]; then
             upsert_env_shell ops/espocrm/.env ESPOCRM_ADMIN_USERNAME admin
