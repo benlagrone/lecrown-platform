@@ -571,12 +571,21 @@ jobs:
           command -v nginx >/dev/null
           command -v certbot >/dev/null
           run_privileged ./ops/platform/install-backoffice-vhost.sh
-          run_privileged certbot --nginx \
-            --non-interactive \
-            --agree-tos \
-            --register-unsafely-without-email \
-            --redirect \
-            -d backoffice.lecrownproperties.com
+          for certbot_attempt in $(seq 1 12); do
+            if run_privileged certbot --nginx \
+              --non-interactive \
+              --agree-tos \
+              --register-unsafely-without-email \
+              --redirect \
+              -d backoffice.lecrownproperties.com; then
+              break
+            fi
+            if [[ "${certbot_attempt}" -eq 12 ]]; then
+              fail_repo "certbot did not succeed after waiting for the existing certbot process"
+            fi
+            echo "Certbot unavailable; retrying in 10 seconds (${certbot_attempt}/12)."
+            sleep 10
+          done
 
           "${COMPOSE[@]}" exec -T backend python - <<'PY' || true
           from app.core.database import SessionLocal, init_db
