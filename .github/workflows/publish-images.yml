@@ -45,6 +45,10 @@ jobs:
             image: ghcr.io/benlagrone/lecrown-platform-admin
             build_args: |
               VITE_API_BASE_URL=/api
+          - name: client
+            context: ./frontend
+            dockerfile: ./frontend/client/Dockerfile
+            image: ghcr.io/benlagrone/lecrown-platform-client
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -441,8 +445,8 @@ jobs:
 
           touch ops/platform/.env
           upsert_env_shell ops/platform/.env PUBLIC_APP_URL https://backoffice.lecrownproperties.com
-          upsert_env_shell ops/platform/.env CORS_ORIGINS https://backoffice.lecrownproperties.com
-          upsert_env_shell ops/platform/.env ALLOWED_HOSTS backoffice.lecrownproperties.com,api.lecrowndevelopment.com,backend,localhost,127.0.0.1
+          upsert_env_shell ops/platform/.env CORS_ORIGINS https://backoffice.lecrownproperties.com,https://portal.lecrownproperties.com
+          upsert_env_shell ops/platform/.env ALLOWED_HOSTS backoffice.lecrownproperties.com,portal.lecrownproperties.com,api.lecrowndevelopment.com,backend,localhost,127.0.0.1
           upsert_env_shell ops/platform/.env VITE_API_BASE_URL /api
           upsert_env_shell ops/platform/.env DOCUMENT_STORAGE_DIR /app/data/documents
           upsert_env_shell ops/platform/.env DOCUMENT_MAX_BYTES 26214400

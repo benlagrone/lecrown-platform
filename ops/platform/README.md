@@ -157,3 +157,24 @@ After deploy:
 ```
 
 Then sign in on the opportunities page with the production admin credentials from `ops/platform/.env`.
+
+## External Client Portal
+
+The external client portal is a separate Keycloak trust boundary from the
+employee back office. Configure a dedicated public OIDC client in the existing
+`lecrown-portal` realm, set `KEYCLOAK_CLIENT_ID`, and require the
+`lecrown-client` role. Each client must also have an active,
+representation-scoped grant created by a LeCrown admin; Keycloak authentication
+by itself does not expose brokerage data.
+
+The `client-portal` Compose profile and
+`nginx.client-portal.lecrownproperties.com.conf` remain inactive until the
+Keycloak redirect/web-origin configuration and portal DNS are verified. When
+those gates are satisfied, start it with:
+
+```bash
+docker compose -f ops/platform/docker-compose.prod.yml --env-file ops/platform/.env \
+  --profile client-portal up -d client-portal
+sudo ./ops/platform/install-client-portal-vhost.sh
+sudo certbot --nginx -d portal.lecrownproperties.com
+```

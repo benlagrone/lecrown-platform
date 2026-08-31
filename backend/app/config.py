@@ -48,6 +48,21 @@ class Settings:
         for email in os.getenv("WORKSPACE_ADMIN_EMAILS", "").split(",")
         if email.strip()
     ]
+    client_portal_host: str = os.getenv(
+        "CLIENT_PORTAL_HOST",
+        "portal.lecrownproperties.com",
+    ).strip().casefold()
+    keycloak_base_url: str = os.getenv(
+        "KEYCLOAK_BASE_URL",
+        "https://auth.pericopeai.com",
+    ).strip().rstrip("/")
+    keycloak_realm: str = os.getenv("KEYCLOAK_REALM", "lecrown-portal").strip()
+    keycloak_client_id: str = os.getenv("KEYCLOAK_CLIENT_ID", "").strip()
+    keycloak_allowed_roles: list[str] = [
+        role.strip()
+        for role in os.getenv("KEYCLOAK_ALLOWED_ROLES", "lecrown-client").split(",")
+        if role.strip()
+    ]
     gmail_refresh_token_benjaminlagrone_gmail_com: str = os.getenv(
         "GMAIL_REFRESH_TOKEN_BENJAMINLAGRONE_GMAIL_COM",
         "",
@@ -220,6 +235,19 @@ class Settings:
     @property
     def document_storage_path(self) -> Path:
         return Path(self.document_storage_dir).expanduser()
+
+    @property
+    def keycloak_issuer(self) -> str:
+        return f"{self.keycloak_base_url}/realms/{self.keycloak_realm}"
+
+    @property
+    def client_portal_auth_ready(self) -> bool:
+        return bool(
+            self.keycloak_base_url
+            and self.keycloak_realm
+            and self.keycloak_client_id
+            and self.keycloak_allowed_roles
+        )
 
 
 @lru_cache

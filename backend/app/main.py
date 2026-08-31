@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import authenticate_access_token
 from app.models.gov_contract import GovContractImportRun
-from app.routes import auth, backoffice, billing, content, distribution, documents, gov_contract, intake, inquiry, invoice, linkedin, youtube
+from app.routes import auth, backoffice, billing, client_portal, content, distribution, documents, gov_contract, intake, inquiry, invoice, linkedin, youtube
 from app.services import gov_contract_service
 from app.services import espocrm_service
 
@@ -33,11 +33,18 @@ PUBLIC_BACKOFFICE_PATHS = {
     "/auth/login",
     "/auth/accept-invite",
 }
+CLIENT_PORTAL_PATHS = {
+    "/healthz",
+    "/client-portal/config",
+    "/client-portal/session",
+}
 
 
 @app.middleware("http")
 async def require_backoffice_workspace_identity(request: Request, call_next):
     host = request.headers.get("host", "").partition(":")[0].strip().casefold()
+    if host == settings.client_portal_host and request.url.path not in CLIENT_PORTAL_PATHS:
+        return JSONResponse(status_code=404, content={"detail": "Route not found"})
     if (
         settings.workspace_auth_required
         and host == settings.workspace_auth_host
@@ -109,3 +116,4 @@ app.include_router(distribution.router, prefix="/distribution", tags=["distribut
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(backoffice.router, prefix="/backoffice", tags=["backoffice"])
 app.include_router(documents.router, prefix="/documents", tags=["documents"])
+app.include_router(client_portal.router, prefix="/client-portal", tags=["client-portal"])
