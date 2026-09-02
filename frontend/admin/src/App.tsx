@@ -2,6 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import BillingPage from "./BillingPage";
 import {
+  TREC_DRIVE_LIBRARY_URL,
+  TREC_FORMS,
+  TREC_FORMS_RETRIEVED_AT,
+  TREC_FORMS_SOURCE_URL,
+} from "./trecForms";
+import {
   acceptInvite,
   changePassword,
   clearAuthToken,
@@ -90,7 +96,15 @@ declare global {
   }
 }
 
-type AdminView = "dashboard" | "intake" | "opportunities" | "certifications" | "sources" | "billing" | "profile";
+type AdminView =
+  | "dashboard"
+  | "intake"
+  | "opportunities"
+  | "certifications"
+  | "sources"
+  | "trec-forms"
+  | "billing"
+  | "profile";
 type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
 type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
 type OpportunityTagFilterKind = "source" | "tag" | "preferred_agency";
@@ -607,6 +621,9 @@ function getCurrentView(): AdminView {
   if (window.location.hash.startsWith("#/sources")) {
     return "sources";
   }
+  if (window.location.hash.startsWith("#/trec-forms")) {
+    return "trec-forms";
+  }
   return window.location.hash.startsWith("#/opportunities") ? "opportunities" : "dashboard";
 }
 
@@ -624,6 +641,10 @@ function navigateToView(view: AdminView): void {
   }
   if (view === "certifications") {
     window.location.hash = "#/certifications";
+    return;
+  }
+  if (view === "trec-forms") {
+    window.location.hash = "#/trec-forms";
     return;
   }
   if (view === "intake") {
@@ -659,6 +680,7 @@ function getInviteCodeFromLocation(): string | null {
 export default function App() {
   const [view, setView] = useState<AdminView>(getCurrentView());
   const [tenant, setTenant] = useState<Tenant>("development");
+  const [trecFormQuery, setTrecFormQuery] = useState("");
   const [form, setForm] = useState<ContentCreate>(buildInitialForm());
   const [contentItems, setContentItems] = useState<Content[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
@@ -3132,6 +3154,110 @@ export default function App() {
     );
   }
 
+  function renderTrecFormsPage() {
+    const normalizedQuery = trecFormQuery.trim().toLowerCase();
+    const visibleForms = TREC_FORMS.filter((form) =>
+      [form.title, form.formId, form.category, form.effectiveDate].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
+    const categories = ["Contracts", "Contract Addenda", "Other Forms"] as const;
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Texas Real Estate Commission</p>
+              <h2>Promulgated contracts and related forms</h2>
+            </div>
+            <div className="action-row">
+              {TREC_DRIVE_LIBRARY_URL ? (
+                <a className="button-link" href={TREC_DRIVE_LIBRARY_URL} target="_blank" rel="noreferrer">
+                  Open Drive library
+                </a>
+              ) : null}
+              <a className="button-link secondary-link" href={TREC_FORMS_SOURCE_URL} target="_blank" rel="noreferrer">
+                Open TREC source
+              </a>
+            </div>
+          </div>
+          <p className="panel-subcopy">
+            Complete inventory from TREC&apos;s Contracts page, checked {TREC_FORMS_RETRIEVED_AT}. TREC does not
+            promulgate listing agreements, buyer-representation agreements, commercial contracts,
+            property-management contracts, or ordinary residential leases.
+          </p>
+          <div className="metric-row">
+            <div className="metric-pill"><strong>{TREC_FORMS.length}</strong><span>forms indexed</span></div>
+            <div className="metric-pill"><strong>7</strong><span>contracts</span></div>
+            <div className="metric-pill"><strong>23</strong><span>contract addenda</span></div>
+            <div className="metric-pill"><strong>12</strong><span>other forms</span></div>
+          </div>
+          <label className="trec-form-search">
+            <span>Find a form</span>
+            <input
+              type="search"
+              value={trecFormQuery}
+              onChange={(event) => setTrecFormQuery(event.target.value)}
+              placeholder="Search by name, form ID, category, or effective date"
+            />
+          </label>
+          <p className="trec-legal-note">
+            Use the current form version and follow broker supervision. This library is a convenience index, not legal advice.
+          </p>
+        </section>
+
+        {categories.map((category) => {
+          const categoryForms = visibleForms.filter((form) => form.category === category);
+          if (!categoryForms.length) {
+            return null;
+          }
+          return (
+            <section className="panel" key={category}>
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">TREC Forms</p>
+                  <h2>{category}</h2>
+                </div>
+                <span>{categoryForms.length} shown</span>
+              </div>
+              <div className="trec-form-list">
+                {categoryForms.map((form) => (
+                  <article className="trec-form-row" key={`${form.category}-${form.formId}`}>
+                    <div className="trec-form-copy">
+                      <div className="trec-form-meta">
+                        <span className="status-badge status-badge-neutral">TREC {form.formId}</span>
+                        <span>Effective {form.effectiveDate}</span>
+                      </div>
+                      <h3>{form.title}</h3>
+                    </div>
+                    <div className="action-row trec-form-actions">
+                      {form.driveUrl ? (
+                        <a className="button-link" href={form.driveUrl} target="_blank" rel="noreferrer">
+                          Drive copy
+                        </a>
+                      ) : null}
+                      <a className="button-link secondary-link" href={form.trecPdfUrl} target="_blank" rel="noreferrer">
+                        Download PDF
+                      </a>
+                      <a className="button-link secondary-link" href={form.trecPageUrl} target="_blank" rel="noreferrer">
+                        Form details
+                      </a>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+
+        {!visibleForms.length ? (
+          <section className="panel"><p className="empty-state">No TREC forms match that search.</p></section>
+        ) : null}
+      </>
+    );
+  }
+
   function renderOpportunitiesPage() {
     if (opportunitiesAuthStatus === "checking") {
       return (
@@ -3984,6 +4110,13 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={`nav-pill${view === "trec-forms" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("trec-forms")}
+        >
+          TREC Forms
+        </button>
+        <button
+          type="button"
           className={`nav-pill${view === "billing" ? " nav-pill-active" : ""}`}
           onClick={() => navigateToView("billing")}
         >
@@ -4010,6 +4143,8 @@ export default function App() {
               ? "Government certification progress tracker"
               : view === "sources"
               ? "eProcurement source automation registry"
+              : view === "trec-forms"
+              ? "Texas promulgated forms library"
               : view === "billing"
                 ? "Protected invoice creation and Gmail draft workflow"
               : view === "profile"
@@ -4025,6 +4160,8 @@ export default function App() {
               ? "Track certification lanes, buyer portal requirements, reusable evidence, document portal slots, and capability statement drafts before bid deadlines start compressing the work."
               : view === "sources"
               ? "Review every procurement source feeding the funnel, see what automation is active for each one, and identify which portals still need a deeper integration."
+              : view === "trec-forms"
+              ? "Find current TREC contracts, addenda, notices, disclosures, and related forms by name or form number."
               : view === "billing"
                 ? "Prepare LeCrown invoices, generate the exact platform PDF on the backend, and create a Gmail draft with the PDF attached without leaving the admin surface."
               : view === "profile"
@@ -4100,6 +4237,8 @@ export default function App() {
             ? renderCertificationsPage()
           : view === "sources"
             ? renderSourcesPage()
+          : view === "trec-forms"
+            ? renderTrecFormsPage()
           : view === "billing"
             ? renderBillingPage()
           : view === "profile"
