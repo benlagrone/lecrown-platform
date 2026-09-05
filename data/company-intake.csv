@@ -1,0 +1,21 @@
+company_id,field,value,status,owner,due_date,evidence_or_storage,notes
+metro_lecrown,legal_name,Metro LeCrown,known,Benjamin,2026-06-26,data/companies.csv,
+metro_lecrown,dba,TBD,missing,Benjamin,2026-06-26,TBD,
+metro_lecrown,ein,TBD,missing_private,Benjamin,2026-06-26,.local/,Do not store EIN in public docs if you prefer to keep it private.
+metro_lecrown,formation_state,TBD,missing,Benjamin,2026-06-26,TBD,
+metro_lecrown,physical_address,TBD,missing_private,Benjamin,2026-06-26,.local/,
+metro_lecrown,mailing_address,TBD,missing_private,Benjamin,2026-06-26,.local/,
+metro_lecrown,bank_account_for_eft,TBD,missing_private,Benjamin,2026-06-26,.local/,Do not store full bank account details in CSV.
+metro_lecrown,primary_owner,TBD,missing,Benjamin/Jie,2026-06-26,TBD,
+metro_lecrown,ownership_percentages,TBD,missing_private,Benjamin/Jie,2026-06-26,.local/,
+metro_lecrown,officer_titles,TBD,missing,Benjamin/Jie,2026-06-26,TBD,
+metro_lecrown,operating_agreement,TBD,missing,Benjamin,2026-06-26,TBD,
+metro_lecrown,primary_naics,TBD,missing,Benjamin,2026-06-26,TBD,
+metro_lecrown,secondary_naics,TBD,missing,Benjamin,2026-06-26,TBD,
+metro_lecrown,sam_uei,TBD,missing_private,Benjamin,2026-06-29,.local/,
+metro_lecrown,cage_code,TBD,missing_private,Benjamin,2026-06-29,.local/,
+metro_lecrown,sam_renewal_date,TBD,missing,Benjamin,2026-06-29,TBD,
+metro_lecrown,mysba_access_status,TBD,missing,Benjamin,2026-06-30,TBD,
+metro_lecrown,houston_obo_application_status,TBD,missing,Benjamin/Jie,2026-07-03,.local/houston-mwdbe.credentials,
+company_2,legal_name,TBD,missing,TBD,2026-06-26,TBD,Replace placeholder company facts.
+company_3,legal_name,TBD,missing,TBD,2026-06-26,TBD,Replace placeholder company facts.

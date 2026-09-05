@@ -1,0 +1,39 @@
+certification,phase,step,status,owner,due_date,evidence,source_url,notes
+SAM.gov,registration,Confirm legal business name and physical address,not_started,Benjamin,2026-08-05,TBD,https://sam.gov/entity-registration,
+SAM.gov,registration,Confirm EIN/TIN and entity details,not_started,Benjamin,2026-08-05,TBD,https://sam.gov/entity-registration,
+SAM.gov,registration,Confirm bank account details for EFT,not_started,Benjamin,2026-08-05,TBD,https://sam.gov/entity-registration,
+SAM.gov,registration,Confirm primary and secondary NAICS codes,not_started,Benjamin,2026-08-05,TBD,https://sam.gov/entity-registration,
+SAM.gov,registration,Register or renew entity,not_started,Benjamin,2026-08-05,TBD,https://sam.gov/entity-registration,
+SAM.gov,registration,Record Unique Entity ID and CAGE code,not_started,Benjamin,2026-08-05,TBD,https://sam.gov/entity-registration,
+SAM.gov,maintenance,Record annual renewal deadline,not_started,Benjamin,TBD,TBD,https://sam.gov/entity-registration,SAM.gov registration must be renewed every 365 days.
+MySBA Certifications,setup,Create or access account,not_started,Benjamin,2026-08-07,TBD,https://certifications.sba.gov/,
+MySBA Certifications,setup,Add business profile,not_started,Benjamin,2026-08-07,TBD,https://certifications.sba.gov/,
+MySBA Certifications,eligibility,Run WOSB/EDWOSB questionnaire,not_started,Benjamin/Jie,2026-08-07,TBD,https://certifications.sba.gov/,
+MySBA Certifications,eligibility,Run 8(a) questionnaire,not_started,Benjamin/Jie,2026-08-07,TBD,https://certifications.sba.gov/,
+MySBA Certifications,eligibility,Run HUBZone questionnaire,not_started,Benjamin,2026-08-07,TBD,https://certifications.sba.gov/,
+WOSB/EDWOSB,eligibility,Confirm at least 51 percent women-owned,not_started,Benjamin/Jie,2026-08-07,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program,
+WOSB/EDWOSB,eligibility,Confirm qualifying woman owner controls daily operations and long-term decisions,not_started,Benjamin/Jie,2026-08-07,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program,
+WOSB/EDWOSB,eligibility,Confirm EDWOSB financial eligibility if pursuing EDWOSB,not_started,Benjamin/Jie,2026-08-07,output/pdf/PNW_Jie_Huang_FINAL.pdf,https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program,
+WOSB/EDWOSB,submission,Prepare governing and ownership documents,not_started,Benjamin/Jie,TBD,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program,
+WOSB/EDWOSB,submission,Submit application in MySBA Certifications,not_started,Benjamin/Jie,TBD,TBD,https://certifications.sba.gov/,
+WOSB/EDWOSB,maintenance,Record certification anniversary and three-year examination date,not_started,Benjamin,TBD,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/women-owned-small-business-federal-contract-program,
+8(a),eligibility,Identify primary NAICS code or codes,not_started,Benjamin,2026-08-07,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/8a-business-development-program,
+8(a),eligibility,Confirm SAM.gov registration is active,not_started,Benjamin,2026-08-07,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/8a-business-development-program,
+8(a),readiness,Prepare social and economic disadvantage evidence,not_started,Benjamin/Jie,TBD,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/8a-business-development-program,
+8(a),readiness,Meet with SBA District Office or APEX Accelerator counselor,not_started,Benjamin/Jie,TBD,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/8a-business-development-program,
+8(a),submission,Submit 8(a) application in MySBA Certifications,not_started,Benjamin/Jie,TBD,TBD,https://certifications.sba.gov/,
+HUBZone,eligibility,Check principal office address on SBA HUBZone map,not_started,Benjamin,2026-08-07,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/hubzone-program,
+HUBZone,eligibility,Check whether at least 35 percent of employees live in a HUBZone,not_started,Benjamin,2026-08-07,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/hubzone-program,
+HUBZone,submission,Prepare office and employee residency evidence,not_started,Benjamin,TBD,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/hubzone-program,
+HUBZone,submission,Submit HUBZone application in MySBA Certifications,not_started,Benjamin,TBD,TBD,https://certifications.sba.gov/,
+HUBZone,maintenance,Record three-year recertification date,not_started,Benjamin,TBD,TBD,https://www.sba.gov/federal-contracting/contracting-assistance-programs/hubzone-program,
+City of Houston OBO,portal,Log into portal and record application number/status,completed,Benjamin,2026-07-24,B2Gnow VID 20922339,https://houston.mwdbe.com/,Application 6369689 is incomplete at 52 percent; app type is MBE/WBE/SBE/PDBE New Application.
+City of Houston OBO,evidence,Confirm affidavit and PNW files are final,not_started,Benjamin/Jie,2026-07-31,output/pdf/,,
+City of Houston OBO,submission,Submit missing documents and track analyst questions,in_progress,Benjamin/Jie,2026-07-31,B2Gnow application 6369689,https://houston.mwdbe.com/,Portal shows six incomplete sections and 0 of 13 mandatory documents attached; prepare document packet before upload.
+Houston METRO Certification,confirmation,Record METRO certification received,completed,Benjamin/Jie,2026-07-21,Gmail message 19f848b56634c415,,Jessica email confirms certification received.
+Houston METRO Certification,maintenance,Record renewal deadline,completed,Benjamin/Jie,2026-07-21,Gmail message 19f848b56634c415,,Renewal date is 2029-07-15.
+Houston METRO Certification,documents,Sync Google Drive certificate proof to document portal,in_progress,Benjamin/Jie,2026-08-24,Google Drive file ID 1vC1t1WJDdOjOKBfp6q_qN47MtQiOlcEi,,Do not store portal credentials or public Drive URLs in tracker files.
+Texas HUB,eligibility,Confirm eligibility category and Texas principal place of business,not_started,Benjamin,TBD,TBD,,
+Texas HUB,submission,Gather ownership/control/tax/formation documents and submit,not_started,Benjamin,TBD,TBD,,
+TxDOT DBE/ACDBE,decision,Decide whether transportation contracting is a real target lane,not_started,Benjamin,TBD,TBD,,
+TxDOT DBE/ACDBE,submission,If pursuing gather PNW tax ownership control and capability evidence,not_started,Benjamin/Jie,TBD,TBD,,

@@ -1,0 +1,4821 @@
+import { useEffect, useRef, useState, type FormEvent } from "react";
+
+import BillingPage from "./BillingPage";
+import {
+  acceptInvite,
+  changePassword,
+  clearAuthToken,
+  createContent,
+  createGovContractAgencyPreference,
+  createGovContractKeywordRule,
+  createUserInvite,
+  deleteGovContractAgencyPreference,
+  deleteGovContractKeywordRule,
+  downloadFederalContractsExport,
+  downloadGovContractsExport,
+  downloadGrantsContractsExport,
+  funnelGovContract,
+  getAuthConfig,
+  getIntakeDashboard,
+  getCurrentAdmin,
+  getGovContractCapabilities,
+  hasStoredAuthToken,
+  listGovContractAgencyPreferences,
+  listGovContractKeywordRules,
+  listGovContractTrackedSources,
+  listContent,
+  listGovContractRuns,
+  listUserInvites,
+  login,
+  loginWithGoogle,
+  publishDistribution,
+  publishToLinkedIn,
+  refreshFederalContracts,
+  refreshAllGovSources,
+  refreshGmailRfqs,
+  refreshGovContracts,
+  refreshGrantsContracts,
+  refreshSbaSubnetContracts,
+  refreshTrackedGovSources,
+  retryIntakeLead,
+  revokeUserInvite,
+  searchGovContracts,
+  storeAuthToken,
+  updateGovContractAgencyPreference,
+  updateGovContractKeywordRule,
+} from "../../shared/api";
+import type {
+  AuthConfig,
+  AuthUser,
+  Content,
+  ContentCreate,
+  DistributionChannel,
+  GovContractAgencyPreference,
+  GovContractImportRun,
+  GovContractOpportunity,
+  GovContractOpportunitySearchResponse,
+  GovContractCapabilities,
+  GovContractKeywordRule,
+  GovContractTrackedSource,
+  IntakeDashboard,
+  Tenant,
+  UserInvite,
+  UserInviteCreateResponse,
+} from "../../shared/types";
+
+type GoogleCredentialResponse = { credential: string };
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+            nonce?: string;
+            hd?: string;
+            auto_select?: boolean;
+          }) => void;
+          renderButton: (
+            element: HTMLElement,
+            options: { theme: string; size: string; text: string; shape: string; width: number },
+          ) => void;
+          disableAutoSelect: () => void;
+        };
+      };
+    };
+  }
+}
+
+type AdminView =
+  | "dashboard"
+  | "intake"
+  | "opportunities"
+  | "certifications"
+  | "sources"
+  | "billing"
+  | "profile";
+type OpportunitiesAuthStatus = "checking" | "authenticated" | "unauthenticated";
+type OpportunityCategoryTab = "all" | "it_services" | "property_services" | "other";
+type OpportunityTagFilterKind = "source" | "tag" | "preferred_agency";
+type OpportunityTagFilter = {
+  kind: OpportunityTagFilterKind;
+  value: string;
+  label: string;
+};
+const OPPORTUNITY_PAGE_SIZE = 50;
+const EMPTY_OPPORTUNITY_SEARCH: GovContractOpportunitySearchResponse = {
+  items: [],
+  total: 0,
+  limit: OPPORTUNITY_PAGE_SIZE,
+  offset: 0,
+  category_counts: {},
+  source_counts: [],
+  source_context_counts: [],
+};
+type MetroVendorResource = {
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+  tags: string[];
+};
+type CertificationStep = {
+  label: string;
+  state: "ready" | "in_progress" | "blocked" | "pending";
+};
+type CertificationLane = {
+  name: string;
+  company: string;
+  agency: string;
+  status: string;
+  owner: string;
+  due: string;
+  nextAction: string;
+  steps: CertificationStep[];
+};
+type BuyerGate = {
+  name: string;
+  portal: string;
+  requirement: string;
+  nextAction: string;
+  reusableDocs: string[];
+};
+type ReusableDocument = {
+  name: string;
+  purpose: string;
+  status: string;
+  documentPortalSlot: string;
+};
+type CapabilityStatementDraft = {
+  name: string;
+  audience: string;
+  status: string;
+  nextAction: string;
+};
+type CertificationActivity = {
+  date: string;
+  actor: string;
+  title: string;
+  summary: string;
+  status: "done" | "next" | "info";
+  source: string;
+};
+type CertificationBlockerDetail = {
+  title: string;
+  status: string;
+  summary: string;
+  meta: string[];
+  incompleteSections: string[];
+  mandatoryDocuments: string[];
+};
+const DEFAULT_KEYWORD_WEIGHT = 3;
+const DEFAULT_AGENCY_WEIGHT = 7;
+const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
+  { id: "all", label: "All opportunities" },
+  { id: "it_services", label: "IT services" },
+  { id: "property_services", label: "Real estate / property" },
+  { id: "other", label: "Other" },
+];
+const METRO_VENDOR_RESOURCES: MetroVendorResource[] = [
+  {
+    title: "SBE Certification Portal",
+    description: "Apply, renew, search firms, and manage METRO small-business certification and compliance in B2Gnow.",
+    href: "https://ridemetro.sbdbe.com/",
+    cta: "Open portal",
+    tags: ["Certification", "Compliance"],
+  },
+  {
+    title: "SBE Business Assessment",
+    description: "METRO’s intake form for matching your firm to the right next steps based on performance, bonding, insurance, and revenue profile.",
+    href: "https://ridemetro.qualtrics.com/jfe/form/SV_e3C1E0X9CM61Kx8",
+    cta: "Start assessment",
+    tags: ["Readiness", "Intake"],
+  },
+  {
+    title: "Business University",
+    description: "METRO’s training calendar for certification, facilities maintenance, procurement, and vendor-development workshops.",
+    href: "https://www.ridemetro.org/about/business-to-business/procurement-opportunities#metro-business-university-active-modal",
+    cta: "View events",
+    tags: ["Training", "Networking"],
+  },
+  {
+    title: "METRO Procurement Page",
+    description: "Primary source for open procurements, forecast tabs, major construction listings, and advance procurement notices.",
+    href: "https://www.ridemetro.org/about/business-to-business/procurement-opportunities",
+    cta: "Open source",
+    tags: ["Source", "Forecasts"],
+  },
+];
+const CERTIFICATION_LANES: CertificationLane[] = [
+  {
+    name: "SAM.gov Entity Registration",
+    company: "LeCrown Development",
+    agency: "U.S. General Services Administration",
+    status: "Needs verification",
+    owner: "Benjamin",
+    due: "2026-07-08",
+    nextAction: "Log into SAM.gov, capture the entity status, UEI, CAGE, expiration date, and any renewal blockers.",
+    steps: [
+      { label: "Entity login", state: "pending" },
+      { label: "Core data", state: "pending" },
+      { label: "Assertions", state: "pending" },
+      { label: "Representations", state: "pending" },
+      { label: "Activation proof", state: "blocked" },
+    ],
+  },
+  {
+    name: "MySBA Certifications Account",
+    company: "LeCrown Development",
+    agency: "U.S. Small Business Administration",
+    status: "Not started",
+    owner: "Benjamin",
+    due: "2026-07-09",
+    nextAction: "Create or confirm MySBA login and run the eligibility checks that feed WOSB, EDWOSB, 8(a), and HUBZone.",
+    steps: [
+      { label: "Account", state: "pending" },
+      { label: "Business profile", state: "pending" },
+      { label: "Eligibility checks", state: "pending" },
+      { label: "Document upload", state: "pending" },
+    ],
+  },
+  {
+    name: "WOSB / EDWOSB",
+    company: "LeCrown Development",
+    agency: "SBA",
+    status: "Candidate",
+    owner: "Benjamin / Jie",
+    due: "2026-07-10",
+    nextAction: "Confirm qualifying ownership/control facts and whether EDWOSB financial thresholds are supportable.",
+    steps: [
+      { label: "Ownership proof", state: "pending" },
+      { label: "Control narrative", state: "pending" },
+      { label: "Financial docs", state: "blocked" },
+      { label: "Capability fit", state: "in_progress" },
+    ],
+  },
+  {
+    name: "8(a) Business Development",
+    company: "LeCrown Development",
+    agency: "SBA",
+    status: "Candidate",
+    owner: "Benjamin",
+    due: "2026-07-12",
+    nextAction: "Complete the preliminary 8(a) assessment and list gaps before assembling a full application packet.",
+    steps: [
+      { label: "Eligibility screen", state: "pending" },
+      { label: "Narratives", state: "pending" },
+      { label: "Tax returns", state: "blocked" },
+      { label: "Submission decision", state: "pending" },
+    ],
+  },
+  {
+    name: "HUBZone",
+    company: "LeCrown Development",
+    agency: "SBA",
+    status: "Eligibility unknown",
+    owner: "Benjamin",
+    due: "2026-07-12",
+    nextAction: "Check principal office and employee addresses against the SBA HUBZone map before investing in the packet.",
+    steps: [
+      { label: "Address check", state: "pending" },
+      { label: "Employee roster", state: "blocked" },
+      { label: "Lease proof", state: "pending" },
+    ],
+  },
+  {
+    name: "City of Houston OBO M/WBE or SBE",
+    company: "LeCrown Development",
+    agency: "City of Houston Office of Business Opportunity",
+    status: "Incomplete 52%",
+    owner: "Benjamin / Jie",
+    due: "2026-07-24",
+    nextAction:
+      "Complete six incomplete form sections and prepare the 13 mandatory document attachments for City of Houston B2Gnow application 6369689.",
+    steps: [
+      { label: "Portal URL confirmed", state: "ready" },
+      { label: "Separate COH login received", state: "ready" },
+      { label: "Application 6369689 recorded", state: "ready" },
+      { label: "Six form sections incomplete", state: "in_progress" },
+      { label: "13 mandatory docs missing", state: "blocked" },
+      { label: "OBO review", state: "pending" },
+    ],
+  },
+  {
+    name: "Houston METRO Certification",
+    company: "LeCrown Development",
+    agency: "Houston METRO",
+    status: "Certified - portal verified",
+    owner: "Benjamin / Jie",
+    due: "2029-07-15",
+    nextAction:
+      "Save the certificate proof to the document portal, add renewal alerts, and keep the METRO B2Gnow vendor account current.",
+    steps: [
+      { label: "Certification received", state: "ready" },
+      { label: "Portal status verified", state: "ready" },
+      { label: "Renewal date recorded", state: "ready" },
+      { label: "Certificate proof saved", state: "pending" },
+      { label: "Portal account maintained", state: "in_progress" },
+    ],
+  },
+  {
+    name: "Texas HUB / VetHUB",
+    company: "LeCrown Development",
+    agency: "Texas Comptroller",
+    status: "Candidate",
+    owner: "Benjamin",
+    due: "2026-07-15",
+    nextAction: "Confirm whether LeCrown qualifies and prepare CMBL/vendor profile details for state buyer visibility.",
+    steps: [
+      { label: "Eligibility", state: "pending" },
+      { label: "CMBL / VID", state: "pending" },
+      { label: "Packet upload", state: "pending" },
+    ],
+  },
+  {
+    name: "TxDOT DBE / ACDBE",
+    company: "LeCrown Development",
+    agency: "Texas Department of Transportation",
+    status: "Decision needed",
+    owner: "Benjamin",
+    due: "2026-07-17",
+    nextAction: "Decide whether transportation, airport, or federally assisted construction work is a real pursuit lane.",
+    steps: [
+      { label: "Pursuit decision", state: "pending" },
+      { label: "NAICS fit", state: "pending" },
+      { label: "UCP packet", state: "pending" },
+    ],
+  },
+];
+const BUYER_GATES: BuyerGate[] = [
+  {
+    name: "University of Houston",
+    portal: "UH supplier / CMBL / ESBD",
+    requirement: "Vendor profile, CMBL visibility, Form 1295 when applicable, and capability statement aligned to facilities or technology work.",
+    nextAction: "Confirm supplier registration status and map UH solicitations to the reusable document packet.",
+    reusableDocs: ["W-9", "COI", "Capability statement", "References"],
+  },
+  {
+    name: "University of Texas",
+    portal: "UT procurement / Bonfire / VID",
+    requirement: "Supplier setup, VID/CMBL details, conflict forms when required, and buyer-specific capability statement.",
+    nextAction: "Track UT Austin and UT System portal accounts separately so opportunities do not get lost between buyer channels.",
+    reusableDocs: ["W-9", "Certificate of filing", "Capability statement", "Past performance"],
+  },
+  {
+    name: "City of Houston",
+    portal: "BeaconBid / Strategic Purchasing / OBO",
+    requirement: "Vendor setup plus OBO certification packet for M/WBE or SBE pursuit.",
+    nextAction: "Tie BeaconBid opportunity tracking to OBO certification status and document blockers.",
+    reusableDocs: ["OBO packet", "Tax returns", "Personal net worth", "COI"],
+  },
+  {
+    name: "Houston METRO",
+    portal: "METRO procurement / Ariba / SBDBE",
+    requirement: "METRO certification is confirmed; keep vendor registration, portal access, and procurement forecast monitoring current.",
+    nextAction: "Save the certificate proof to the document portal and schedule renewal before 2029-07-15.",
+    reusableDocs: ["SBE packet", "Capability statement", "Insurance", "References"],
+  },
+  {
+    name: "Katy ISD",
+    portal: "OpenGov",
+    requirement: "OpenGov vendor account, bid notifications, W-9, insurance, and district-ready capability statement.",
+    nextAction: "Add saved searches for facilities, property, maintenance, and technology categories.",
+    reusableDocs: ["W-9", "COI", "Capability statement"],
+  },
+  {
+    name: "TDCJ",
+    portal: "TDCJ procurement / CMBL",
+    requirement: "Texas vendor identity, solicitation monitoring, and correctional-facility buyer readiness documents.",
+    nextAction: "Keep CMBL and TDCJ notices in the same opportunity review lane.",
+    reusableDocs: ["W-9", "CMBL profile", "Capability statement", "References"],
+  },
+];
+const REUSABLE_DOCUMENTS: ReusableDocument[] = [
+  {
+    name: "W-9",
+    purpose: "Baseline vendor setup for universities, districts, city, and state buyers.",
+    status: "Needs current signed copy",
+    documentPortalSlot: "Vendor documents / Tax",
+  },
+  {
+    name: "Certificate of filing and company formation docs",
+    purpose: "Ownership, business age, and legal entity proof for certifications.",
+    status: "Locate existing copy",
+    documentPortalSlot: "Company records",
+  },
+  {
+    name: "Insurance certificate",
+    purpose: "Required for facilities, maintenance, property, and service contracts.",
+    status: "Needs carrier-issued COI",
+    documentPortalSlot: "Vendor documents / Insurance",
+  },
+  {
+    name: "Tax returns and financial statements",
+    purpose: "EDWOSB, 8(a), OBO, DBE, bonding, and capacity checks.",
+    status: "Sensitive docs pending",
+    documentPortalSlot: "Restricted certification evidence",
+  },
+  {
+    name: "Ownership and control affidavit",
+    purpose: "Women-owned, disadvantaged, and local certification proof.",
+    status: "Draft needed",
+    documentPortalSlot: "Certification packets",
+  },
+  {
+    name: "Past performance and references",
+    purpose: "Reusable proof for buyer onboarding and capability statements.",
+    status: "Collect and normalize",
+    documentPortalSlot: "Marketing / Past performance",
+  },
+  {
+    name: "NAICS and service code matrix",
+    purpose: "Keeps SAM, CMBL, university, and buyer profiles aligned.",
+    status: "Draft needed",
+    documentPortalSlot: "Vendor profile data",
+  },
+];
+const CAPABILITY_STATEMENT_DRAFTS: CapabilityStatementDraft[] = [
+  {
+    name: "Master LeCrown capability statement",
+    audience: "Reusable base for all government and institutional buyers",
+    status: "Needs drafting",
+    nextAction: "Write one-page master with NAICS, differentiators, contacts, insurance, past performance, and core services.",
+  },
+  {
+    name: "City of Houston / OBO version",
+    audience: "City departments and Strategic Purchasing",
+    status: "Needs buyer tailoring",
+    nextAction: "Emphasize local delivery, real estate/property services, compliance, and OBO certification path.",
+  },
+  {
+    name: "Houston METRO version",
+    audience: "METRO procurement and SBE program",
+    status: "Needs buyer tailoring",
+    nextAction: "Align to facilities, maintenance, construction support, IT, and transit-adjacent support services.",
+  },
+  {
+    name: "UH / UT version",
+    audience: "Higher education procurement teams",
+    status: "Needs buyer tailoring",
+    nextAction: "Focus on campus facilities, asset support, technology services, compliance, and reliable vendor onboarding.",
+  },
+  {
+    name: "TDCJ version",
+    audience: "State correctional procurement buyers",
+    status: "Needs buyer tailoring",
+    nextAction: "Write a conservative state-buyer version with capacity, insurance, security awareness, and references.",
+  },
+];
+const CERTIFICATION_ACTIVITY: CertificationActivity[] = [
+  {
+    date: "2026-07-24",
+    actor: "B2Gnow portal",
+    title: "COH document blockers extracted",
+    summary:
+      "Application 6369689 shows 0 of 13 mandatory documents attached and six incomplete form sections; it cannot be signed or submitted yet.",
+    status: "next",
+    source: "B2Gnow CertAppID 1218660",
+  },
+  {
+    date: "2026-07-24",
+    actor: "B2Gnow portal",
+    title: "COH application status verified",
+    summary:
+      "City of Houston application 6369689 is incomplete at 52% for MBE/WBE/SBE/PDBE New Application under B2G Vendor ID 20922339.",
+    status: "next",
+    source: "B2Gnow VID 20922339",
+  },
+  {
+    date: "2026-07-24",
+    actor: "B2Gnow portal",
+    title: "METRO SBE portal status verified",
+    summary:
+      "LeCrown Development Corporation has active Houston METRO SBE certification effective 2026-07-15 with renewal due 2029-07-15.",
+    status: "done",
+    source: "B2Gnow VID 20922339",
+  },
+  {
+    date: "2026-07-21",
+    actor: "Jessica Huang",
+    title: "Houston METRO certification received",
+    summary:
+      "LeCrown Development received METRO Certification. Renewal date is recorded as 2029-07-15.",
+    status: "done",
+    source: "Gmail message 19f848b56634c415",
+  },
+  {
+    date: "2026-07-21",
+    actor: "Jessica Huang",
+    title: "City of Houston certification started",
+    summary:
+      "COH certification has been started and should continue as the next active local certification lane.",
+    status: "next",
+    source: "Gmail message 19f848b56634c415",
+  },
+  {
+    date: "2026-07-22",
+    actor: "Jessica Huang",
+    title: "COH login received",
+    summary:
+      "COH certification login information was received for the same portal URL as METRO, but it uses a separate credential set. Credentials stay outside the tracker.",
+    status: "next",
+    source: "Gmail message 19f849397ab03b33",
+  },
+  {
+    date: "2026-07-21",
+    actor: "LeCrown tracker",
+    title: "Document follow-up created",
+    summary:
+      "Certificate proof still needs to be saved to the document portal and linked to the certification evidence map.",
+    status: "next",
+    source: "Certification tracker",
+  },
+];
+const COH_APPLICATION_BLOCKERS: CertificationBlockerDetail = {
+  title: "City of Houston application 6369689",
+  status: "Cannot sign or submit yet",
+  summary:
+    "The B2Gnow application is 52% complete. The next dev/workflow step is document packet preparation plus targeted form completion.",
+  meta: [
+    "Type: MBE/WBE/SBE/PDBE New Application",
+    "B2G Vendor ID: 20922339",
+    "CertAppID: 1218660",
+    "Deletion date: 2026-09-12",
+  ],
+  incompleteSections: [
+    "Section 1: Business Profile - 9 of 10 required complete",
+    "Section 3: Ownership - 0 of 1 required complete",
+    "Section 4: Officers & Board of Directors - 2 of 4 required complete",
+    "Section 4: Inventory - 1 of 5 required complete",
+    "Section 4: Licenses & Contracts - 1 of 3 required complete",
+    "Section 5: Additional Information - 4 of 5 required complete",
+  ],
+  mandatoryDocuments: [
+    "Current minutes of stockholders and board meetings",
+    "Signed and notarized Affidavit of Certification",
+    "Signed and notarized Affidavit of Non-Interest for each owner",
+    "Customer references with contact name, phone, and email",
+    "Proof business existed six months before application date, or invoice/payment proof if newer",
+    "Five years of company federal tax returns with related schedules",
+    "Proof of contributions used to acquire ownership for each owner",
+    "Resumes for all owners, officers, and key personnel",
+    "Both sides of corporate stock certificates and stock transfer ledger",
+    "Corporate bank resolution and bank signature cards",
+    "Corporate bylaws and amendments",
+    "Official Articles of Incorporation or Certificate of Formation",
+    "City of Houston Strategic Purchasing vendor/supplier registration proof",
+  ],
+};
+
+function buildInitialForm(tenant: Tenant = "development"): ContentCreate {
+  return {
+    tenant,
+    type: "insight",
+    title: "",
+    body: "",
+    tags: [],
+    distribution: {
+      linkedin: false,
+      youtube: false,
+      website: true,
+      twitter: false,
+    },
+    media: {
+      video_generated: false,
+      video_path: "",
+      youtube_video_id: null,
+      youtube_status: null,
+    },
+    publish_linkedin: false,
+    publish_site: true,
+  };
+}
+
+function getCurrentView(): AdminView {
+  if (typeof window === "undefined") {
+    return "dashboard";
+  }
+  if (window.location.hash.startsWith("#/intake")) {
+    return "intake";
+  }
+  if (window.location.hash.startsWith("#/profile")) {
+    return "profile";
+  }
+  if (window.location.hash.startsWith("#/billing")) {
+    return "billing";
+  }
+  if (window.location.hash.startsWith("#/certifications")) {
+    return "certifications";
+  }
+  if (window.location.hash.startsWith("#/sources")) {
+    return "sources";
+  }
+  return window.location.hash.startsWith("#/opportunities") ? "opportunities" : "dashboard";
+}
+
+function navigateToView(view: AdminView): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (view === "opportunities") {
+    window.location.hash = "#/opportunities";
+    return;
+  }
+  if (view === "sources") {
+    window.location.hash = "#/sources";
+    return;
+  }
+  if (view === "certifications") {
+    window.location.hash = "#/certifications";
+    return;
+  }
+  if (view === "intake") {
+    window.location.hash = "#/intake";
+    return;
+  }
+  if (view === "profile") {
+    window.location.hash = "#/profile";
+    return;
+  }
+  if (view === "billing") {
+    window.location.hash = "#/billing";
+    return;
+  }
+  window.location.hash = "#/";
+}
+
+function getInviteCodeFromLocation(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const searchCode = new URLSearchParams(window.location.search).get("invite_code");
+  if (searchCode) {
+    return searchCode;
+  }
+  const queryIndex = window.location.hash.indexOf("?");
+  if (queryIndex === -1) {
+    return null;
+  }
+  return new URLSearchParams(window.location.hash.slice(queryIndex + 1)).get("invite_code");
+}
+
+export default function App() {
+  const [view, setView] = useState<AdminView>(getCurrentView());
+  const [tenant, setTenant] = useState<Tenant>("development");
+  const [form, setForm] = useState<ContentCreate>(buildInitialForm());
+  const [contentItems, setContentItems] = useState<Content[]>([]);
+  const [intakeDashboard, setIntakeDashboard] = useState<IntakeDashboard | null>(null);
+  const [contractRuns, setContractRuns] = useState<GovContractImportRun[]>([]);
+  const [trackedSources, setTrackedSources] = useState<GovContractTrackedSource[]>([]);
+  const [contractCapabilities, setContractCapabilities] = useState<GovContractCapabilities>({
+    gmail_rfq_sync_enabled: false,
+    gmail_rfq_feed_label: null,
+  });
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
+  const [authInitializing, setAuthInitializing] = useState(true);
+  const [currentAdmin, setCurrentAdmin] = useState<AuthUser | null>(null);
+  const [userInvites, setUserInvites] = useState<UserInvite[]>([]);
+  const [latestInvite, setLatestInvite] = useState<UserInviteCreateResponse | null>(null);
+  const [agencyPreferences, setAgencyPreferences] = useState<GovContractAgencyPreference[]>([]);
+  const [keywordRules, setKeywordRules] = useState<GovContractKeywordRule[]>([]);
+  const [message, setMessage] = useState<string>("");
+  const [showFunnelShortcut, setShowFunnelShortcut] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [refreshingIntakeDashboard, setRefreshingIntakeDashboard] = useState(false);
+  const [refreshingContracts, setRefreshingContracts] = useState(false);
+  const [refreshingAllSources, setRefreshingAllSources] = useState(false);
+  const [refreshingFederalContracts, setRefreshingFederalContracts] = useState(false);
+  const [refreshingGrantsContracts, setRefreshingGrantsContracts] = useState(false);
+  const [refreshingSbaSubnetContracts, setRefreshingSbaSubnetContracts] = useState(false);
+  const [refreshingGmailContracts, setRefreshingGmailContracts] = useState(false);
+  const [refreshingTrackedSources, setRefreshingTrackedSources] = useState(false);
+  const [downloadingExport, setDownloadingExport] = useState(false);
+  const [downloadingFederalExport, setDownloadingFederalExport] = useState(false);
+  const [downloadingGrantsExport, setDownloadingGrantsExport] = useState(false);
+  const [funnelingContractId, setFunnelingContractId] = useState<string | null>(null);
+  const [retryingSubmissionId, setRetryingSubmissionId] = useState<string | null>(null);
+  const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
+    useState<OpportunitiesAuthStatus>("checking");
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleNonceRef = useRef(createGoogleNonce());
+  const [opportunitySearch, setOpportunitySearch] =
+    useState<GovContractOpportunitySearchResponse>(EMPTY_OPPORTUNITY_SEARCH);
+  const [opportunityPage, setOpportunityPage] = useState(1);
+  const [opportunityCategoryTab, setOpportunityCategoryTab] = useState<OpportunityCategoryTab>("all");
+  const [selectedOpportunitySourceFilter, setSelectedOpportunitySourceFilter] = useState<string | null>(null);
+  const [selectedOpportunitySourceContextFilter, setSelectedOpportunitySourceContextFilter] = useState<string | null>(null);
+  const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
+  const [opportunityKeywordFilter, setOpportunityKeywordFilter] = useState("");
+  const [loginUsername, setLoginUsername] = useState("admin");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [acceptingInvite, setAcceptingInvite] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteUsername, setInviteUsername] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [invitePasswordConfirm, setInvitePasswordConfirm] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
+  const [minPriorityScoreFilter, setMinPriorityScoreFilter] = useState(0);
+  const [matchesOnlyFilter, setMatchesOnlyFilter] = useState(true);
+  const [openOnlyFilter, setOpenOnlyFilter] = useState(true);
+  const [agencyName, setAgencyName] = useState("");
+  const [agencyWeight, setAgencyWeight] = useState(DEFAULT_AGENCY_WEIGHT);
+  const [editingAgencyId, setEditingAgencyId] = useState<string | null>(null);
+  const [editingAgencyName, setEditingAgencyName] = useState("");
+  const [editingAgencyWeight, setEditingAgencyWeight] = useState(DEFAULT_AGENCY_WEIGHT);
+  const [savingAgencyPreference, setSavingAgencyPreference] = useState(false);
+  const [deletingAgencyId, setDeletingAgencyId] = useState<string | null>(null);
+  const [keywordPhrase, setKeywordPhrase] = useState("");
+  const [keywordWeight, setKeywordWeight] = useState(DEFAULT_KEYWORD_WEIGHT);
+  const [editingKeywordId, setEditingKeywordId] = useState<string | null>(null);
+  const [editingKeywordPhrase, setEditingKeywordPhrase] = useState("");
+  const [editingKeywordWeight, setEditingKeywordWeight] = useState(DEFAULT_KEYWORD_WEIGHT);
+  const [savingKeyword, setSavingKeyword] = useState(false);
+  const [deletingKeywordId, setDeletingKeywordId] = useState<string | null>(null);
+
+  useEffect(() => {
+    function handleHashChange() {
+      setView(getCurrentView());
+      const presetInviteCode = getInviteCodeFromLocation();
+      if (presetInviteCode) {
+        setInviteCode(presetInviteCode);
+      }
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const presetInviteCode = getInviteCodeFromLocation();
+    if (presetInviteCode) {
+      setInviteCode(presetInviteCode);
+      navigateToView("opportunities");
+    }
+  }, []);
+
+  useEffect(() => {
+    void initializeAuthentication();
+  }, []);
+
+  useEffect(() => {
+    if (opportunitiesAuthStatus !== "authenticated") {
+      return;
+    }
+    void refreshContent(tenant);
+  }, [tenant, opportunitiesAuthStatus]);
+
+  useEffect(() => {
+    if (
+      authConfig?.mode !== "google_workspace" ||
+      !authConfig.ready ||
+      !authConfig.google_client_id ||
+      opportunitiesAuthStatus !== "unauthenticated" ||
+      !googleButtonRef.current
+    ) {
+      return;
+    }
+
+    const scriptId = "google-identity-services";
+    const mountGoogleButton = () => {
+      if (!window.google || !googleButtonRef.current || !authConfig.google_client_id) {
+        return;
+      }
+      googleNonceRef.current = createGoogleNonce();
+      googleButtonRef.current.replaceChildren();
+      window.google.accounts.id.initialize({
+        client_id: authConfig.google_client_id,
+        callback: (response) => void handleWorkspaceCredential(response),
+        nonce: googleNonceRef.current,
+        hd: authConfig.allowed_domains[0],
+        auto_select: false,
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        text: "signin_with",
+        shape: "rectangular",
+        width: 320,
+      });
+    };
+
+    const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (existingScript) {
+      if (window.google) {
+        mountGoogleButton();
+      } else {
+        existingScript.addEventListener("load", mountGoogleButton, { once: true });
+      }
+      return () => existingScript.removeEventListener("load", mountGoogleButton);
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.addEventListener("load", mountGoogleButton, { once: true });
+    script.addEventListener("error", () => setAuthMessage("Google sign-in could not be loaded."), { once: true });
+    document.head.appendChild(script);
+    return () => script.removeEventListener("load", mountGoogleButton);
+  }, [authConfig, opportunitiesAuthStatus]);
+
+  useEffect(() => {
+    setOpportunityPage(1);
+  }, [
+    matchesOnlyFilter,
+    minPriorityScoreFilter,
+    openOnlyFilter,
+    opportunityCategoryTab,
+    selectedOpportunitySourceFilter,
+    selectedOpportunitySourceContextFilter,
+    selectedOpportunityTagFilter,
+    opportunityKeywordFilter,
+  ]);
+
+  useEffect(() => {
+    if (
+      (view !== "opportunities" && view !== "certifications" && view !== "sources") ||
+      opportunitiesAuthStatus !== "authenticated"
+    ) {
+      return;
+    }
+    void refreshContractsView();
+  }, [
+    view,
+    opportunitiesAuthStatus,
+    matchesOnlyFilter,
+    minPriorityScoreFilter,
+    openOnlyFilter,
+    opportunityCategoryTab,
+    selectedOpportunitySourceFilter,
+    selectedOpportunitySourceContextFilter,
+    selectedOpportunityTagFilter,
+    opportunityKeywordFilter,
+    opportunityPage,
+  ]);
+
+  useEffect(() => {
+    if (view !== "intake" || opportunitiesAuthStatus !== "authenticated") {
+      return;
+    }
+    void refreshIntakeDashboard();
+  }, [view, opportunitiesAuthStatus]);
+
+  async function initializeAuthentication() {
+    setAuthInitializing(true);
+    setOpportunitiesAuthStatus("checking");
+    try {
+      const config = await getAuthConfig();
+      setAuthConfig(config);
+      if (!hasStoredAuthToken()) {
+        setCurrentAdmin(null);
+        setOpportunitiesAuthStatus("unauthenticated");
+        return;
+      }
+      await ensureProtectedAccess();
+    } catch (error) {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setAuthInitializing(false);
+    }
+  }
+
+  async function ensureProtectedAccess() {
+    if (!hasStoredAuthToken()) {
+      setOpportunitiesAuthStatus("unauthenticated");
+      setCurrentAdmin(null);
+      return;
+    }
+
+    setOpportunitiesAuthStatus("checking");
+    try {
+      const currentUser = await getCurrentAdmin();
+      setCurrentAdmin(currentUser);
+      const capabilities = await getGovContractCapabilities();
+      setContractCapabilities(capabilities);
+      setAuthMessage("");
+      setOpportunitiesAuthStatus("authenticated");
+      if (view === "opportunities" || view === "certifications" || view === "sources") {
+        await refreshContractsView();
+      }
+    } catch {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setIntakeDashboard(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage("Sign in to continue.");
+    }
+  }
+
+  async function handleWorkspaceCredential(response: GoogleCredentialResponse) {
+    setLoggingIn(true);
+    setAuthMessage("");
+    setMessage("");
+    try {
+      const token = await loginWithGoogle({
+        credential: response.credential,
+        nonce: googleNonceRef.current,
+      });
+      storeAuthToken(token.access_token);
+      setCurrentAdmin(token.user);
+      const capabilities = await getGovContractCapabilities();
+      setContractCapabilities(capabilities);
+      setOpportunitiesAuthStatus("authenticated");
+      setMessage("Signed in with LeCrown Google Workspace.");
+    } catch (error) {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function refreshContent(selectedTenant: Tenant) {
+    try {
+      const items = await listContent(selectedTenant);
+      setContentItems(items);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  }
+
+  async function refreshIntakeDashboard() {
+    setRefreshingIntakeDashboard(true);
+    try {
+      const dashboard = await getIntakeDashboard();
+      setIntakeDashboard(dashboard);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingIntakeDashboard(false);
+    }
+  }
+
+  async function refreshContractsView() {
+    try {
+      const currentUser = currentAdmin ?? (await getCurrentAdmin());
+      setCurrentAdmin(currentUser);
+      const [sources, runs, keywords, agencyPrefs, invites] =
+        await Promise.all([
+          listGovContractTrackedSources(),
+          listGovContractRuns(25),
+          listGovContractKeywordRules(),
+          listGovContractAgencyPreferences(),
+          currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
+        ]);
+      const searchResult = await searchGovContracts({
+        limit: OPPORTUNITY_PAGE_SIZE,
+        offset: (opportunityPage - 1) * OPPORTUNITY_PAGE_SIZE,
+        matchesOnly: matchesOnlyFilter,
+        minPriorityScore: minPriorityScoreFilter,
+        openOnly: openOnlyFilter,
+        source: selectedOpportunitySourceFilter,
+        sourceContext: selectedOpportunitySourceContextFilter,
+        category: opportunityCategoryTab,
+        tagKind: selectedOpportunityTagFilter?.kind ?? null,
+        tagValue: selectedOpportunityTagFilter?.value ?? null,
+        keyword: opportunityKeywordFilter,
+      });
+      setOpportunitySearch(searchResult);
+      setContractRuns(runs);
+      setTrackedSources(sources);
+      setKeywordRules(keywords);
+      setAgencyPreferences(agencyPrefs);
+      setUserInvites(invites);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setMessage("");
+
+    try {
+      const payload: ContentCreate = {
+        ...form,
+        tenant,
+        publish_linkedin: form.distribution.linkedin,
+        publish_site: form.distribution.website,
+      };
+      await createContent(payload);
+      setForm(buildInitialForm(tenant));
+      setMessage("Content saved.");
+      await refreshContent(tenant);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePublish(contentId: string) {
+    setMessage("");
+    try {
+      await publishToLinkedIn(contentId);
+      setMessage("LinkedIn publish request completed.");
+      await refreshContent(tenant);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  }
+
+  async function handleDistribution(item: Content) {
+    const channels = getEnabledChannels(item);
+    if (channels.length === 0) {
+      setMessage("Enable at least one distribution channel first.");
+      return;
+    }
+
+    setMessage("");
+    try {
+      const result = await publishDistribution(item.id, channels, item.media.video_path ?? undefined);
+      const statuses = Object.entries(result.results)
+        .map(([channel, value]) => `${channel}: ${value.status ?? "completed"}`)
+        .join(" | ");
+      setMessage(`Distribution finished. ${statuses}`);
+      await refreshContent(tenant);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  }
+
+  async function handleContractRefresh() {
+    setRefreshingContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshGovContracts();
+      await refreshContractsView();
+      setMessage(
+        `ESBD refreshed for ${run.window_start} to ${run.window_end}. ${run.matched_records} matches from ${run.total_records} opportunities.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingContracts(false);
+    }
+  }
+
+  async function handleAllSourceRefresh() {
+    setRefreshingAllSources(true);
+    setMessage("");
+    try {
+      const runs = await refreshAllGovSources();
+      await refreshContractsView();
+      const completedCount = runs.filter((run) => run.status === "completed").length;
+      const reviewCount = runs.filter((run) => run.status === "manual_review" || run.status === "cataloged").length;
+      const blockedCount = runs.filter((run) => run.status === "blocked" || run.status === "failed").length;
+      setMessage(
+        `All sources checked. ${completedCount} loaded, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingAllSources(false);
+    }
+  }
+
+  async function handleFederalContractRefresh() {
+    setRefreshingFederalContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshFederalContracts();
+      await refreshContractsView();
+      setMessage(
+        `Federal forecast refreshed. ${run.matched_records} matches from ${run.total_records} opportunities.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingFederalContracts(false);
+    }
+  }
+
+  async function handleGrantsContractRefresh() {
+    setRefreshingGrantsContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshGrantsContracts();
+      await refreshContractsView();
+      setMessage(`Grants.gov refreshed. ${run.matched_records} matches from ${run.total_records} opportunities.`);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingGrantsContracts(false);
+    }
+  }
+
+  async function handleSbaSubnetContractRefresh() {
+    setRefreshingSbaSubnetContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshSbaSubnetContracts();
+      await refreshContractsView();
+      setMessage(`SBA SUBNet refreshed. ${run.matched_records} matches from ${run.total_records} opportunities.`);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingSbaSubnetContracts(false);
+    }
+  }
+
+  async function handleGmailContractRefresh() {
+    setRefreshingGmailContracts(true);
+    setMessage("");
+    try {
+      const run = await refreshGmailRfqs();
+      await refreshContractsView();
+      if (run.status === "completed") {
+        setMessage(`Gmail RFQs synced. ${run.matched_records} opportunities updated.`);
+      } else {
+        setMessage(`Gmail RFQs checked. ${run.error_message ?? "The RFQ email feed needs review before opportunities can be imported."}`);
+      }
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingGmailContracts(false);
+    }
+  }
+
+  async function handleTrackedSourceRefresh() {
+    setRefreshingTrackedSources(true);
+    setMessage("");
+    try {
+      const runs = await refreshTrackedGovSources();
+      await refreshContractsView();
+      const completedCount = runs.filter((run) => run.status === "completed").length;
+      const reviewCount = runs.filter((run) => run.status === "manual_review" || run.status === "cataloged").length;
+      const blockedCount = runs.filter((run) => run.status === "blocked" || run.status === "failed").length;
+      setMessage(
+        `Tracked sources refreshed. ${completedCount} loaded, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRefreshingTrackedSources(false);
+    }
+  }
+
+  async function handleFederalContractExport() {
+    setDownloadingFederalExport(true);
+    setMessage("");
+    try {
+      await downloadFederalContractsExport();
+      setMessage("Federal forecast CSV download started.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDownloadingFederalExport(false);
+    }
+  }
+
+  async function handleGrantsContractExport() {
+    setDownloadingGrantsExport(true);
+    setMessage("");
+    try {
+      await downloadGrantsContractsExport();
+      setMessage("Grants.gov CSV download started.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDownloadingGrantsExport(false);
+    }
+  }
+
+  async function handleContractExport() {
+    setDownloadingExport(true);
+    setMessage("");
+    try {
+      await downloadGovContractsExport();
+      setMessage("ESBD CSV download started.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDownloadingExport(false);
+    }
+  }
+
+  async function handleFunnelContract(contract: GovContractOpportunity) {
+    setFunnelingContractId(contract.id);
+    setMessage("");
+    setShowFunnelShortcut(false);
+    try {
+      const result = await funnelGovContract(contract.id);
+      await Promise.all([refreshContractsView(), refreshIntakeDashboard()]);
+      const syncMessage =
+        result.funnel_delivery_status === "delivered"
+          ? `Contract sent to CRM lead funnel${result.funnel_record_id ? ` as ${result.funnel_record_id}` : ""}.`
+          : "Contract was recorded in the local funnel, but CRM delivery failed.";
+      setShowFunnelShortcut(true);
+      setMessage(syncMessage);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setFunnelingContractId(null);
+    }
+  }
+
+  async function handleRetryIntakeSubmission(submissionId: string) {
+    setRetryingSubmissionId(submissionId);
+    setMessage("");
+    setShowFunnelShortcut(false);
+    try {
+      await retryIntakeLead(submissionId);
+      await Promise.all([refreshIntakeDashboard(), refreshContractsView()]);
+      setMessage("CRM submission retry completed.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRetryingSubmissionId(null);
+    }
+  }
+
+  async function handleOpportunitiesLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoggingIn(true);
+    setAuthMessage("");
+    setMessage("");
+
+    try {
+      const token = await login({ username: loginUsername, password: loginPassword });
+      storeAuthToken(token.access_token);
+      setCurrentAdmin(token.user);
+      const capabilities = await getGovContractCapabilities();
+      setContractCapabilities(capabilities);
+      setOpportunitiesAuthStatus("authenticated");
+      if (view === "opportunities" || view === "certifications" || view === "sources") {
+        await refreshContractsView();
+      }
+      setMessage("Signed in.");
+    } catch (error) {
+      clearAuthToken();
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function handleAcceptInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (invitePassword !== invitePasswordConfirm) {
+      setAuthMessage("Invite passwords do not match.");
+      return;
+    }
+
+    setAcceptingInvite(true);
+    setAuthMessage("");
+    setMessage("");
+
+    try {
+      const token = await acceptInvite({
+        invite_code: inviteCode,
+        username: inviteUsername,
+        password: invitePassword,
+      });
+      storeAuthToken(token.access_token);
+      setCurrentAdmin(token.user);
+      const capabilities = await getGovContractCapabilities();
+      setContractCapabilities(capabilities);
+      setOpportunitiesAuthStatus("authenticated");
+      setInviteCode("");
+      setInviteUsername("");
+      setInvitePassword("");
+      setInvitePasswordConfirm("");
+      if (view === "opportunities" || view === "certifications" || view === "sources") {
+        await refreshContractsView();
+      }
+      setMessage("Invite accepted. Your account is ready.");
+      navigateToView("profile");
+    } catch (error) {
+      clearAuthToken();
+      setCurrentAdmin(null);
+      setOpportunitiesAuthStatus("unauthenticated");
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setAcceptingInvite(false);
+    }
+  }
+
+  function handleLogout() {
+    window.google?.accounts.id.disableAutoSelect();
+    clearAuthToken();
+    setCurrentAdmin(null);
+    setIntakeDashboard(null);
+    setOpportunitiesAuthStatus("unauthenticated");
+    setAuthMessage("");
+    setOpportunitySearch(EMPTY_OPPORTUNITY_SEARCH);
+    setOpportunityPage(1);
+    setContractRuns([]);
+    setTrackedSources([]);
+    setAgencyPreferences([]);
+    setKeywordRules([]);
+    setUserInvites([]);
+    setLatestInvite(null);
+    setContractCapabilities({
+      gmail_rfq_sync_enabled: false,
+      gmail_rfq_feed_label: null,
+    });
+    setOpportunityCategoryTab("all");
+    setSelectedOpportunitySourceFilter(null);
+    setSelectedOpportunityTagFilter(null);
+    setOpportunityKeywordFilter("");
+    setMinPriorityScoreFilter(0);
+    setEditingKeywordId(null);
+    setEditingKeywordPhrase("");
+    setEditingKeywordWeight(DEFAULT_KEYWORD_WEIGHT);
+    setEditingAgencyId(null);
+    setEditingAgencyName("");
+    setEditingAgencyWeight(DEFAULT_AGENCY_WEIGHT);
+    setAgencyName("");
+    setAgencyWeight(DEFAULT_AGENCY_WEIGHT);
+    setInviteEmail("");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setKeywordPhrase("");
+    setKeywordWeight(DEFAULT_KEYWORD_WEIGHT);
+    setDeletingAgencyId(null);
+    setDeletingKeywordId(null);
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (newPassword !== confirmNewPassword) {
+      setMessage("New passwords do not match.");
+      return;
+    }
+
+    setChangingPassword(true);
+    setMessage("");
+    try {
+      const user = await changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      setCurrentAdmin(user);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setMessage("Password changed.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  async function handleCreateInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingInvite(true);
+    setMessage("");
+    try {
+      const invite = await createUserInvite({ email: inviteEmail });
+      setInviteEmail("");
+      setLatestInvite(invite);
+      await refreshContractsView();
+      setMessage(buildInviteCreateMessage(invite));
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleRevokeInvite(invite: UserInvite) {
+    setRevokingInviteId(invite.id);
+    setMessage("");
+    try {
+      await revokeUserInvite(invite.id);
+      if (latestInvite?.id === invite.id) {
+        setLatestInvite(null);
+      }
+      await refreshContractsView();
+      setMessage("Invite revoked.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setRevokingInviteId(null);
+    }
+  }
+
+  async function handleCopyInviteCode(invite: UserInviteCreateResponse) {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(invite.invite_code);
+        setMessage("Invite code copied.");
+        return;
+      }
+      setMessage(`Copy this invite code manually: ${invite.invite_code}`);
+    } catch {
+      setMessage(`Copy this invite code manually: ${invite.invite_code}`);
+    }
+  }
+
+  function startEditingKeyword(rule: GovContractKeywordRule) {
+    setEditingKeywordId(rule.id);
+    setEditingKeywordPhrase(rule.phrase);
+    setEditingKeywordWeight(rule.weight);
+  }
+
+  function startEditingAgency(preference: GovContractAgencyPreference) {
+    setEditingAgencyId(preference.id);
+    setEditingAgencyName(preference.agency_name);
+    setEditingAgencyWeight(preference.weight);
+  }
+
+  function cancelEditingKeyword() {
+    setEditingKeywordId(null);
+    setEditingKeywordPhrase("");
+    setEditingKeywordWeight(DEFAULT_KEYWORD_WEIGHT);
+  }
+
+  function cancelEditingAgency() {
+    setEditingAgencyId(null);
+    setEditingAgencyName("");
+    setEditingAgencyWeight(DEFAULT_AGENCY_WEIGHT);
+  }
+
+  async function handleCreateAgencyPreference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingAgencyPreference(true);
+    setMessage("");
+
+    try {
+      await createGovContractAgencyPreference({
+        agency_name: agencyName,
+        weight: agencyWeight,
+      });
+      setAgencyName("");
+      setAgencyWeight(DEFAULT_AGENCY_WEIGHT);
+      await refreshContractsView();
+      setMessage("Agency preference added. Stored opportunities were rescored.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setSavingAgencyPreference(false);
+    }
+  }
+
+  async function handleUpdateAgencyPreference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingAgencyId) {
+      return;
+    }
+
+    setSavingAgencyPreference(true);
+    setMessage("");
+
+    try {
+      await updateGovContractAgencyPreference(editingAgencyId, {
+        agency_name: editingAgencyName,
+        weight: editingAgencyWeight,
+      });
+      cancelEditingAgency();
+      await refreshContractsView();
+      setMessage("Agency preference updated. Stored opportunities were rescored.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setSavingAgencyPreference(false);
+    }
+  }
+
+  async function handleDeleteAgencyPreference(preference: GovContractAgencyPreference) {
+    setDeletingAgencyId(preference.id);
+    setMessage("");
+
+    try {
+      await deleteGovContractAgencyPreference(preference.id);
+      if (editingAgencyId === preference.id) {
+        cancelEditingAgency();
+      }
+      await refreshContractsView();
+      setMessage("Agency preference removed. Stored opportunities were rescored.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDeletingAgencyId(null);
+    }
+  }
+
+  async function handleCreateKeyword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingKeyword(true);
+    setMessage("");
+
+    try {
+      await createGovContractKeywordRule({
+        phrase: keywordPhrase,
+        weight: keywordWeight,
+      });
+      setKeywordPhrase("");
+      setKeywordWeight(DEFAULT_KEYWORD_WEIGHT);
+      await refreshContractsView();
+      setMessage("Keyword added. Stored opportunities were rescored.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setSavingKeyword(false);
+    }
+  }
+
+  async function handleUpdateKeyword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingKeywordId) {
+      return;
+    }
+
+    setSavingKeyword(true);
+    setMessage("");
+
+    try {
+      await updateGovContractKeywordRule(editingKeywordId, {
+        phrase: editingKeywordPhrase,
+        weight: editingKeywordWeight,
+      });
+      cancelEditingKeyword();
+      await refreshContractsView();
+      setMessage("Keyword updated. Stored opportunities were rescored.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setSavingKeyword(false);
+    }
+  }
+
+  async function handleDeleteKeyword(keywordRule: GovContractKeywordRule) {
+    setDeletingKeywordId(keywordRule.id);
+    setMessage("");
+
+    try {
+      await deleteGovContractKeywordRule(keywordRule.id);
+      if (editingKeywordId === keywordRule.id) {
+        cancelEditingKeyword();
+      }
+      await refreshContractsView();
+      setMessage("Keyword removed. Stored opportunities were rescored.");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setDeletingKeywordId(null);
+    }
+  }
+
+  const latestContractRun = contractRuns[0];
+  const isAdminUser = currentAdmin?.is_admin ?? false;
+
+  function handleOpportunityTagFilterClick(filter: OpportunityTagFilter) {
+    setOpportunityPage(1);
+    setSelectedOpportunityTagFilter((current) =>
+      current && current.kind === filter.kind && current.value === filter.value ? null : filter,
+    );
+  }
+
+  function renderProtectedAuthPanel({
+    eyebrow,
+    title,
+    subcopy,
+  }: {
+    eyebrow: string;
+    title: string;
+    subcopy: string;
+  }) {
+    return (
+      <>
+        {authMessage ? <div className="message-banner auth-banner">{authMessage}</div> : null}
+
+        <section className="grid auth-grid">
+          <article className="panel auth-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">{eyebrow}</p>
+                <h2>{title}</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">{subcopy}</p>
+
+            <form className="content-form auth-form" onSubmit={handleOpportunitiesLogin}>
+              <label>
+                <span>Username or email</span>
+                <input
+                  value={loginUsername}
+                  onChange={(event) => setLoginUsername(event.target.value)}
+                  placeholder="admin or you@example.com"
+                />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  placeholder="Enter your password"
+                />
+              </label>
+
+              <div className="action-row auth-actions">
+                <button type="submit" disabled={loggingIn}>
+                  {loggingIn ? "Signing in..." : "Sign in"}
+                </button>
+                <button type="button" className="secondary-link" onClick={() => navigateToView("dashboard")}>
+                  Back to dashboard
+                </button>
+              </div>
+            </form>
+          </article>
+
+          <article className="panel auth-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Invite Only</p>
+                <h2>Activate an invited account</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">
+              This workspace does not allow open signups. Enter the invite code an admin sent you, choose a username,
+              and set your password.
+            </p>
+
+            <form className="content-form auth-form" onSubmit={handleAcceptInvite}>
+              <label>
+                <span>Invite code</span>
+                <input
+                  value={inviteCode}
+                  onChange={(event) => setInviteCode(event.target.value)}
+                  placeholder="Paste your invite code"
+                />
+              </label>
+
+              <label>
+                <span>Username</span>
+                <input
+                  value={inviteUsername}
+                  onChange={(event) => setInviteUsername(event.target.value)}
+                  placeholder="Choose a username"
+                />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={invitePassword}
+                  onChange={(event) => setInvitePassword(event.target.value)}
+                  placeholder="Create a password"
+                />
+              </label>
+
+              <label>
+                <span>Confirm password</span>
+                <input
+                  type="password"
+                  value={invitePasswordConfirm}
+                  onChange={(event) => setInvitePasswordConfirm(event.target.value)}
+                  placeholder="Repeat your password"
+                />
+              </label>
+
+              <div className="action-row auth-actions">
+                <button type="submit" disabled={acceptingInvite}>
+                  {acceptingInvite ? "Activating..." : "Accept invite"}
+                </button>
+              </div>
+            </form>
+          </article>
+        </section>
+      </>
+    );
+  }
+
+  function renderContractCard(contract: GovContractOpportunity) {
+    return (
+      <article className="content-card contract-card" key={contract.id}>
+        <div className="content-meta">
+          <div>
+            <strong>{contract.title}</strong>
+            <span>{contract.agency_name ?? contract.agency_number ?? "Unknown agency"}</span>
+          </div>
+          <div className="contract-score-stack">
+            <span className="fit-tag fit-tag-high">Priority {contract.priority_score}</span>
+            <span className={`fit-tag fit-tag-${contract.fit_bucket}`}>
+              {contract.fit_bucket} fit - {contract.score}
+            </span>
+          </div>
+        </div>
+
+        <div className="contract-detail-grid">
+          <span>Reference: {contract.solicitation_id}</span>
+          <span>Status: {contract.status_name ?? "Unknown"}</span>
+          <span>Due: {formatDateLabel(contract.due_date, contract.due_time)}</span>
+          <span>Posted: {formatDateLabel(contract.posting_date)}</span>
+          {contract.source_context_label ? <span>Context: {contract.source_context_label}</span> : null}
+        </div>
+
+        <div className="score-matrix">
+          <span className="tag">Closeness {getClosenessScore(contract)}/10</span>
+          <span className="tag">Timing {getScoreBreakdownValue(contract, "timing") ?? "n/a"}/10</span>
+          <span className="tag">Competition edge {getScoreBreakdownValue(contract, "competition") ?? "n/a"}/10</span>
+          <span className="tag">Agency affinity {getScoreBreakdownValue(contract, "agency_affinity") ?? "n/a"}/10</span>
+        </div>
+
+        {getMatchedAgencyPreferences(contract).length > 0 ? (
+          <div className="tag-row">
+            {getMatchedAgencyPreferences(contract).map((agencyName) => (
+              <button
+                type="button"
+                className={`tag filter-tag-button${
+                  isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                    kind: "preferred_agency",
+                    value: agencyName,
+                    label: `Preferred agency: ${agencyName}`,
+                  })
+                    ? " filter-tag-button-active"
+                    : ""
+                }`}
+                key={agencyName}
+                aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                  kind: "preferred_agency",
+                  value: agencyName,
+                  label: `Preferred agency: ${agencyName}`,
+                })}
+                onClick={() =>
+                  handleOpportunityTagFilterClick({
+                    kind: "preferred_agency",
+                    value: agencyName,
+                    label: `Preferred agency: ${agencyName}`,
+                  })
+                }
+              >
+                Preferred agency: {agencyName}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="tag-row">
+          <button
+            type="button"
+            className={`tag filter-tag-button${
+              selectedOpportunitySourceFilter === contract.source
+                ? " filter-tag-button-active"
+                : ""
+            }`}
+            aria-pressed={selectedOpportunitySourceFilter === contract.source}
+            onClick={() => {
+              setOpportunityPage(1);
+              setSelectedOpportunitySourceFilter((current) =>
+                current === contract.source ? null : contract.source,
+              );
+              setSelectedOpportunitySourceContextFilter(null);
+            }}
+          >
+            {formatContractSource(contract.source)}
+          </button>
+          {contract.source_context ? (
+            <button
+              type="button"
+              className={`tag filter-tag-button${
+                selectedOpportunitySourceContextFilter === contract.source_context
+                  ? " filter-tag-button-active"
+                  : ""
+              }`}
+              aria-pressed={selectedOpportunitySourceContextFilter === contract.source_context}
+              onClick={() => {
+                setOpportunityPage(1);
+                setSelectedOpportunitySourceContextFilter((current) =>
+                  current === contract.source_context ? null : contract.source_context ?? null,
+                );
+              }}
+            >
+              {formatContractSourceContextLabel(contract.source_context_label, contract.source_context)}
+            </button>
+          ) : null}
+          {getOpportunityDisplayTags(contract).map((tag) => (
+            <button
+              type="button"
+              className={`tag filter-tag-button${
+                isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                  kind: "tag",
+                  value: tag,
+                  label: tag,
+                })
+                  ? " filter-tag-button-active"
+                  : ""
+              }`}
+              key={tag}
+              aria-pressed={isOpportunityTagFilterActive(selectedOpportunityTagFilter, {
+                kind: "tag",
+                value: tag,
+                label: tag,
+              })}
+              onClick={() =>
+                handleOpportunityTagFilterClick({
+                  kind: "tag",
+                  value: tag,
+                  label: tag,
+                })
+              }
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+
+        {contract.nigp_codes ? <p>{formatNigpPreview(contract.nigp_codes)}</p> : null}
+
+        <div className="content-footer">
+          <div className="status-stack">
+            <span>Funnel: {formatFunnelLabel(contract)}</span>
+            {contract.funnel_record_id ? <span>CRM record: {contract.funnel_record_id}</span> : null}
+            <span>Last seen: {formatTimestamp(contract.last_seen_at)}</span>
+          </div>
+          <div className="action-row">
+            {isAdminUser ? (
+              <button
+                type="button"
+                onClick={() => void handleFunnelContract(contract)}
+                disabled={funnelingContractId === contract.id}
+              >
+                {funnelingContractId === contract.id
+                  ? "Sending..."
+                  : contract.funnel_delivery_status === "delivered"
+                    ? "Resend to CRM"
+                    : "Add to lead funnel"}
+              </button>
+            ) : null}
+            <a className="button-link secondary-link" href={contract.source_url} target="_blank" rel="noreferrer">
+              {contract.source === "gmail_rfqs" ? "Open Gmail" : "Open source"}
+            </a>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  function renderDashboard() {
+    return (
+      <>
+        <section className="grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Create Content</p>
+                <h2>Draft once, route by tenant</h2>
+              </div>
+            </div>
+
+            <form className="content-form" onSubmit={handleSubmit}>
+              <label>
+                <span>Type</span>
+                <input
+                  value={form.type}
+                  onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}
+                  placeholder="insight"
+                />
+              </label>
+
+              <label>
+                <span>Title</span>
+                <input
+                  value={form.title}
+                  onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="What changed in the market this week?"
+                />
+              </label>
+
+              <label>
+                <span>Body</span>
+                <textarea
+                  rows={8}
+                  value={form.body}
+                  onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
+                  placeholder="Write the actual post body here."
+                />
+              </label>
+
+              <label>
+                <span>Tags</span>
+                <input
+                  value={form.tags.join(", ")}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      tags: event.target.value
+                        .split(",")
+                        .map((tag) => tag.trim())
+                        .filter(Boolean),
+                    }))
+                  }
+                  placeholder="houston, multifamily, acquisition"
+                />
+              </label>
+
+              <div className="toggle-row">
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={form.distribution.linkedin}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        distribution: { ...current.distribution, linkedin: event.target.checked },
+                        publish_linkedin: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Publish to LinkedIn</span>
+                </label>
+
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={form.distribution.youtube}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        distribution: { ...current.distribution, youtube: event.target.checked },
+                      }))
+                    }
+                  />
+                  <span>Publish to YouTube</span>
+                </label>
+
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={form.distribution.website}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        distribution: { ...current.distribution, website: event.target.checked },
+                        publish_site: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Publish to site</span>
+                </label>
+              </div>
+
+              {form.distribution.youtube ? (
+                <label>
+                  <span>Video path</span>
+                  <input
+                    value={form.media.video_path ?? ""}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        media: { ...current.media, video_path: event.target.value },
+                      }))
+                    }
+                    placeholder="/videos/warehouse.mp4"
+                  />
+                </label>
+              ) : null}
+
+              <button type="submit" disabled={submitting}>
+                {submitting ? "Saving..." : "Create content"}
+              </button>
+            </form>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Content Queue</p>
+                <h2>Development feed</h2>
+              </div>
+            </div>
+
+            <div className="stack">
+              {contentItems.length === 0 ? (
+                <p className="empty-state">No content has been created for this tenant yet.</p>
+              ) : (
+                contentItems.map((item) => (
+                  <div className="content-card" key={item.id}>
+                    <div className="content-meta">
+                      <strong>{item.title}</strong>
+                      <span>{item.type}</span>
+                    </div>
+                    <p>{item.body}</p>
+                    <div className="tag-row">
+                      {getEnabledChannels(item).map((channel) => (
+                        <span className="tag" key={channel}>
+                          {channel}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="tag-row">
+                      {item.tags.map((tag) => (
+                        <span className="tag" key={tag}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="content-footer">
+                      <div className="status-stack">
+                        <span>LinkedIn: {item.linkedin_status ?? "not queued"}</span>
+                        <span>YouTube: {item.media.youtube_status ?? "not queued"}</span>
+                      </div>
+                      <div className="action-row">
+                        <button type="button" onClick={() => void handlePublish(item.id)}>
+                          LinkedIn now
+                        </button>
+                        <button type="button" onClick={() => void handleDistribution(item)}>
+                          Run distribution
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </article>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Marketing Intake</p>
+              <h2>Dedicated intake page</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("intake")}>
+                Open marketing intake page
+              </button>
+            </div>
+          </div>
+          <p className="panel-subcopy">
+            Review connected intake surfaces, recent source-site activity, and new contact initiations flowing toward CRM.
+          </p>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Opportunities</p>
+              <h2>Dedicated list page</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("opportunities")}>
+                Open opportunities page
+              </button>
+            </div>
+          </div>
+          <p className="panel-subcopy">
+            Federal forecast, Grants.gov, SBA SUBNet, ESBD opportunities, and Gmail RFQs live on a separate page and
+            require LeCrown Google Workspace sign-in.
+          </p>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Certifications</p>
+              <h2>Dedicated progress page</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("certifications")}>
+                Open certifications page
+              </button>
+            </div>
+          </div>
+          <p className="panel-subcopy">
+            Track SAM.gov, SBA, City of Houston, Texas HUB, buyer portal gates, reusable evidence, document portal slots, and capability statement drafts.
+          </p>
+        </section>
+      </>
+    );
+  }
+
+  function renderProfilePage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking account access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Profile and password",
+        subcopy: "Sign in with your existing account or accept an invite code to activate a new login.",
+      });
+    }
+
+    if (authConfig?.mode === "google_workspace") {
+      return (
+        <section className="grid profile-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Workspace Identity</p>
+                <h2>Profile summary</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Identity is verified by LeCrown Development Google Workspace. Passwords and invitations are not stored in
+              this back office.
+            </p>
+            <div className="profile-stat-grid">
+              <div className="metric-pill">
+                <strong>{currentAdmin.username}</strong>
+                <span>workspace user</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.email}</strong>
+                <span>verified email</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.is_admin ? "Admin" : "Member"}</strong>
+                <span>application role</span>
+              </div>
+              <div className="metric-pill">
+                <strong>Google Workspace</strong>
+                <span>identity provider</span>
+              </div>
+            </div>
+          </article>
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Access Policy</p>
+                <h2>LeCrown users only</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Access requires a currently valid Google identity issued for @{authConfig.allowed_domains[0]}. Workspace
+              removal or account deactivation prevents future sign-in; application roles still control what members can
+              do after authentication.
+            </p>
+          </article>
+        </section>
+      );
+    }
+
+    return (
+      <>
+        <section className="grid profile-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Account</p>
+                <h2>Profile summary</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">
+              Authentication is stored inside this app. It is not delegated to an external Keycloak tenant.
+            </p>
+
+            <div className="profile-stat-grid">
+              <div className="metric-pill">
+                <strong>{currentAdmin.username}</strong>
+                <span>username</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.email}</strong>
+                <span>email</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{currentAdmin.is_admin ? "Admin" : "Member"}</strong>
+                <span>role</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{formatTimestamp(currentAdmin.created_at)}</strong>
+                <span>joined</span>
+              </div>
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Password</p>
+                <h2>Change your password</h2>
+              </div>
+            </div>
+
+            <p className="panel-subcopy">
+              Enter your current password, then set a new one. After bootstrap, password changes are managed here.
+            </p>
+
+            <form className="content-form auth-form" onSubmit={handleChangePassword}>
+              <label>
+                <span>Current password</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  placeholder="Enter your current password"
+                />
+              </label>
+
+              <label>
+                <span>New password</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="Use at least 8 characters"
+                />
+              </label>
+
+              <label>
+                <span>Confirm new password</span>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  placeholder="Repeat your new password"
+                />
+              </label>
+
+              <div className="action-row auth-actions">
+                <button type="submit" disabled={changingPassword}>
+                  {changingPassword ? "Updating..." : "Change password"}
+                </button>
+              </div>
+            </form>
+          </article>
+        </section>
+
+        {isAdminUser ? (
+          <>
+            <section className="panel">
+              <div className="panel-heading contract-toolbar">
+                <div>
+                  <p className="eyebrow">Invitations</p>
+                  <h2>Invite-only user access</h2>
+                </div>
+              </div>
+
+              <p className="panel-subcopy">
+                Create accounts by invite only. New users cannot self-register without an invite code from an admin.
+              </p>
+
+              <form className="keyword-form" onSubmit={handleCreateInvite}>
+                <label>
+                  <span>Email</span>
+                  <input
+                    value={inviteEmail}
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                    placeholder="user@example.com"
+                    type="email"
+                    required
+                  />
+                </label>
+                <div className="action-row keyword-form-actions">
+                  <button type="submit" disabled={creatingInvite}>
+                    {creatingInvite ? "Creating..." : "Create invite"}
+                  </button>
+                </div>
+              </form>
+
+              {latestInvite ? (
+                <div className="invite-code-card">
+                  <div className="invite-code-card-copy">
+                    <strong>{latestInvite.email}</strong>
+                    <span>
+                      {latestInvite.email_delivery_status === "sent"
+                        ? "Invite email sent automatically. They can still use this one-time invite code manually."
+                        : "Email delivery is not configured. Send this user to the app and give them this one-time invite code."}
+                    </span>
+                    {latestInvite.email_delivery_status !== "sent" && latestInvite.email_delivery_detail ? (
+                      <span>{latestInvite.email_delivery_detail}</span>
+                    ) : null}
+                  </div>
+                  <code className="invite-code">{latestInvite.invite_code}</code>
+                  <div className="action-row">
+                    <button type="button" className="secondary-link" onClick={() => void handleCopyInviteCode(latestInvite)}>
+                      Copy invite code
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="invite-list">
+                {userInvites.length === 0 ? (
+                  <p className="empty-state">No invites have been created yet.</p>
+                ) : (
+                  userInvites.map((invite) => (
+                    <div className="invite-row" key={invite.id}>
+                      <div className="invite-row-meta">
+                        <strong>{invite.email}</strong>
+                        <span>Status: {formatInviteStatus(invite)}</span>
+                        <span>Created: {formatTimestamp(invite.created_at)}</span>
+                        <span>Expires: {formatTimestamp(invite.expires_at)}</span>
+                        {invite.accepted_at ? <span>Accepted: {formatTimestamp(invite.accepted_at)}</span> : null}
+                      </div>
+                      {invite.accepted_at || invite.revoked_at ? null : (
+                        <div className="action-row">
+                          <button
+                            type="button"
+                            className="secondary-link destructive-button"
+                            onClick={() => void handleRevokeInvite(invite)}
+                            disabled={revokingInviteId === invite.id}
+                          >
+                            {revokingInviteId === invite.id ? "Revoking..." : "Revoke"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Access</p>
+                <h2>Invite-only membership</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Your account was created by invite. Admin users control new invitations, scoring rules, source refreshes,
+              and CRM funnel actions.
+            </p>
+          </section>
+        )}
+      </>
+    );
+  }
+
+  function renderBillingPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking billing access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+      return renderProtectedAuthPanel({
+        eyebrow: "Billing Access",
+        title: "Operator billing workflow",
+        subcopy: "Sign in with your invited account to open the protected Billing page and prepare invoices.",
+      });
+    }
+
+    return <BillingPage currentUser={currentAdmin} />;
+  }
+
+  function renderIntakePage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking intake access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Marketing intake dashboard",
+        subcopy: "Sign in with your username or email, or accept an invite code to review connected sources and new contact initiations.",
+      });
+    }
+
+    if (!intakeDashboard && refreshingIntakeDashboard) {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Loading marketing intake dashboard...</p>
+        </section>
+      );
+    }
+
+    if (!intakeDashboard) {
+      return (
+        <section className="panel auth-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Marketing Intake</p>
+              <h2>No dashboard data loaded yet</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => void refreshIntakeDashboard()} disabled={refreshingIntakeDashboard}>
+                {refreshingIntakeDashboard ? "Refreshing..." : "Refresh intake"}
+              </button>
+            </div>
+          </div>
+          <p className="empty-state">Refresh to load the current source and CRM intake summary.</p>
+        </section>
+      );
+    }
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Marketing Intake</p>
+              <h2>Cross-site contact funnel</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => void refreshIntakeDashboard()} disabled={refreshingIntakeDashboard}>
+                {refreshingIntakeDashboard ? "Refreshing..." : "Refresh intake"}
+              </button>
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            Review which source sites are sending leads, whether the CRM handoff is configured, and which new contacts have initiated the funnel.
+          </p>
+
+          <div className="metric-row">
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.observed_source_sites}</strong>
+              <span>source sites observed</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.new_contacts_today}</strong>
+              <span>new in last 24h</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.new_contacts_7d}</strong>
+              <span>new in last 7d</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.delivered_submissions}</strong>
+              <span>delivered to CRM</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.failed_submissions}</strong>
+              <span>CRM delivery failures</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{intakeDashboard.overview.total_submissions}</strong>
+              <span>total submissions</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid intake-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Connections</p>
+                <h2>What is connected</h2>
+              </div>
+            </div>
+
+            <div className="stack">
+              {intakeDashboard.connections.map((connection) => (
+                <article className="content-card" key={connection.key}>
+                  <div className="content-meta">
+                    <div>
+                      <strong>{connection.label}</strong>
+                      <span>{connection.detail}</span>
+                    </div>
+                    <span className={getIntakeStatusBadgeClass(connection.status)}>
+                      {formatIntakeConnectionStatus(connection.status)}
+                    </span>
+                  </div>
+
+                  {connection.value ? (
+                    <div className="tag-row">
+                      <span className="tag">{connection.value}</span>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Source Sites</p>
+                <h2>Observed intake activity</h2>
+              </div>
+            </div>
+
+            {intakeDashboard.source_sites.length === 0 ? (
+              <p className="empty-state">No marketing sources have submitted leads yet.</p>
+            ) : (
+              <div className="stack">
+                {intakeDashboard.source_sites.map((source) => (
+                  <article className="content-card" key={source.source_site}>
+                    <div className="content-meta">
+                      <div>
+                        <strong>{source.source_site}</strong>
+                        <span>{formatIntakeSourceType(source.source_type)}</span>
+                      </div>
+                      <span className={getIntakeStatusBadgeClass(source.last_delivery_status)}>
+                        {formatIntakeDeliveryStatus(source.last_delivery_status)}
+                      </span>
+                    </div>
+
+                    {source.business_contexts.length > 0 || source.form_providers.length > 0 || source.form_names.length > 0 ? (
+                      <div className="tag-row">
+                        {source.business_contexts.map((context) => (
+                          <span className="tag" key={`${source.source_site}-context-${context}`}>
+                            {context}
+                          </span>
+                        ))}
+                        {source.form_providers.map((provider) => (
+                          <span className="tag" key={`${source.source_site}-provider-${provider}`}>
+                            {provider}
+                          </span>
+                        ))}
+                        {source.form_names.map((formName) => (
+                          <span className="tag" key={`${source.source_site}-form-${formName}`}>
+                            {formName}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="status-stack">
+                      <span>Submissions: {source.total_submissions}</span>
+                      <span>New 24h: {source.new_contacts_today}</span>
+                      <span>New 7d: {source.new_contacts_7d}</span>
+                      <span>CRM delivered: {source.delivered_submissions}</span>
+                      <span>CRM failed: {source.failed_submissions}</span>
+                      <span>Latest contact: {source.last_contact_name ?? "Unknown contact"}</span>
+                      <span>Last submission: {formatTimestamp(source.last_submission_at)}</span>
+                      {source.last_page_url ? (
+                        <span>
+                          Last page:{" "}
+                          <a className="secondary-link" href={source.last_page_url} target="_blank" rel="noreferrer">
+                            {source.last_page_url}
+                          </a>
+                        </span>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">New Contacts</p>
+              <h2>Recent initiations</h2>
+            </div>
+          </div>
+
+          {intakeDashboard.recent_contacts.length === 0 ? (
+            <p className="empty-state">No new contacts have initiated the marketing funnel yet.</p>
+          ) : (
+            <div className="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contact</th>
+                    <th>Source</th>
+                    <th>Context</th>
+                    <th>CRM</th>
+                    <th>Initiated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {intakeDashboard.recent_contacts.map((contact) => (
+                    <tr key={contact.id}>
+                      <td>
+                        <strong>{contact.contact_name ?? "Unknown contact"}</strong>
+                        {contact.email ? <span>{contact.email}</span> : null}
+                        {contact.phone ? <span>{contact.phone}</span> : null}
+                      </td>
+                      <td>
+                        <strong>{contact.source_site}</strong>
+                        {contact.page_url ? (
+                          <a className="secondary-link" href={contact.page_url} target="_blank" rel="noreferrer">
+                            {contact.page_url}
+                          </a>
+                        ) : null}
+                        {contact.campaign ? <span>Campaign: {contact.campaign}</span> : null}
+                      </td>
+                      <td>
+                        <strong>{contact.business_context ?? "Unscoped"}</strong>
+                        <span>{contact.product_context ?? "No product context"}</span>
+                      </td>
+                      <td>
+                        <span className={getIntakeStatusBadgeClass(contact.delivery_status)}>
+                          {formatIntakeDeliveryStatus(contact.delivery_status)}
+                        </span>
+                        {contact.delivery_record_id ? <span>Record: {contact.delivery_record_id}</span> : null}
+                        {contact.delivery_error ? <span>{contact.delivery_error}</span> : null}
+                        {contact.delivery_status === "failed" ? (
+                          <button
+                            type="button"
+                            className="secondary-link retry-inline-button"
+                            onClick={() => void handleRetryIntakeSubmission(contact.id)}
+                            disabled={retryingSubmissionId === contact.id}
+                          >
+                            {retryingSubmissionId === contact.id ? "Retrying..." : "Retry CRM"}
+                          </button>
+                        ) : null}
+                      </td>
+                      <td>{formatTimestamp(contact.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </>
+    );
+  }
+
+  function renderCertificationsPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking certification tracker access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Protected certification tracker",
+        subcopy: "Sign in with your username or email, or accept an invite code to review certification progress, buyer gates, reusable documents, and capability statement work.",
+      });
+    }
+
+    const blockedStepCount = CERTIFICATION_LANES.reduce(
+      (total, lane) => total + lane.steps.filter((step) => step.state === "blocked").length,
+      0,
+    );
+    const inProgressCertificationCount = CERTIFICATION_LANES.filter(
+      (lane) =>
+        lane.status === "Certified" ||
+        lane.status === "In progress" ||
+        lane.steps.some((step) => step.state === "in_progress"),
+    ).length;
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Certification Progress</p>
+              <h2>Certification, buyer, document, and capability-statement tracker</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => navigateToView("opportunities")}>
+                Review opportunities
+              </button>
+              <button type="button" className="secondary-link" onClick={() => navigateToView("sources")}>
+                Check source coverage
+              </button>
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            This page keeps the government-contracting prerequisites visible before bids get urgent: entity registration,
+            SBA and local certification lanes, buyer-specific portals, reusable evidence, document portal slots, and the
+            capability statements that still need to be written.
+          </p>
+
+          <div className="metric-row">
+            <div className="metric-pill">
+              <strong>1</strong>
+              <span>active company</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{CERTIFICATION_LANES.length}</strong>
+              <span>certification lanes</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{inProgressCertificationCount}</strong>
+              <span>lanes started</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{BUYER_GATES.length}</strong>
+              <span>buyer gates tracked</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{REUSABLE_DOCUMENTS.length}</strong>
+              <span>reusable docs</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{blockedStepCount}</strong>
+              <span>blocked evidence steps</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Activity</p>
+              <h2>Recent certification activity</h2>
+            </div>
+            <span>{CERTIFICATION_ACTIVITY.length} events</span>
+          </div>
+
+          <div className="certification-list">
+            {CERTIFICATION_ACTIVITY.map((activity) => (
+              <div className="certification-list-row" key={`${activity.date}-${activity.title}`}>
+                <div>
+                  <strong>{activity.title}</strong>
+                  <span>{activity.summary}</span>
+                  <span>
+                    {activity.date} by {activity.actor} - {activity.source}
+                  </span>
+                </div>
+                <span className={getCertificationActivityBadgeClass(activity.status)}>
+                  {formatCertificationActivityStatus(activity.status)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel certification-blocker-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Active Blocker</p>
+              <h2>{COH_APPLICATION_BLOCKERS.title}</h2>
+            </div>
+            <span className="status-badge status-badge-bad">{COH_APPLICATION_BLOCKERS.status}</span>
+          </div>
+
+          <p className="panel-subcopy">{COH_APPLICATION_BLOCKERS.summary}</p>
+
+          <div className="certification-blocker-meta">
+            {COH_APPLICATION_BLOCKERS.meta.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+
+          <div className="certification-blocker-grid">
+            <div>
+              <h3>Incomplete sections</h3>
+              <ul className="certification-checklist">
+                {COH_APPLICATION_BLOCKERS.incompleteSections.map((section) => (
+                  <li key={section}>{section}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3>Mandatory documents not attached</h3>
+              <ul className="certification-checklist">
+                {COH_APPLICATION_BLOCKERS.mandatoryDocuments.map((document) => (
+                  <li key={document}>{document}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid certification-grid">
+          {CERTIFICATION_LANES.map((lane) => (
+            <article className="panel certification-card" key={lane.name}>
+              <div className="certification-card-header">
+                <div>
+                  <p className="eyebrow">{lane.company}</p>
+                  <h2>{lane.name}</h2>
+                  <span>{lane.agency}</span>
+                </div>
+                <span className={getCertificationStatusBadgeClass(lane.status)}>{lane.status}</span>
+              </div>
+
+              <div className="certification-meta-row">
+                <span>Owner: {lane.owner}</span>
+                <span>Target: {lane.due}</span>
+              </div>
+
+              <p className="certification-next-action">{lane.nextAction}</p>
+
+              <div className="certification-step-list">
+                {lane.steps.map((step) => (
+                  <span className={getCertificationStepBadgeClass(step.state)} key={`${lane.name}-${step.label}`}>
+                    {step.label}
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Buyer Gates</p>
+              <h2>Portals and buyer-specific requirements</h2>
+            </div>
+            <span>{BUYER_GATES.length} tracked</span>
+          </div>
+
+          <div className="table-shell">
+            <table className="sources-table">
+              <thead>
+                <tr>
+                  <th>Buyer</th>
+                  <th>Portal</th>
+                  <th>Requirement</th>
+                  <th>Next Action</th>
+                  <th>Reusable Docs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BUYER_GATES.map((gate) => (
+                  <tr key={gate.name}>
+                    <td>
+                      <strong>{gate.name}</strong>
+                    </td>
+                    <td>{gate.portal}</td>
+                    <td>{gate.requirement}</td>
+                    <td>{gate.nextAction}</td>
+                    <td>
+                      {gate.reusableDocs.map((doc) => (
+                        <span key={`${gate.name}-${doc}`}>{doc}</span>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="grid certification-support-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Document Portal</p>
+                <h2>Common reusable documents</h2>
+              </div>
+            </div>
+            <div className="certification-list">
+              {REUSABLE_DOCUMENTS.map((document) => (
+                <div className="certification-list-row" key={document.name}>
+                  <div>
+                    <strong>{document.name}</strong>
+                    <span>{document.purpose}</span>
+                    <span>Portal slot: {document.documentPortalSlot}</span>
+                  </div>
+                  <span className="status-badge status-badge-neutral">{document.status}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Capability Statements</p>
+                <h2>Draft queue</h2>
+              </div>
+            </div>
+            <div className="certification-list">
+              {CAPABILITY_STATEMENT_DRAFTS.map((draft) => (
+                <div className="certification-list-row" key={draft.name}>
+                  <div>
+                    <strong>{draft.name}</strong>
+                    <span>{draft.audience}</span>
+                    <span>{draft.nextAction}</span>
+                  </div>
+                  <span className="status-badge status-badge-warn">{draft.status}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+      </>
+    );
+  }
+
+  function renderSourcesPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking source access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Protected source registry",
+        subcopy: "Sign in with your username or email, or accept an invite code to review source automation coverage.",
+      });
+    }
+
+    const automatedSourceCount = trackedSources.filter((source) => source.load_scope === "opportunities").length;
+    const catalogSourceCount = trackedSources.filter((source) => source.load_scope !== "opportunities").length;
+    const opportunitySourceCount = trackedSources.filter((source) => source.resource_type === "opportunity_feed").length;
+    const certificationResourceCount = trackedSources.filter((source) =>
+      ["certification_portal", "certification_program", "vendor_registration"].includes(source.resource_type),
+    ).length;
+    const businessDevelopmentResourceCount = trackedSources.filter((source) =>
+      ["subcontracting_directory", "advisory_organization", "supplier_diversity", "buyer_resource"].includes(
+        source.resource_type,
+      ),
+    ).length;
+    const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
+    const needsReviewCount = trackedSources.filter(
+      (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
+    ).length;
+    const blockedSourceCount = trackedSources.filter(
+      (source) => source.latest_run_status === "blocked" || source.latest_run_status === "failed",
+    ).length;
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Source Registry</p>
+              <h2>Government contracting resources and automation paths</h2>
+            </div>
+            <div className="action-row">
+              {isAdminUser ? (
+                <button
+                  type="button"
+                  onClick={() => void handleTrackedSourceRefresh()}
+                  disabled={refreshingTrackedSources}
+                >
+                  {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            This page reconciles the opportunity feeds, buyer registrations, certification programs, subcontracting channels,
+            and supplier-diversity organizations supplied in the operating trackers and knowledge package. A listed resource is
+            not automatically represented as a working data feed. The `Refresh tracked sites` action probes the local municipal,
+            county, and regional portals; core feeds like ESBD, federal forecast, Grants.gov, and SBA SUBNet still refresh through
+            their source-specific jobs.
+          </p>
+
+          <div className="metric-row">
+            <div className="metric-pill">
+              <strong>{trackedSources.length}</strong>
+              <span>resources tracked</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{opportunitySourceCount}</strong>
+              <span>opportunity sources</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{certificationResourceCount}</strong>
+              <span>registration and certification</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{businessDevelopmentResourceCount}</strong>
+              <span>subcontracting and business development</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{automatedSourceCount}</strong>
+              <span>automation-backed</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{catalogSourceCount}</strong>
+              <span>catalog or reference</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{loadedSourceCount}</strong>
+              <span>currently loaded</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{needsReviewCount}</strong>
+              <span>need review</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{blockedSourceCount}</strong>
+              <span>blocked or failed</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Registry</p>
+              <h2>Source-by-source automation detail</h2>
+            </div>
+            <span>{trackedSources.length} listed</span>
+          </div>
+          <div className="table-shell">
+            <table className="sources-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Coverage</th>
+                  <th>Automation</th>
+                  <th>Status</th>
+                  <th>Last Check</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trackedSources.map((trackedSource) => (
+                  <tr key={trackedSource.id}>
+                    <td>
+                      <strong>{trackedSource.label}</strong>
+                      <span>{trackedSource.platform_name}</span>
+                      <a href={trackedSource.listing_url} target="_blank" rel="noreferrer">
+                        Open source
+                      </a>
+                    </td>
+                    <td>
+                      <strong>{formatTrackedSourceJurisdiction(trackedSource.jurisdiction_type)}</strong>
+                      <span>{formatTrackedSourceResourceType(trackedSource.resource_type)}</span>
+                      <span>{formatTrackedSourceMode(trackedSource.extraction_mode)}</span>
+                      <span>{formatTrackedSourceLoadScope(trackedSource.load_scope)}</span>
+                    </td>
+                    <td>
+                      <strong>{trackedSource.automation_summary}</strong>
+                      {trackedSource.automation_detail ? <span>{trackedSource.automation_detail}</span> : null}
+                      {trackedSource.notes ? <span>{trackedSource.notes}</span> : null}
+                    </td>
+                    <td>
+                      <span className={getTrackedSourceStatusBadgeClass(trackedSource.latest_run_status)}>
+                        {formatTrackedSourceStatus(trackedSource.latest_run_status, trackedSource.resource_type)}
+                      </span>
+                      <span>{trackedSource.stored_opportunity_count} stored</span>
+                      {trackedSource.latest_total_records != null ? (
+                        <span>
+                          Last run: {trackedSource.latest_total_records} total / {trackedSource.latest_open_records ?? 0} open /{" "}
+                          {trackedSource.latest_matched_records ?? 0} matched
+                        </span>
+                      ) : null}
+                      {trackedSource.latest_run_error_message ? <span>{trackedSource.latest_run_error_message}</span> : null}
+                    </td>
+                    <td>
+                      <strong>
+                        {trackedSource.latest_run_completed_at
+                          ? formatTimestamp(trackedSource.latest_run_completed_at)
+                          : "Not checked yet"}
+                      </strong>
+                      <span>{trackedSource.cadence}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderOpportunitiesPage() {
+    if (opportunitiesAuthStatus === "checking") {
+      return (
+        <section className="panel auth-panel">
+          <p className="empty-state">Checking opportunity access...</p>
+        </section>
+      );
+    }
+
+    if (opportunitiesAuthStatus === "unauthenticated") {
+      return renderProtectedAuthPanel({
+        eyebrow: "Account Access",
+        title: "Protected opportunities page",
+        subcopy: "Sign in with your username or email, or accept an invite code to create a new login.",
+      });
+    }
+
+    const allContracts = opportunitySearch.items;
+    const categoryCounts = {
+      all: opportunitySearch.category_counts.all ?? 0,
+      it_services: opportunitySearch.category_counts.it_services ?? 0,
+      property_services: opportunitySearch.category_counts.property_services ?? 0,
+      other: opportunitySearch.category_counts.other ?? 0,
+    };
+    const scopedSourceCountTotal = opportunitySearch.source_counts.reduce(
+      (total, sourceCount) => total + sourceCount.count,
+      0,
+    );
+    const scopedSourceContextCountTotal = opportunitySearch.source_context_counts.reduce(
+      (total, contextCount) => total + contextCount.count,
+      0,
+    );
+    const sourceFilters = [
+      {
+        key: "all",
+        label: "All sources",
+        count: scopedSourceCountTotal,
+      },
+      ...opportunitySearch.source_counts.map((sourceCount) => ({
+        key: sourceCount.key,
+        label: sourceCount.label,
+        count: sourceCount.count,
+      })),
+    ];
+    const sourceContextFilters = [
+      {
+        key: "all",
+        label: "All contexts",
+        count: scopedSourceContextCountTotal || opportunitySearch.total,
+      },
+      ...opportunitySearch.source_context_counts,
+    ];
+    const displayedContracts = allContracts;
+    const hasVisibleContracts = displayedContracts.length > 0;
+    const totalOpportunityPages = Math.max(1, Math.ceil(opportunitySearch.total / OPPORTUNITY_PAGE_SIZE));
+    const pageStart = opportunitySearch.total === 0 ? 0 : opportunitySearch.offset + 1;
+    const pageEnd = Math.min(opportunitySearch.offset + displayedContracts.length, opportunitySearch.total);
+    const latestLoadedContractRun = contractRuns.find((run) => (run.total_records ?? 0) > 0) ?? contractRuns[0] ?? null;
+    const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
+    const trackedReviewSources = trackedSources.filter(
+      (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
+    ).length;
+    const trackedBlockedSources = trackedSources.filter(
+      (source) => source.latest_run_status === "blocked" || source.latest_run_status === "failed",
+    ).length;
+
+    return (
+      <>
+        <section className="panel">
+          <div className="panel-heading contract-toolbar">
+            <div>
+              <p className="eyebrow">Government Work Finder</p>
+              <h2>Federal, state, municipal, county, and regional opportunities for LeCrown</h2>
+            </div>
+
+            <div className="action-row">
+              <button
+                type="button"
+                onClick={() => void handleFederalContractExport()}
+                disabled={downloadingFederalExport}
+              >
+                {downloadingFederalExport ? "Downloading..." : "Download Federal CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleGrantsContractExport()}
+                disabled={downloadingGrantsExport}
+              >
+                {downloadingGrantsExport ? "Downloading..." : "Download Grants CSV"}
+              </button>
+              <button type="button" onClick={() => void handleContractExport()} disabled={downloadingExport}>
+                {downloadingExport ? "Downloading..." : "Download ESBD CSV"}
+              </button>
+              {isAdminUser ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleAllSourceRefresh()}
+                    disabled={refreshingAllSources}
+                  >
+                    {refreshingAllSources ? "Checking all..." : "Check all sources"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleFederalContractRefresh()}
+                    disabled={refreshingFederalContracts || refreshingAllSources}
+                  >
+                    {refreshingFederalContracts ? "Refreshing..." : "Refresh Federal"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleGrantsContractRefresh()}
+                    disabled={refreshingGrantsContracts || refreshingAllSources}
+                  >
+                    {refreshingGrantsContracts ? "Refreshing..." : "Refresh Grants"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSbaSubnetContractRefresh()}
+                    disabled={refreshingSbaSubnetContracts || refreshingAllSources}
+                  >
+                    {refreshingSbaSubnetContracts ? "Refreshing..." : "Refresh SBA SUBNet"}
+                  </button>
+                  <button type="button" onClick={() => void handleContractRefresh()} disabled={refreshingContracts || refreshingAllSources}>
+                    {refreshingContracts ? "Refreshing..." : "Refresh ESBD"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleGmailContractRefresh()}
+                    disabled={refreshingGmailContracts || refreshingAllSources}
+                  >
+                    {refreshingGmailContracts ? "Syncing..." : "Sync Gmail RFQs"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleTrackedSourceRefresh()}
+                    disabled={refreshingTrackedSources || refreshingAllSources}
+                  >
+                    {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <p className="panel-subcopy">
+            {isAdminUser
+              ? "Admin access can refresh sources, tune scoring, create invite-only accounts, and send fits to the CRM."
+              : "This account has viewer access to browse, filter, and export opportunities. Source refreshes, scoring changes, and CRM funnel actions stay admin-only."}
+          </p>
+
+          {!contractCapabilities.gmail_rfq_sync_enabled ? (
+            <p className="panel-subcopy">
+              Gmail RFQ sync will report a source status, but email opportunities require Gmail OAuth or GMAIL_RFQ_FEED_URL before label:{contractCapabilities.gmail_rfq_feed_label ?? "RFQs"} can be imported.
+            </p>
+          ) : null}
+
+          <div className="vendor-resource-grid">
+            {METRO_VENDOR_RESOURCES.map((resource) => (
+              <article className="vendor-resource-card" key={resource.title}>
+                <div>
+                  <p className="eyebrow">METRO Vendor Readiness</p>
+                  <h3>{resource.title}</h3>
+                  <p className="panel-subcopy">{resource.description}</p>
+                </div>
+                <div className="tag-row">
+                  {resource.tags.map((tag) => (
+                    <span className="tag" key={`${resource.title}-${tag}`}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <a className="secondary-link vendor-resource-link" href={resource.href} target="_blank" rel="noreferrer">
+                  {resource.cta}
+                </a>
+              </article>
+            ))}
+          </div>
+
+          <div className="toggle-row opportunity-filter-row">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={matchesOnlyFilter}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setMatchesOnlyFilter(event.target.checked);
+                }}
+              />
+              <span>Fit matches only</span>
+            </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={openOnlyFilter}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setOpenOnlyFilter(event.target.checked);
+                }}
+              />
+              <span>Open only</span>
+            </label>
+            <label className="priority-filter-field">
+              <span>Min priority</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={minPriorityScoreFilter}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setMinPriorityScoreFilter(Number(event.target.value) || 0);
+                }}
+              />
+            </label>
+            <label className="keyword-search-field">
+              <span>Keyword filter</span>
+              <input
+                value={opportunityKeywordFilter}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter(event.target.value);
+                }}
+                placeholder="AI, roofing, HUD, cybersecurity"
+              />
+            </label>
+            {opportunityKeywordFilter.trim() ? (
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter("");
+                }}
+              >
+                Clear keyword
+              </button>
+            ) : null}
+          </div>
+
+          {latestLoadedContractRun ? (
+            <div className="metric-row">
+              <div className="metric-pill">
+                <strong>{latestLoadedContractRun.total_records}</strong>
+                <span>rows scanned in latest source</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{latestLoadedContractRun.matched_records}</strong>
+                <span>fit matches in latest source</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{latestLoadedContractRun.open_records}</strong>
+                <span>open in latest source</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{loadedSourceCount}</strong>
+                <span>sources loaded</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{trackedReviewSources + trackedBlockedSources}</strong>
+                <span>need deeper dive</span>
+              </div>
+              <div className="metric-pill">
+                <strong>{formatContractSource(latestLoadedContractRun.source)}</strong>
+                <span>latest source</span>
+              </div>
+              <div className="metric-pill">
+                <strong>
+                  {latestLoadedContractRun.window_start} to {latestLoadedContractRun.window_end}
+                </strong>
+                <span>current window</span>
+              </div>
+            </div>
+          ) : (
+            <p className="empty-state">
+              No opportunity sync has run yet. Refresh federal forecast, Grants.gov, SBA SUBNet, ESBD, Gmail RFQs, or the tracked municipal procurement sites to pull current opportunities.
+            </p>
+          )}
+
+          <p className="panel-subcopy opportunity-count-explainer">
+            "Fit matches" are records whose title, agency, codes, or scope text met the configured keyword score threshold. The tabs below count visible records after the current filters; they are not the same as the latest-source import totals above.
+          </p>
+
+          <div className="opportunity-tab-row" role="tablist" aria-label="Opportunity category tabs">
+            {OPPORTUNITY_CATEGORY_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={opportunityCategoryTab === tab.id}
+                className={`opportunity-tab${opportunityCategoryTab === tab.id ? " opportunity-tab-active" : ""}`}
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityCategoryTab(tab.id);
+                }}
+              >
+                <span>{tab.label}</span>
+                <strong>{categoryCounts[tab.id]}</strong>
+              </button>
+            ))}
+          </div>
+
+          <div className="source-filter-row" role="tablist" aria-label="Opportunity source filters">
+            {sourceFilters.map((sourceFilter) => {
+              const isActive =
+                sourceFilter.key === "all"
+                  ? selectedOpportunitySourceFilter === null
+                  : selectedOpportunitySourceFilter === sourceFilter.key;
+              return (
+                <button
+                  key={sourceFilter.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
+                  onClick={() => {
+                    setOpportunityPage(1);
+                    setSelectedOpportunitySourceFilter(sourceFilter.key === "all" ? null : sourceFilter.key);
+                    setSelectedOpportunitySourceContextFilter(null);
+                  }}
+                >
+                  <span>{sourceFilter.label}</span>
+                  <strong>{sourceFilter.count}</strong>
+                </button>
+              );
+            })}
+          </div>
+
+          {sourceContextFilters.length > 1 ? (
+            <div className="source-filter-row" role="tablist" aria-label="Opportunity context filters">
+              {sourceContextFilters.map((contextFilter) => {
+                const isActive =
+                  contextFilter.key === "all"
+                    ? selectedOpportunitySourceContextFilter === null
+                    : selectedOpportunitySourceContextFilter === contextFilter.key;
+                return (
+                  <button
+                    key={contextFilter.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`source-filter-button${isActive ? " source-filter-button-active" : ""}`}
+                    onClick={() => {
+                      setOpportunityPage(1);
+                      setSelectedOpportunitySourceContextFilter(
+                        contextFilter.key === "all" ? null : contextFilter.key,
+                      );
+                    }}
+                  >
+                    <span>{contextFilter.label}</span>
+                    <strong>{contextFilter.count}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {selectedOpportunitySourceFilter ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Source:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceFilter(null);
+                }}
+              >
+                {formatContractSource(selectedOpportunitySourceFilter)}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceFilter(null);
+                }}
+              >
+                Clear source
+              </button>
+            </div>
+          ) : null}
+
+          {selectedOpportunitySourceContextFilter ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Context:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceContextFilter(null);
+                }}
+              >
+                {formatContractSourceContextLabel(
+                  sourceContextFilters.find(
+                    (contextFilter) => contextFilter.key === selectedOpportunitySourceContextFilter,
+                  )?.label ?? null,
+                  selectedOpportunitySourceContextFilter,
+                )}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunitySourceContextFilter(null);
+                }}
+              >
+                Clear context
+              </button>
+            </div>
+          ) : null}
+
+          {selectedOpportunityTagFilter ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Filtering by tag:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunityTagFilter(null);
+                }}
+              >
+                {selectedOpportunityTagFilter.label}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setSelectedOpportunityTagFilter(null);
+                }}
+              >
+                Clear tag filter
+              </button>
+            </div>
+          ) : null}
+
+          {opportunityKeywordFilter.trim() ? (
+            <div className="active-tag-filter-row">
+              <span className="panel-subcopy">Filtering by keyword:</span>
+              <button
+                type="button"
+                className="tag filter-tag-button filter-tag-button-active"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter("");
+                }}
+              >
+                {opportunityKeywordFilter.trim()}
+              </button>
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setOpportunityKeywordFilter("");
+                }}
+              >
+                Clear keyword
+              </button>
+            </div>
+          ) : null}
+
+          <p className="panel-subcopy opportunity-tab-copy">
+            Tabs group opportunities by matched keywords, title, and scope text so you can jump between IT services,
+            real estate / property work, and everything else while keeping all sources merged into one ranked list.
+          </p>
+        </section>
+
+        {isAdminUser ? (
+          <>
+            <section className="panel">
+              <div className="panel-heading contract-toolbar">
+                <div>
+                  <p className="eyebrow">Agency Preferences</p>
+                  <h2>Bias the list toward target buyers</h2>
+                </div>
+              </div>
+
+              <p className="panel-subcopy">
+                Add agencies you want to prioritize. Matching agencies lift the `agency affinity` score and feed into
+                overall priority.
+              </p>
+
+              <form className="keyword-form" onSubmit={handleCreateAgencyPreference}>
+                <label>
+                  <span>Agency</span>
+                  <input
+                    value={agencyName}
+                    onChange={(event) => setAgencyName(event.target.value)}
+                    placeholder="Texas A&M University System"
+                  />
+                </label>
+                <label className="keyword-weight-field">
+                  <span>Affinity</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={agencyWeight}
+                    onChange={(event) => setAgencyWeight(Number(event.target.value) || DEFAULT_AGENCY_WEIGHT)}
+                  />
+                </label>
+                <div className="action-row keyword-form-actions">
+                  <button type="submit" disabled={savingAgencyPreference}>
+                    {savingAgencyPreference ? "Saving..." : "Add agency"}
+                  </button>
+                </div>
+              </form>
+
+              <div className="keyword-rule-stack keyword-rule-chip-list">
+                {agencyPreferences.length === 0 ? (
+                  <p className="empty-state">No preferred agencies are configured yet.</p>
+                ) : (
+                  agencyPreferences.map((preference) =>
+                    editingAgencyId === preference.id ? (
+                      <form
+                        className="keyword-rule-card keyword-rule-form"
+                        key={preference.id}
+                        onSubmit={handleUpdateAgencyPreference}
+                      >
+                        <label>
+                          <span>Agency</span>
+                          <input
+                            value={editingAgencyName}
+                            onChange={(event) => setEditingAgencyName(event.target.value)}
+                          />
+                        </label>
+                        <label className="keyword-weight-field">
+                          <span>Affinity</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={editingAgencyWeight}
+                            onChange={(event) =>
+                              setEditingAgencyWeight(Number(event.target.value) || DEFAULT_AGENCY_WEIGHT)
+                            }
+                          />
+                        </label>
+                        <div className="action-row keyword-rule-actions">
+                          <button type="submit" disabled={savingAgencyPreference}>
+                            {savingAgencyPreference ? "Saving..." : "Save"}
+                          </button>
+                          <button type="button" className="secondary-link" onClick={cancelEditingAgency}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="keyword-rule-chip" key={preference.id}>
+                        <div className="keyword-rule-chip-copy">
+                          <strong title={preference.agency_name}>{preference.agency_name}</strong>
+                          <span className="keyword-rule-chip-score">A{preference.weight}</span>
+                        </div>
+                        <div className="keyword-rule-chip-actions">
+                          <button
+                            type="button"
+                            className="secondary-link chip-action-button"
+                            onClick={() => startEditingAgency(preference)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-link destructive-button chip-action-button"
+                            onClick={() => void handleDeleteAgencyPreference(preference)}
+                            disabled={deletingAgencyId === preference.id}
+                          >
+                            {deletingAgencyId === preference.id ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                  )
+                )}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-heading contract-toolbar">
+                <div>
+                  <p className="eyebrow">Match Keywords</p>
+                  <h2>Control what counts as a fit</h2>
+                </div>
+              </div>
+
+              <p className="panel-subcopy">
+                Add, edit, or remove the keyword rules that score the stored federal, state, municipal, county,
+                regional, and Gmail opportunity feeds. Changes rescore the stored list immediately.
+              </p>
+
+              <form className="keyword-form" onSubmit={handleCreateKeyword}>
+                <label>
+                  <span>Keyword</span>
+                  <input
+                    value={keywordPhrase}
+                    onChange={(event) => setKeywordPhrase(event.target.value)}
+                    placeholder="property management"
+                  />
+                </label>
+                <label className="keyword-weight-field">
+                  <span>Score</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={25}
+                    value={keywordWeight}
+                    onChange={(event) => setKeywordWeight(Number(event.target.value) || DEFAULT_KEYWORD_WEIGHT)}
+                  />
+                </label>
+                <div className="action-row keyword-form-actions">
+                  <button type="submit" disabled={savingKeyword}>
+                    {savingKeyword ? "Saving..." : "Add keyword"}
+                  </button>
+                </div>
+              </form>
+
+              <div className="keyword-rule-stack keyword-rule-chip-list">
+                {keywordRules.length === 0 ? (
+                  <p className="empty-state">No keyword rules are configured yet.</p>
+                ) : (
+                  keywordRules.map((rule) =>
+                    editingKeywordId === rule.id ? (
+                      <form className="keyword-rule-card keyword-rule-form" key={rule.id} onSubmit={handleUpdateKeyword}>
+                        <label>
+                          <span>Keyword</span>
+                          <input
+                            value={editingKeywordPhrase}
+                            onChange={(event) => setEditingKeywordPhrase(event.target.value)}
+                          />
+                        </label>
+                        <label className="keyword-weight-field">
+                          <span>Score</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={25}
+                            value={editingKeywordWeight}
+                            onChange={(event) =>
+                              setEditingKeywordWeight(Number(event.target.value) || DEFAULT_KEYWORD_WEIGHT)
+                            }
+                          />
+                        </label>
+                        <div className="action-row keyword-rule-actions">
+                          <button type="submit" disabled={savingKeyword}>
+                            {savingKeyword ? "Saving..." : "Save"}
+                          </button>
+                          <button type="button" className="secondary-link" onClick={cancelEditingKeyword}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="keyword-rule-chip" key={rule.id}>
+                        <div className="keyword-rule-chip-copy">
+                          <strong title={rule.phrase}>{rule.phrase}</strong>
+                          <span className="keyword-rule-chip-score">+{rule.weight}</span>
+                        </div>
+                        <div className="keyword-rule-chip-actions">
+                          <button
+                            type="button"
+                            className="secondary-link chip-action-button"
+                            onClick={() => startEditingKeyword(rule)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-link destructive-button chip-action-button"
+                            onClick={() => void handleDeleteKeyword(rule)}
+                            disabled={deletingKeywordId === rule.id}
+                          >
+                            {deletingKeywordId === rule.id ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                  )
+                )}
+              </div>
+            </section>
+          </>
+        ) : null}
+
+        {!hasVisibleContracts ? (
+          <section className="panel">
+            <p className="empty-state">
+              {buildOpportunityEmptyStateMessage(
+                opportunityCategoryTab,
+                selectedOpportunitySourceFilter,
+                selectedOpportunitySourceContextFilter,
+                selectedOpportunityTagFilter,
+                opportunityKeywordFilter,
+              )}
+            </p>
+          </section>
+        ) : (
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Combined Feed</p>
+                <h2>Consolidated opportunities</h2>
+              </div>
+              <span>{displayedContracts.length} shown</span>
+            </div>
+            <p className="panel-subcopy combined-feed-copy">
+              All loaded sources are consolidated here. Use the source, category, tag, and keyword filters above to
+              narrow the list without switching panels.
+            </p>
+            <div className="pagination-row">
+              <span>
+                Showing {pageStart}-{pageEnd} of {opportunitySearch.total}
+              </span>
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="secondary-link"
+                  disabled={opportunityPage <= 1}
+                  onClick={() => setOpportunityPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {opportunityPage} of {totalOpportunityPages}
+                </span>
+                <button
+                  type="button"
+                  className="secondary-link"
+                  disabled={opportunityPage >= totalOpportunityPages}
+                  onClick={() => setOpportunityPage((current) => Math.min(totalOpportunityPages, current + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            <div className="stack">{displayedContracts.map(renderContractCard)}</div>
+          </section>
+        )}
+      </>
+    );
+  }
+
+  if (authInitializing || !authConfig || opportunitiesAuthStatus === "checking") {
+    return (
+      <main className="page-shell workspace-gate-shell">
+        <section className="panel auth-panel workspace-auth-panel">
+          <p className="eyebrow">LeCrown Development</p>
+          <h1>Checking workspace access</h1>
+          <p className="panel-subcopy">Verifying your protected back-office session.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+    if (authConfig.mode === "google_workspace") {
+      const allowedDomain = authConfig.allowed_domains[0] ?? "lecrowndevelopment.com";
+      return (
+        <main className="page-shell workspace-gate-shell">
+          <section className="hero-card workspace-auth-hero">
+            <div>
+              <p className="eyebrow">LeCrown Development</p>
+              <h1>Private company workspace</h1>
+              <p className="hero-copy">
+                Sign in with an active @{allowedDomain} Google Workspace account to open the back office.
+              </p>
+            </div>
+            <span className="hero-badge">Workspace only</span>
+          </section>
+
+          {authMessage ? <div className="message-banner auth-banner">{authMessage}</div> : null}
+
+          <section className="panel auth-panel workspace-auth-panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Protected Access</p>
+                <h2>Continue with Google</h2>
+              </div>
+            </div>
+            <p className="panel-subcopy">
+              Personal Gmail accounts and users outside the LeCrown Development Workspace are rejected by the server.
+            </p>
+            {authConfig.ready ? (
+              <div className="google-signin-stack">
+                <div ref={googleButtonRef} className="google-signin-button" aria-live="polite" />
+                {loggingIn ? <span>Verifying Workspace membership...</span> : null}
+              </div>
+            ) : (
+              <div className="message-banner auth-banner">
+                Workspace sign-in is not configured. Contact the LeCrown administrator.
+              </div>
+            )}
+          </section>
+        </main>
+      );
+    }
+
+    return (
+      <main className="page-shell workspace-gate-shell">
+        {renderProtectedAuthPanel({
+          eyebrow: "Back-office Access",
+          title: "Sign in to LeCrown Platform",
+          subcopy: "Use your existing invited account to continue.",
+        })}
+      </main>
+    );
+  }
+
+  return (
+    <main className="page-shell">
+      <nav className="view-nav">
+        <button
+          type="button"
+          className={`nav-pill${view === "dashboard" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("dashboard")}
+        >
+          Dashboard
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "intake" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("intake")}
+        >
+          Marketing Intake
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "opportunities" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("opportunities")}
+        >
+          Opportunities
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "certifications" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("certifications")}
+        >
+          Certifications
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "sources" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("sources")}
+        >
+          Sources
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "billing" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("billing")}
+        >
+          Billing
+        </button>
+        <button
+          type="button"
+          className={`nav-pill${view === "profile" ? " nav-pill-active" : ""}`}
+          onClick={() => navigateToView("profile")}
+        >
+          Profile
+        </button>
+      </nav>
+
+      <section className="hero-card">
+        <div>
+          <p className="eyebrow">LeCrown Platform</p>
+          <h1>
+            {view === "dashboard"
+              ? "LeCrown Development control room"
+              : view === "intake"
+              ? "Marketing intake and CRM funnel"
+              : view === "certifications"
+              ? "Government certification progress tracker"
+              : view === "sources"
+              ? "eProcurement source automation registry"
+              : view === "billing"
+                ? "Protected invoice creation and Gmail draft workflow"
+              : view === "profile"
+                ? "Profile and Workspace access"
+                : "Opportunity list and lead-funnel review"}
+          </h1>
+          <p className="hero-copy">
+            {view === "dashboard"
+              ? "Manage Development content, publishing, and business intake from one workspace."
+              : view === "intake"
+              ? "Inspect intake health across connected sites, confirm CRM delivery is wired, and review the newest contacts entering the funnel."
+              : view === "certifications"
+              ? "Track certification lanes, buyer portal requirements, reusable evidence, document portal slots, and capability statement drafts before bid deadlines start compressing the work."
+              : view === "sources"
+              ? "Review every procurement source feeding the funnel, see what automation is active for each one, and identify which portals still need a deeper integration."
+              : view === "billing"
+                ? "Prepare LeCrown invoices, generate the exact platform PDF on the backend, and create a Gmail draft with the PDF attached without leaving the admin surface."
+              : view === "profile"
+                ? "Review your verified LeCrown Google Workspace identity and application role."
+                : "Review matched federal forecast opportunities, Grants.gov opportunities, SBA SUBNet subcontracting opportunities, ESBD opportunities, and Gmail RFQs, then push strong fits into the CRM lead funnel."}
+          </p>
+        </div>
+
+        {view === "dashboard" ? (
+          <label className="tenant-picker">
+            <span>Tenant</span>
+            <select
+              value={tenant}
+              onChange={(event) => {
+                const nextTenant = event.target.value as Tenant;
+                setTenant(nextTenant);
+                setForm(buildInitialForm(nextTenant));
+              }}
+            >
+              <option value="development">Development</option>
+
+            </select>
+          </label>
+        ) : (
+          <div className="hero-side">
+            <span className="hero-badge">
+              {opportunitiesAuthStatus === "authenticated"
+                ? currentAdmin?.is_admin
+                  ? "Admin signed in"
+                  : "Member signed in"
+                : authConfig.mode === "google_workspace"
+                  ? "Workspace access"
+                  : "Invite-only access"}
+            </span>
+            {currentAdmin ? (
+              <div className="hero-account-copy">
+                <strong>{currentAdmin.username}</strong>
+                <span>{currentAdmin.email}</span>
+              </div>
+            ) : null}
+            {opportunitiesAuthStatus === "authenticated" ? (
+              <button type="button" className="secondary-link" onClick={handleLogout}>
+                Log out
+              </button>
+            ) : null}
+          </div>
+        )}
+      </section>
+
+      {message ? (
+        <div className="message-banner">
+          <span>{message}</span>
+          {showFunnelShortcut && message.toLowerCase().includes("funnel") ? (
+            <button
+              type="button"
+              className="secondary-link message-action"
+              onClick={() => {
+                navigateToView("intake");
+                void refreshIntakeDashboard();
+              }}
+            >
+              View funnel
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {view === "dashboard"
+        ? renderDashboard()
+        : view === "intake"
+          ? renderIntakePage()
+          : view === "certifications"
+            ? renderCertificationsPage()
+          : view === "sources"
+            ? renderSourcesPage()
+          : view === "billing"
+            ? renderBillingPage()
+          : view === "profile"
+            ? renderProfilePage()
+            : renderOpportunitiesPage()}
+    </main>
+  );
+}
+
+function getEnabledChannels(item: Pick<Content, "distribution">): DistributionChannel[] {
+  const channels: DistributionChannel[] = [];
+  if (item.distribution.linkedin) {
+    channels.push("linkedin");
+  }
+  if (item.distribution.youtube) {
+    channels.push("youtube");
+  }
+  if (item.distribution.website) {
+    channels.push("website");
+  }
+  if (item.distribution.twitter) {
+    channels.push("twitter");
+  }
+  return channels;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Something went wrong.";
+}
+
+function buildInviteCreateMessage(invite: UserInviteCreateResponse): string {
+  const parts = [invite.reissued_existing ? "Invite refreshed." : "Invite created."];
+  if (invite.email_delivery_status === "sent") {
+    parts.push(`Email sent to ${invite.email}.`);
+    return parts.join(" ");
+  }
+  if (invite.email_delivery_detail) {
+    parts.push(invite.email_delivery_detail);
+    return parts.join(" ");
+  }
+  parts.push("Copy the invite code manually.");
+  return parts.join(" ");
+}
+
+function formatDateLabel(value?: string | null, time?: string | null): string {
+  if (!value) {
+    return "n/a";
+  }
+  return time ? `${value} at ${time}` : value;
+}
+
+function formatTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
+}
+
+function formatIntakeConnectionStatus(status: string): string {
+  if (status === "configured") {
+    return "Configured";
+  }
+  if (status === "protected") {
+    return "Protected";
+  }
+  if (status === "attention") {
+    return "Needs attention";
+  }
+  if (status === "open") {
+    return "Open";
+  }
+  return status;
+}
+
+function formatIntakeDeliveryStatus(status: string): string {
+  if (status === "delivered") {
+    return "Delivered";
+  }
+  if (status === "failed") {
+    return "Failed";
+  }
+  if (status === "pending") {
+    return "Pending";
+  }
+  if (status === "processed") {
+    return "Processed";
+  }
+  return status;
+}
+
+function formatIntakeSourceType(sourceType: string): string {
+  return sourceType
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getIntakeStatusBadgeClass(status: string): string {
+  if (status === "configured" || status === "delivered" || status === "processed") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "protected" || status === "pending" || status === "open") {
+    return "status-badge status-badge-warn";
+  }
+  if (status === "attention" || status === "failed") {
+    return "status-badge status-badge-bad";
+  }
+  return "status-badge status-badge-neutral";
+}
+
+function getCertificationStatusBadgeClass(status: string): string {
+  if (status === "Certified" || status === "Credentials received" || status === "In progress") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "Needs verification" || status === "Decision needed" || status === "Eligibility unknown") {
+    return "status-badge status-badge-warn";
+  }
+  if (status === "Not started") {
+    return "status-badge status-badge-neutral";
+  }
+  return "status-badge status-badge-warn";
+}
+
+function getCertificationStepBadgeClass(state: CertificationStep["state"]): string {
+  if (state === "ready") {
+    return "status-badge status-badge-good";
+  }
+  if (state === "in_progress") {
+    return "status-badge status-badge-warn";
+  }
+  if (state === "blocked") {
+    return "status-badge status-badge-bad";
+  }
+  return "status-badge status-badge-neutral";
+}
+
+function getCertificationActivityBadgeClass(status: CertificationActivity["status"]): string {
+  if (status === "done") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "next") {
+    return "status-badge status-badge-warn";
+  }
+  return "status-badge status-badge-neutral";
+}
+
+function formatCertificationActivityStatus(status: CertificationActivity["status"]): string {
+  if (status === "done") {
+    return "Recorded";
+  }
+  if (status === "next") {
+    return "Next action";
+  }
+  return "Info";
+}
+
+function formatNigpPreview(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .split(/[;|]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" | ");
+}
+
+function getScoreBreakdownValue(contract: GovContractOpportunity, key: string): number | null {
+  const value = contract.score_breakdown?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+function getMatchedAgencyPreferences(contract: GovContractOpportunity): string[] {
+  const value = contract.score_breakdown?.matched_agency_preferences;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function getClosenessScore(contract: GovContractOpportunity): number {
+  return getScoreBreakdownValue(contract, "closeness") ?? Math.max(0, Math.min(10, Math.round(contract.score / 2)));
+}
+
+function formatContractSource(source: string): string {
+  if (source === "gmail_rfqs") {
+    return "Gmail RFQs";
+  }
+  if (source === "federal_forecast") {
+    return "Federal Forecast";
+  }
+  if (source === "grants_gov") {
+    return "Grants.gov";
+  }
+  if (source === "sba_subnet") {
+    return "SBA SUBNet";
+  }
+  if (source === "txsmartbuy_esbd") {
+    return "Texas ESBD";
+  }
+  if (source === "city_austin_afo") {
+    return "City of Austin";
+  }
+  if (source === "city_san_antonio_bids") {
+    return "City of San Antonio";
+  }
+  if (source === "city_fort_worth_bonfire") {
+    return "City of Fort Worth";
+  }
+  if (source === "city_el_paso_ionwave") {
+    return "City of El Paso";
+  }
+  if (source === "harris_county_bonfire") {
+    return "Harris County";
+  }
+  if (source === "travis_county_bidnet") {
+    return "Travis County";
+  }
+  if (source === "tarrant_county_ionwave") {
+    return "Tarrant County";
+  }
+  if (source === "collin_county_ionwave") {
+    return "Collin County";
+  }
+  if (source === "dallas_county_official") {
+    return "Dallas County";
+  }
+  if (source === "dallas_county_bidnet") {
+    return "Dallas County BidNet";
+  }
+  if (source === "capmetro_planetbids") {
+    return "CapMetro";
+  }
+  if (source === "houston_metro_procurement") {
+    return "Houston METRO";
+  }
+  if (source === "dart_procurement") {
+    return "DART";
+  }
+  if (source === "h_gac_procurement") {
+    return "H-GAC";
+  }
+  return source.split("_").join(" ");
+}
+
+function formatContractSourceContextLabel(
+  label?: string | null,
+  fallbackContext?: string | null,
+): string {
+  if (label) {
+    return label;
+  }
+  if (!fallbackContext) {
+    return "Unknown context";
+  }
+  return fallbackContext.split("_").join(" ");
+}
+
+function formatTrackedSourceJurisdiction(value: string): string {
+  if (value === "federal") {
+    return "Federal";
+  }
+  if (value === "state") {
+    return "State";
+  }
+  if (value === "city") {
+    return "City";
+  }
+  if (value === "county") {
+    return "County";
+  }
+  if (value === "regional") {
+    return "Regional";
+  }
+  if (value === "university") {
+    return "University";
+  }
+  if (value === "advisory") {
+    return "Advisory";
+  }
+  if (value === "aggregator") {
+    return "Aggregator";
+  }
+  if (value === "corporate") {
+    return "Corporate";
+  }
+  return value;
+}
+
+function formatTrackedSourceResourceType(value: string): string {
+  const labels: Record<string, string> = {
+    opportunity_feed: "Opportunity source",
+    vendor_registration: "Vendor registration",
+    certification_portal: "Certification portal",
+    certification_program: "Certification program",
+    subcontracting_directory: "Subcontracting channel",
+    advisory_organization: "Advisory organization",
+    supplier_diversity: "Supplier diversity",
+    buyer_resource: "Buyer resource",
+  };
+  return labels[value] ?? value.split("_").join(" ");
+}
+
+function formatTrackedSourceMode(value: string): string {
+  if (value === "csv_export_api") {
+    return "CSV export API";
+  }
+  if (value === "csv_export") {
+    return "CSV export";
+  }
+  if (value === "json_api") {
+    return "JSON API";
+  }
+  if (value === "paginated_html") {
+    return "Paginated HTML";
+  }
+  if (value === "html_table") {
+    return "HTML table";
+  }
+  if (value === "html_cards") {
+    return "HTML cards";
+  }
+  if (value === "browser_required") {
+    return "Browser required";
+  }
+  if (value === "anti_bot_blocked") {
+    return "Anti-bot blocked";
+  }
+  if (value === "iframe_embed") {
+    return "Iframe embed";
+  }
+  if (value === "manual_review") {
+    return "Manual review";
+  }
+  if (value === "reference_link") {
+    return "Reference link";
+  }
+  if (value === "login_required") {
+    return "Login required";
+  }
+  return value.split("_").join(" ");
+}
+
+function formatTrackedSourceLoadScope(value: string): string {
+  if (value === "opportunities") {
+    return "Loads opportunities";
+  }
+  if (value === "catalog_only") {
+    return "Catalog and status only";
+  }
+  return value.split("_").join(" ");
+}
+
+function formatTrackedSourceStatus(status?: string | null, resourceType = "opportunity_feed"): string {
+  if (!status) {
+    return resourceType === "opportunity_feed" ? "Not checked" : "Reference";
+  }
+  if (status === "completed") {
+    return "Loaded";
+  }
+  if (status === "cataloged") {
+    return "Cataloged";
+  }
+  if (status === "manual_review") {
+    return "Needs review";
+  }
+  if (status === "blocked") {
+    return "Blocked";
+  }
+  if (status === "failed") {
+    return "Failed";
+  }
+  return status.split("_").join(" ");
+}
+
+function getTrackedSourceStatusBadgeClass(status?: string | null): string {
+  if (status === "completed") {
+    return "status-badge status-badge-good";
+  }
+  if (status === "cataloged" || status === "manual_review") {
+    return "status-badge status-badge-warn";
+  }
+  if (status === "blocked" || status === "failed") {
+    return "status-badge status-badge-bad";
+  }
+  return "status-badge status-badge-neutral";
+}
+
+function formatFunnelLabel(contract: GovContractOpportunity): string {
+  if (contract.funnel_delivery_status === "delivered") {
+    return "in CRM";
+  }
+  if (contract.funnel_delivery_status === "failed") {
+    return "CRM sync failed";
+  }
+  return contract.funnel_status;
+}
+
+function createGoogleNonce(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+function formatInviteStatus(invite: UserInvite): string {
+  if (invite.revoked_at) {
+    return "revoked";
+  }
+  if (invite.accepted_at) {
+    return "accepted";
+  }
+  const expiresAt = new Date(invite.expires_at);
+  if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+    return "expired";
+  }
+  return "pending";
+}
+
+function normalizeOpportunityCategoryText(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  return value.replace(/[^a-z0-9]+/gi, " ").trim().toLowerCase();
+}
+
+function normalizeOpportunityTagFilterValue(value: string): string {
+  return normalizeOpportunityCategoryText(value);
+}
+
+function buildOpportunityKeywordTerms(value: string): string[] {
+  return normalizeOpportunityCategoryText(value)
+    .split(" ")
+    .map((term) => term.trim())
+    .filter(Boolean);
+}
+
+function isOpportunityTagFilterActive(
+  currentFilter: OpportunityTagFilter | null,
+  candidate: OpportunityTagFilter,
+): boolean {
+  return (
+    currentFilter?.kind === candidate.kind &&
+    normalizeOpportunityTagFilterValue(currentFilter.value) === normalizeOpportunityTagFilterValue(candidate.value)
+  );
+}
+
+function buildOpportunitySourceLoadList(
+  sources: GovContractTrackedSource[],
+  capabilities: GovContractCapabilities,
+): string[] {
+  const sourceKeys = new Set<string>();
+  if (capabilities.gmail_rfq_sync_enabled) {
+    sourceKeys.add("gmail_rfqs");
+  }
+  for (const source of sources) {
+    if (!source.active || source.load_scope !== "opportunities") {
+      continue;
+    }
+    sourceKeys.add(source.source);
+  }
+  return [...sourceKeys];
+}
+
+function dedupeGovContractsById(contracts: GovContractOpportunity[]): GovContractOpportunity[] {
+  const seenIds = new Set<string>();
+  const deduped: GovContractOpportunity[] = [];
+  for (const contract of contracts) {
+    if (seenIds.has(contract.id)) {
+      continue;
+    }
+    seenIds.add(contract.id);
+    deduped.push(contract);
+  }
+  return sortContractsForDisplay(deduped);
+}
+
+function getOpportunityCategories(contract: GovContractOpportunity): OpportunityCategoryTab[] {
+  const opportunityCategories = contract.opportunity_categories ?? [];
+  if (opportunityCategories.length > 0) {
+    return opportunityCategories.filter(
+      (category): category is OpportunityCategoryTab =>
+        category === "it_services" || category === "property_services" || category === "other",
+    );
+  }
+  return ["other"];
+}
+
+function getOpportunityDisplayTags(contract: GovContractOpportunity): string[] {
+  const autoTags = contract.auto_tags ?? [];
+  const tags = new Set<string>();
+
+  for (const value of [...autoTags, ...contract.matched_keywords]) {
+    const normalizedValue = normalizeOpportunityTagFilterValue(value);
+    if (!normalizedValue || tags.has(normalizedValue)) {
+      continue;
+    }
+    tags.add(normalizedValue);
+  }
+
+  return [...tags].map((normalizedTag) => {
+    const exactAutoTag = autoTags.find((tag) => normalizeOpportunityTagFilterValue(tag) === normalizedTag);
+    if (exactAutoTag) {
+      return exactAutoTag;
+    }
+    return (
+      contract.matched_keywords.find((keyword) => normalizeOpportunityTagFilterValue(keyword) === normalizedTag) ??
+      normalizedTag
+    );
+  });
+}
+
+function matchesOpportunityCategoryTab(
+  contract: GovContractOpportunity,
+  tab: OpportunityCategoryTab,
+): boolean {
+  if (tab === "all") {
+    return true;
+  }
+  return getOpportunityCategories(contract).includes(tab);
+}
+
+function filterContractsByOpportunityCategory(
+  contracts: GovContractOpportunity[],
+  tab: OpportunityCategoryTab,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunityCategoryTab(contract, tab));
+}
+
+function matchesOpportunityTagFilter(
+  contract: GovContractOpportunity,
+  filter: OpportunityTagFilter | null,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+
+  const normalizedValue = normalizeOpportunityTagFilterValue(filter.value);
+  if (!normalizedValue) {
+    return true;
+  }
+
+  if (filter.kind === "source") {
+    return normalizeOpportunityTagFilterValue(contract.source) === normalizedValue;
+  }
+  if (filter.kind === "tag") {
+    return getOpportunityDisplayTags(contract).some(
+      (tag) => normalizeOpportunityTagFilterValue(tag) === normalizedValue,
+    );
+  }
+  return getMatchedAgencyPreferences(contract).some(
+    (agencyName) => normalizeOpportunityTagFilterValue(agencyName) === normalizedValue,
+  );
+}
+
+function filterContractsByOpportunityTag(
+  contracts: GovContractOpportunity[],
+  filter: OpportunityTagFilter | null,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunityTagFilter(contract, filter));
+}
+
+function matchesOpportunitySourceFilter(
+  contract: GovContractOpportunity,
+  sourceFilter: string | null,
+): boolean {
+  if (!sourceFilter) {
+    return true;
+  }
+  return contract.source === sourceFilter;
+}
+
+function filterContractsByOpportunitySource(
+  contracts: GovContractOpportunity[],
+  sourceFilter: string | null,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunitySourceFilter(contract, sourceFilter));
+}
+
+function matchesOpportunitySourceContextFilter(
+  contract: GovContractOpportunity,
+  sourceContextFilter: string | null,
+): boolean {
+  if (!sourceContextFilter) {
+    return true;
+  }
+  return contract.source_context === sourceContextFilter;
+}
+
+function filterContractsByOpportunitySourceContext(
+  contracts: GovContractOpportunity[],
+  sourceContextFilter: string | null,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) =>
+    matchesOpportunitySourceContextFilter(contract, sourceContextFilter),
+  );
+}
+
+function matchesOpportunityKeywordFilter(
+  contract: GovContractOpportunity,
+  keywordFilter: string,
+): boolean {
+  const filterTerms = buildOpportunityKeywordTerms(keywordFilter);
+  if (filterTerms.length === 0) {
+    return true;
+  }
+
+  const haystackWords = normalizeOpportunityCategoryText(
+    [
+      contract.title,
+      contract.agency_name,
+      contract.agency_number,
+      contract.solicitation_id,
+      contract.nigp_codes,
+      formatContractSource(contract.source),
+      contract.source_context_label,
+      ...getOpportunityDisplayTags(contract),
+      ...getMatchedAgencyPreferences(contract),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  )
+    .split(" ")
+    .filter(Boolean);
+
+  return filterTerms.every((term) =>
+    haystackWords.some((word) => word === term || (term.length >= 4 && word.startsWith(term))),
+  );
+}
+
+function filterContractsByOpportunityKeyword(
+  contracts: GovContractOpportunity[],
+  keywordFilter: string,
+): GovContractOpportunity[] {
+  return contracts.filter((contract) => matchesOpportunityKeywordFilter(contract, keywordFilter));
+}
+
+function parseOpportunityTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function sortContractsForDisplay(contracts: GovContractOpportunity[]): GovContractOpportunity[] {
+  return [...contracts].sort((left, right) => {
+    if (right.priority_score !== left.priority_score) {
+      return right.priority_score - left.priority_score;
+    }
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    return parseOpportunityTimestamp(right.last_seen_at) - parseOpportunityTimestamp(left.last_seen_at);
+  });
+}
+
+function formatOpportunityCategoryTabLabel(tab: OpportunityCategoryTab): string {
+  if (tab === "all") {
+    return "All opportunities";
+  }
+  if (tab === "it_services") {
+    return "IT services";
+  }
+  if (tab === "property_services") {
+    return "Real estate / property";
+  }
+  return "Other opportunities";
+}
+
+function getOpportunityCategoryEmptyState(
+  defaultMessage: string,
+  sourceLabel: string,
+  tab: OpportunityCategoryTab,
+  sourceFilter: string | null,
+  sourceContextFilter: string | null,
+  tagFilter: OpportunityTagFilter | null,
+  keywordFilter: string,
+): string {
+  const normalizedKeywordFilter = keywordFilter.trim();
+  if (tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter && !normalizedKeywordFilter) {
+    return defaultMessage;
+  }
+  const pieces = [`No ${sourceLabel.toLowerCase()} opportunities match`];
+  if (tab !== "all") {
+    pieces.push(`the ${formatOpportunityCategoryTabLabel(tab).toLowerCase()} tab`);
+  }
+  if (sourceFilter) {
+    pieces.push(
+      tab === "all"
+        ? `the ${formatContractSource(sourceFilter).toLowerCase()} source`
+        : `and the ${formatContractSource(sourceFilter).toLowerCase()} source`,
+    );
+  }
+  if (sourceContextFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter
+        ? `the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`
+        : `and the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`,
+    );
+  }
+  if (tagFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter && !sourceContextFilter
+        ? `the "${tagFilter.label}" tag`
+        : `and the "${tagFilter.label}" tag`,
+    );
+  }
+  if (normalizedKeywordFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter
+        ? `the keyword "${normalizedKeywordFilter}"`
+        : `and the keyword "${normalizedKeywordFilter}"`,
+    );
+  }
+  return `${pieces.join(" ")}.`;
+}
+
+function buildOpportunityEmptyStateMessage(
+  tab: OpportunityCategoryTab,
+  sourceFilter: string | null,
+  sourceContextFilter: string | null,
+  tagFilter: OpportunityTagFilter | null,
+  keywordFilter: string,
+): string {
+  const normalizedKeywordFilter = keywordFilter.trim();
+  if (tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter && !normalizedKeywordFilter) {
+    return "No opportunities match the current view filters.";
+  }
+
+  const pieces = ["No opportunities match"];
+  if (tab !== "all") {
+    pieces.push(`the ${formatOpportunityCategoryTabLabel(tab).toLowerCase()} tab`);
+  }
+  if (sourceFilter) {
+    pieces.push(
+      tab === "all"
+        ? `the ${formatContractSource(sourceFilter).toLowerCase()} source`
+        : `and the ${formatContractSource(sourceFilter).toLowerCase()} source`,
+    );
+  }
+  if (sourceContextFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter
+        ? `the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`
+        : `and the ${formatContractSourceContextLabel(null, sourceContextFilter).toLowerCase()} context`,
+    );
+  }
+  if (tagFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter && !sourceContextFilter
+        ? `the "${tagFilter.label}" tag`
+        : `and the "${tagFilter.label}" tag`,
+    );
+  }
+  if (normalizedKeywordFilter) {
+    pieces.push(
+      tab === "all" && !sourceFilter && !sourceContextFilter && !tagFilter
+        ? `the keyword "${normalizedKeywordFilter}"`
+        : `and the keyword "${normalizedKeywordFilter}"`,
+    );
+  }
+  return `${pieces.join(" ")}.`;
+}

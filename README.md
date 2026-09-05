@@ -1,498 +1,165 @@
-# LeCrown Platform
+# metroLecrown — Development and Government Contracting
 
-Multi-tenant backend and admin surface for:
+This is the canonical workspace for LeCrown Development and government contracting.
+The GitHub repository is `benlagrone/lecrown-platform`. Application code lives in
+`platform/`; certification records and the browser tracker live in `data/` and
+`tracker/`. LeCrown Properties and its brokerage workflows remain a separate project.
 
-- `lecrowndevelopment.com`
-- `lecrownproperties.com`
+## Run and Validate
 
-The platform keeps content, transformation, distribution, tenant-scoped inquiry handling, and cross-site intake inside one codebase. The current tenant-scoped paths still use `development` or `properties`, while generalized lead ingestion starts at `POST /intake/lead`.
-
-## Structure
-
-```text
-backend/
-docs/
-frontend/
-ops/
-docker-compose.yml
-.env.example
-Makefile
-README.md
-```
-
-## What is implemented
-
-- FastAPI backend with tenant-aware `content`, `inquiry`, `linkedin`, `youtube`, `distribution`, `intake`, and `auth` routes
-- Stripe-backed billing API for shared app accounts, checkout, customer portal, webhook sync, and entitlement lookup
-- SQLite persistence through SQLAlchemy
-- Minimal React admin for creating canonical content, choosing output channels, and viewing property inquiries
-- Transform layer that adapts one content record into channel-specific payloads
-- LinkedIn publish service wired to tenant-specific organization IDs
-- YouTube upload service wired for per-tenant OAuth access or refresh tokens
-- Intake pipeline that stores inbound site leads and forwards them to `EspoCRM`
-- Video worker client that can call a separate render server over HTTP or run in stub mode
-
-## Licensed HAR Back Office
-
-The platform-owned handoff for an agents-only Repliers / HAR property
-intelligence workspace starts at:
-
-- [docs/repliers-har/README.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/repliers-har/README.md)
-
-Current state is `licensing approved`, while the portal remains `sample-only`
-and no HAR response has been validated. The initial implementation must use
-synthetic fixtures and the existing authenticated admin boundary. Live provider
-calls, credentials, deployment, CRM writes, outreach, public listing display,
-and bulk export remain separately gated.
-
-## API overview
-
-- `POST /content/create`
-- `GET /content/list?tenant=development|properties`
-- `POST /contracts/refresh`
-- `POST /contracts/{id}/funnel`
-- `GET /contracts/list`
-- `GET /contracts/runs`
-- `GET /contracts/export.csv`
-- `GET|POST|PATCH|DELETE /contracts/keywords`
-- `GET|POST|PATCH|DELETE /contracts/agency-preferences`
-- `POST /intake/lead`
-- `GET /intake/list`
-- `POST /inquiry/create`
-- `GET /inquiry/list`
-- `POST /linkedin/publish`
-- `POST /youtube/publish`
-- `POST /distribution/publish`
-- `POST /auth/login`
-- `GET /auth/me`
-- `GET|POST /billing/apps`
-- `GET /billing/accounts`
-- `POST /billing/accounts`
-- `GET|POST /billing/accounts/{account_id}/memberships`
-- `GET|POST /billing/entitlements`
-- `GET|POST /billing/products`
-- `GET|POST /billing/prices`
-- `POST /billing/checkout/session`
-- `POST /billing/portal/session`
-- `GET /billing/accounts/{account_id}/entitlements`
-- `GET /billing/accounts/{account_id}/subscriptions`
-- `POST /billing/webhooks/stripe`
-- `GET /healthz`
-
-## Local run
-
-### Backend
+From this repository root:
 
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+./scripts/platform.sh setup       # Install backend and frontend dependencies
+./scripts/platform.sh backend     # API: http://127.0.0.1:8000
+./scripts/platform.sh frontend    # Admin: http://127.0.0.1:3000 (another terminal)
+./scripts/serve-cert-tracker.sh    # Tracker: http://127.0.0.1:8765/tracker/
+./scripts/platform.sh verify      # Backend tests, frontend build, tracker validation
 ```
 
-### Frontend
+Use Python 3.12 and Node.js 22.12 or newer. Local application setup starts with
+a fresh Development database; it does not import the Properties database or
+configure external CRM, Gmail, billing, or publishing credentials. See
+[platform/README.md](platform/README.md) for application configuration.
+
+Setup generates a unique local admin password and signing key in the ignored
+`platform/.env` file. Use its `ADMIN_USERNAME` and `ADMIN_PASSWORD` to sign in.
+Existing settings are preserved. No account is bootstrapped without a configured
+password; Google Workspace authentication remains separately configurable.
+
+The `publish-images.yml` workflow retained from upstream is a manually dispatched
+compatibility bridge for `lecrown-properties-platform`, not a Development release
+workflow. Deployment remains owned by the workspace deployment capability.
+
+## Government Certification Portfolio Tracker
+
+This project is the working folder for getting multiple companies ready to
+pursue government contracts. The immediate goal is to move certifications from
+informal intent into a tracked portfolio with companies, owners, dates,
+evidence, and maintenance tasks.
+
+## Start Here
+
+1. Open [docs/certification-tracker.md](docs/certification-tracker.md).
+2. Add every company to [data/companies.csv](data/companies.csv).
+3. Add each company/certification pairing to
+   [data/company-certifications.csv](data/company-certifications.csv).
+4. Work the "This Week" checklist first.
+5. Update the status table every time a portal task, document request, or
+   agency response changes.
+6. Track document storage and portal upload status in
+   [data/document-portal-map.csv](data/document-portal-map.csv).
+7. Keep sensitive credentials in `.local/`; do not move them into docs.
+
+## Drawer Browser View
+
+Open the browser-facing tracker from the project root:
 
 ```bash
-cd frontend/admin
-npm install
-npm run dev
+./scripts/serve-cert-tracker.sh
 ```
 
-The admin app defaults to `http://localhost:8000` for the API.
-
-Copy `.env.example` to `.env` before running the stack locally.
-
-For production:
-
-- build the back office with `VITE_API_BASE_URL=/api`
-- set `PUBLIC_APP_URL=https://backoffice.lecrownproperties.com`
-- set `CORS_ORIGINS` to the public admin origin
-- include `backoffice.lecrownproperties.com` in `ALLOWED_HOSTS`
-- replace the default `SECRET_KEY` and `ADMIN_PASSWORD`
-- set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `BILLING_SERVICE_KEYS` before enabling billing flows
-- leave `GMAIL_RFQ_FEED_URL` blank unless the Gmail RFQ sidecar service exists in that environment
-
-## Content model shape
-
-Canonical content is stored once and carries distribution intent plus media state:
-
-```json
-{
-  "tenant": "development",
-  "type": "insight",
-  "title": "Why warehouse operations break down",
-  "body": "Communication failures create delays and cost leakage.",
-  "tags": ["operations", "industrial"],
-  "distribution": {
-    "linkedin": true,
-    "youtube": true,
-    "website": true,
-    "twitter": false
-  },
-  "media": {
-    "video_generated": false,
-    "video_path": "/videos/warehouse.mp4",
-    "video_url": null,
-    "render_status": null,
-    "render_job_id": null,
-    "youtube_video_id": null,
-    "youtube_status": null
-  }
-}
-```
-
-## Docker run
-
-```bash
-docker compose up --build
-```
-
-Backend: [http://localhost:8000](http://localhost:8000)
-
-Frontend: [http://localhost:3000](http://localhost:3000)
-
-The Docker frontend image now builds static assets and serves them through `nginx`, which is suitable for production-style deployments.
-
-## Distribution flow
-
-The platform now follows:
-
-```text
-content -> transform -> distribute
-```
-
-Current channel support:
-
-- `linkedin`: implemented
-- `youtube`: implemented
-- `website`: placeholder response in the distribution controller
-- `twitter`: stub publisher placeholder
-
-Video generation ownership:
-
-- The API orchestrates render requests.
-- A separate worker is expected to produce the video.
-- The backend can call that worker over HTTP through [backend/app/services/video_client.py](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/backend/app/services/video_client.py).
-
-## MediaStudio APIs
-
-`MediaStudio` is now documented as an external API suite that `lecrown-platform` can use for media generation and rendering.
-
-See:
-
-- [docs/mediastudio-apis.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/mediastudio-apis.md)
-
-Current stance:
-
-- preferred render worker target: `rs-video-stitch`
-- faster all-in-one media backend: `video-gen`
-- supporting narration backend: `audio_xtts`
-- supporting music backend: `musicService`
-
-## Intake Hub
-
-`lecrown-platform` now includes the first platform-owned cross-site intake route:
-
-- `POST /intake/lead`
-
-Current behavior:
-
-- accepts a source-aware lead payload from an external site
-- stores the raw submission in the platform database
-- stores a normalized internal representation
-- forwards the mapped lead to `EspoCRM`
-- stores downstream delivery status and response metadata
-
-Current first target:
-
-- `AskMortgageAuthority`
-
-## Billing API
-
-`lecrown-platform` now exposes a platform billing surface for other LeCrown apps.
-
-Current implementation:
-
-- platform-owned `accounts`, `account_memberships`, `products`, `prices`, `entitlements`, `billing_customers`, `billing_subscriptions`, and `billing_webhook_events`
-- hosted Stripe Checkout Session creation for subscription signup
-- Stripe Customer Portal session creation for self-service billing management
-- webhook-driven subscription synchronization into account-scoped entitlements
-- app-scoped entitlement lookup for runtime enforcement in external projects
-
-App-facing billing routes expect:
-
-- `X-Billing-App: <app_key>`
-- `X-Billing-Key: <shared_secret>`
-
-`BILLING_SERVICE_KEYS` should be configured as comma-separated `app_key:secret` pairs.
-
-## Feature Roadmap
-
-Product direction:
-
-- `lecrown-platform` should become the internet publishing focal point
-- the publishing surface should cover blogs, `Twitter/X`, and other social sites
-- multi-account publishing should be a first-class capability across brands, pages, sites, and operator accounts
-- it should also act as the capture point for forms across different sites and funnel those submissions into the CRM
-
-See:
-
-- [docs/feature-roadmap.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/feature-roadmap.md)
-- [docs/billing-platform-strategy.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/billing-platform-strategy.md)
-- [docs/lecrown-billing-workflow-spec.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/lecrown-billing-workflow-spec.md)
-
-## Government Contracting Knowledge
-
-The platform's government-contracting knowledge package preserves the UH APEX
-source documents and turns them into a certification, buyer, prime-contractor,
-subcontracting, and supplier-diversity operating plan.
-
-See:
-
-- [Government Contracting Knowledge Base](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/government-contracting/README.md)
-- [Subcontracting and Market-Access Plan](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/government-contracting/subcontracting-market-access-plan.md)
-- [Government Contracts Platform Guide](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/gov-contracts.md)
-
-## CRM Direction
-
-`lecrown-platform` should not be treated as the final cross-business CRM.
-
-Current position:
-
-- keep the built-in `/inquiry` flow narrow and tenant-specific
-- use `EspoCRM` as the shared operational CRM across businesses
-- integrate with CRM over API boundaries instead of rebuilding everything in this repo too early
-
-See:
-
-- [docs/espocrm-strategy.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/espocrm-strategy.md)
-
-This is especially important because the current inquiry model is still `properties`-specific, while the CRM direction now spans:
-
-- `LeCrown Properties`
-- `AskMortgageAuthority`
-- future businesses
-
-## Site Integration References
-
-Other sites should integrate against shared APIs, not shared folders or direct code imports.
-
-Reference docs:
-
-- [Site Integration Overview](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/site-integration-overview.md)
-- [Site API Reference](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/site-api-reference.md)
-- [Site Integration Checklist](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/site-integration-checklist.md)
-- [AskMortgageAuthority Integration](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/askmortgageauthority-integration.md)
-- [Intake Architecture](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/intake-architecture.md)
-
-## CRM Ops Stack
-
-This repo now includes a dedicated EspoCRM deployment stack under:
-
-- [ops/espocrm](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/ops/espocrm)
-
-Use it as:
-
-- same repository
-- separate service
-
-## Government Contracts
-
-`lecrown-platform` can now ingest Texas ESBD opportunities, score likely-fit government work, and expose both ranked matches and a weekly CSV export through the admin surface and backend API.
-
-The opportunities page now supports:
-
-- admin auth
-- keyword rule management
-- agency preference management
-- complete-list storage with view-only filters
-- a score matrix built from closeness, timing, competition edge, and agency affinity
-
-See:
-
-- [docs/gov-contracts.md](/Users/benjaminlagrone/Documents/projects/real-estate/lecrown-platform/docs/gov-contracts.md)
-- separate runtime boundary
-
-Repo-level commands:
-
-```bash
-make crm-init-env
-make crm-up
-make crm-pull
-make crm-build
-make crm-upgrade
-make crm-logs
-make crm-ps
-make crm-down
-```
-
-Direct script entrypoint:
-
-```bash
-./ops/espocrm/crm.sh help
-```
-
-Recommended production subdomain:
-
-- `crm.lecrowndevelopment.com`
-
-## First milestone flow
-
-1. Create a content item through `POST /content/create` or the admin UI.
-2. Confirm it was stored with `GET /content/list?tenant=...`.
-3. Set `LINKEDIN_TOKEN` plus the tenant org IDs in `.env`.
-4. Publish with `POST /linkedin/publish`.
-5. Verify the post on the matching LinkedIn organization page.
-
-## YouTube publish flow
-
-Use one of these credential paths per tenant:
-
-- Set `YOUTUBE_ACCESS_TOKEN_DEV` or `YOUTUBE_ACCESS_TOKEN_PROP` directly.
-- Or set `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and the tenant refresh token so the backend can mint an access token at publish time.
-
-Example direct upload:
-
-```json
-{
-  "tenant": "development",
-  "title": "Why warehouse operations break down",
-  "description": "A direct explanation of the operational failure pattern.",
-  "video_path": "/videos/warehouse.mp4",
-  "tags": ["property management", "warehouse"]
-}
-```
-
-Example orchestrated distribution:
-
-```json
-{
-  "content_id": "123",
-  "channels": ["linkedin", "youtube"],
-  "video_style": "corporate_clean",
-  "youtube_video_path": "/videos/warehouse.mp4"
-}
-```
-
-If `youtube_video_path` is omitted, the distribution service will ask the video worker to render one.
-
-## Video worker integration
-
-By default the platform runs in `VIDEO_RENDER_MODE=stub`, which is the safe development path while the worker contract is still being finalized.
-
-To use an HTTP render worker:
-
-1. Set `VIDEO_RENDER_MODE=http`
-2. Set `VIDEO_SERVER_URL` to the worker base URL
-3. Optionally change `VIDEO_RENDER_ENDPOINT` and `VIDEO_RENDER_DEFAULT_STYLE`
-
-Expected worker request:
-
-```json
-{
-  "content_id": "123",
-  "script": "Why warehouse operations break down...",
-  "title": "Why warehouse operations break down",
-  "tenant": "development",
-  "style": "corporate_clean",
-  "tags": ["operations", "industrial"]
-}
-```
-
-Expected worker response:
-
-```json
-{
-  "status": "complete",
-  "job_id": "job_123",
-  "video_path": "/shared/outputs/video_123.mp4",
-  "video_url": "http://100.x.x.x:8001/files/video_123.mp4"
-}
-```
-
-Notes:
-
-- `video_path` only works if the platform can read that path locally or via a shared mount.
-- `video_url` is the safer cross-machine contract; the backend will download it temporarily before uploading to YouTube.
-- Tailscale is the simplest way to make the worker reachable without exposing it publicly.
-
-## Example payloads
-
-### Create content
-
-```json
-{
-  "tenant": "development",
-  "type": "linkedin_post",
-  "title": "A sharper acquisition lens",
-  "body": "We underwrite deals by pressure-testing downside first.",
-  "tags": ["acquisitions", "strategy"],
-  "publish_linkedin": true,
-  "publish_site": true
-}
-```
-
-### Create inquiry
-
-```json
-{
-  "tenant": "properties",
-  "asset_type": "multifamily",
-  "location": "Houston, TX",
-  "problem": "Occupancy dropped after deferred maintenance piled up.",
-  "contact_name": "Jordan Smith",
-  "email": "jordan@example.com",
-  "phone": "713-555-0199"
-}
-```
-
-### Intake lead
-
-```json
-{
-  "source_site": "askmortgageauthority.com",
-  "source_type": "wordpress",
-  "form_provider": "WPForms",
-  "form_id": "12",
-  "external_entry_id": "481",
-  "page_url": "https://askmortgageauthority.com/get-pre-qualified/",
-  "business_context": "AskMortgageAuthority",
-  "product_context": "Mortgage",
-  "metadata": {
-    "campaign": "spring-search"
-  },
-  "lead": {
-    "firstName": "Jordan",
-    "lastName": "Smith",
-    "emailAddress": "jordan@example.com",
-    "phoneNumber": "713-555-0199",
-    "description": "Looking to get pre-qualified.",
-    "source": "Website"
-  }
-}
-```
-
-If `INTAKE_API_KEY` is configured, send:
-
-- header `X-Intake-Key: <INTAKE_API_KEY>`
-
-Relevant environment variables:
-
-```dotenv
-INTAKE_API_KEY=
-ESPOCRM_BASE_URL=https://crm.lecrowndevelopment.com
-ESPOCRM_API_KEY=
-ESPOCRM_USERNAME=
-ESPOCRM_PASSWORD=
-ESPOCRM_TIMEOUT_SECONDS=15
-```
-
-## Notes
-
-- Inquiry capture is restricted to the `properties` tenant.
-- `POST /intake/lead` is the cross-site intake boundary; `/inquiry` is still the older tenant-specific path.
-- Auth exists as a thin admin stub. Content and inquiry routes are not gated yet.
-- `GET /intake/list` is gated through the current admin bearer token flow.
-- `ai_video_service.py` now orchestrates remote rendering through `video_client.py` instead of assuming the API renders media itself.
-- In `stub` mode, you still need to provide a usable `VIDEO_STUB_VIDEO_PATH`, `VIDEO_STUB_VIDEO_URL`, or a manual `youtube_video_path` if you want YouTube upload to succeed end-to-end.
+Then open:
+
+`http://127.0.0.1:8765/tracker/`
+
+The drawer view reads the local CSV tracker files and does not submit external
+portal registrations. The in-app drawer browser should use the loopback URL;
+`tracker/data-snapshot.js` is a generated fallback for ordinary local browser
+opens when CSV fetch is unavailable.
+
+## Current Priority
+
+The first serious lane for every company is federal readiness:
+
+1. SAM.gov entity registration or renewal.
+2. NAICS and capability profile cleanup.
+3. MySBA Certifications account and eligibility questionnaire.
+4. WOSB/EDWOSB and 8(a) decision based on ownership, control, and financial
+   eligibility.
+5. HUBZone eligibility check.
+
+Local and state certifications remain tracked per company because they can
+create near-term procurement opportunities while federal certifications move
+through review.
+
+## Working Files
+
+- [docs/certification-tracker.md](docs/certification-tracker.md): operating
+  tracker and certification checklists.
+- [data/companies.csv](data/companies.csv): each company being prepared for
+  certification.
+- [data/company-certifications.csv](data/company-certifications.csv): one row
+  per company per certification.
+- [data/certification-activity.csv](data/certification-activity.csv): recent
+  certification status changes, email-backed updates, and follow-up events.
+- [data/certification-work-queue.csv](data/certification-work-queue.csv):
+  dated operating queue for the next certification actions across companies,
+  portals, documents, and buyer requirements.
+- [data/company-intake.csv](data/company-intake.csv): required entity facts to
+  collect before portal work.
+- [data/evidence-register.csv](data/evidence-register.csv): document inventory
+  by company, certification, and evidence type.
+- [data/reusable-documents.csv](data/reusable-documents.csv): common documents
+  that can be reused across certifications, vendor portals, and bids.
+- [data/document-requirement-map.csv](data/document-requirement-map.csv): maps
+  reusable documents to the certifications and buyers that usually request
+  them.
+- [data/document-storage-locations.csv](data/document-storage-locations.csv):
+  approved storage locations, including the LeCrown document portal and private
+  local storage.
+- [data/document-portal-map.csv](data/document-portal-map.csv): maps each
+  reusable document to its local path, source of truth, portal project ID, and
+  portal document ID.
+- [data/capability-statements.csv](data/capability-statements.csv): tracks
+  master and buyer-specific capability statement drafts.
+- [data/buyers.csv](data/buyers.csv): agencies, universities, and buying
+  entities from the opportunity list.
+- [data/buyer-certification-requirements.csv](data/buyer-certification-requirements.csv):
+  buyer-specific registrations, certifications, portals, and compliance gates.
+- [data/vendor-registration-packets.csv](data/vendor-registration-packets.csv):
+  per-buyer registration packets showing how reusable evidence, including the
+  METRO SBE certificate, should be used before submitting portal changes.
+- [data/vendor-registration-execution-log.csv](data/vendor-registration-execution-log.csv):
+  non-interactive registration route checks, blocked-submission reasons, and
+  next actions for each packet.
+- [data/certification-steps.csv](data/certification-steps.csv): spreadsheet-
+  friendly reusable task list.
+- [tracker/index.html](tracker/index.html): drawer-browser view over the CSV
+  tracker data.
+- [tracker/data-snapshot.js](tracker/data-snapshot.js): generated fallback
+  snapshot used when the HTML page cannot fetch CSV files directly.
+- [scripts/serve-cert-tracker.sh](scripts/serve-cert-tracker.sh): local server
+  helper for opening the tracker in Codex or a browser.
+- [docs/capability-statements/](docs/capability-statements/): capability
+  statement drafts and templates.
+- `output/pdf/`: completed/generated certification support PDFs.
+- `tmp/pdfs/`: working PDF split/fill scripts and rendered pages.
+
+## Document Portal Connection
+
+The document portal target is the LeCrown client portal:
+
+- Portal login: `https://lecrowndevelopment.com/portal/login`
+- Portal API owner: `lecrowndevelopment-lead-api`
+- Upload route: `POST /v1/portal/projects/:projectId/documents`
+
+Track uploads in `data/document-portal-map.csv`. Do not paste public document
+URLs into the tracker. Store portal project IDs, portal document IDs, Drive file
+IDs if returned by the portal, and local source paths.
+
+The intended portal project ID for this tracker is
+`metro-lecrown-certification-tracker`.
+
+Operational portal package ownership belongs to Fortress Phronesis:
+
+`/Users/benjaminlagrone/Documents/projects/pericopeai.com/fortress-phronesis/ops/lecrown-portal/metro-lecrown-certification-tracker`
+
+## Existing Document Inventory
+
+- `Affidavit_of_Certification.pdf`
+- `Personal Net Worth Statement 4.9.2024 (revised).pdf`
+- `Updated_PNW_Form.pdf`
+- `output/pdf/Affidavit_of_Certification_Jie_Huang_President.pdf`
+- `output/pdf/PNW_Benjamin_LaGrone_FINAL.pdf`
+- `output/pdf/PNW_Jie_Huang_FINAL.pdf`

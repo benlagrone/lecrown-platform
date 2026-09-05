@@ -1,0 +1,14 @@
+company_id,certification,evidence_type,document_name,path,status,owner,last_verified,notes
+metro_lecrown,City of Houston OBO M/WBE or SBE,affidavit,Affidavit of Certification,Affidavit_of_Certification.pdf,source_pdf,Benjamin,2026-06-25,
+metro_lecrown,City of Houston OBO M/WBE or SBE,affidavit,Jie Huang signed/filled affidavit,output/pdf/Affidavit_of_Certification_Jie_Huang_President.pdf,existing,Benjamin/Jie,2026-06-25,
+metro_lecrown,WOSB / EDWOSB,personal_net_worth,Jie Huang PNW final,output/pdf/PNW_Jie_Huang_FINAL.pdf,existing,Benjamin/Jie,2026-06-25,Confirm whether needed for EDWOSB or local certification.
+metro_lecrown,8(a) Business Development,personal_net_worth,Jie Huang PNW final,output/pdf/PNW_Jie_Huang_FINAL.pdf,existing,Benjamin/Jie,2026-06-25,Confirm whether current enough for submission.
+metro_lecrown,City of Houston OBO M/WBE or SBE,personal_net_worth,Jie Huang PNW final,output/pdf/PNW_Jie_Huang_FINAL.pdf,existing,Benjamin/Jie,2026-06-25,
+metro_lecrown,City of Houston OBO M/WBE or SBE,personal_net_worth,Benjamin PNW final,output/pdf/PNW_Benjamin_LaGrone_FINAL.pdf,existing,Benjamin,2026-06-25,Confirm whether required based on ownership.
+metro_lecrown,Houston METRO Certification,email_confirmation,Jessica email confirming METRO certification,Gmail message 19f848b56634c415,external_email,Benjamin/Jie,2026-07-21,Email confirms LeCrown Development received Metro Certification and renewal date is 2029-07-15.
+metro_lecrown,Houston METRO Certification,certificate_proof,Houston METRO SBE certificate,Google Drive file ID 1vC1t1WJDdOjOKBfp6q_qN47MtQiOlcEi,existing_drive,Benjamin/Jie,2026-08-22,File title lecrownSBEMetro.pdf; private PDF uploaded to Google Drive 2026-08-22.
+metro_lecrown,All,personal_net_worth_source,Updated PNW form,Updated_PNW_Form.pdf,source_pdf,Benjamin,2026-06-25,
+metro_lecrown,City of Houston OBO M/WBE or SBE,portal_credentials,COH certification portal credentials,.local/houston-coh-certification.credentials,sensitive_private,Benjamin,2026-07-22,Jessica email 19f849397ab03b33 provides separate COH login for the same portal URL as METRO; do not copy credentials into tracked docs.
+metro_lecrown,Houston METRO Certification,portal_credentials,METRO certification portal credentials,.local/metro-certification.credentials,sensitive_private,Benjamin,2026-07-22,METRO and COH use the same portal URL but separate credential sets; do not copy credentials into tracked docs.
+company_2,TBD,TBD,TBD,TBD,placeholder,TBD,TBD,Replace with known evidence.
+company_3,TBD,TBD,TBD,TBD,placeholder,TBD,TBD,Replace with known evidence.
