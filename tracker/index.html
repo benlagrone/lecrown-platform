@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Metro LeCrown Certification Tracker</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --strong-line: #b8c0cc;
+      --accent: #145c9e;
+      --accent-2: #147d64;
+      --risk: #b54708;
+      --blocked: #b42318;
+      --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+
+    aside {
+      background: #111827;
+      color: #f9fafb;
+      padding: 20px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #3b82f6, #10b981);
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      font-weight: 800;
+    }
+
+    h1 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+
+    nav {
+      display: grid;
+      gap: 6px;
+      margin-top: 18px;
+    }
+
+    nav button {
+      border: 0;
+      background: transparent;
+      color: #d1d5db;
+      text-align: left;
+      padding: 9px 10px;
+      border-radius: 6px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    nav button[aria-current="true"],
+    nav button:hover {
+      background: #243042;
+      color: #ffffff;
+    }
+
+    main {
+      min-width: 0;
+      padding: 22px;
+    }
+
+    .topbar {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) 210px 210px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input,
+    select {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .metric,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      padding: 14px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .metric .value {
+      margin-top: 4px;
+      font-size: 28px;
+      font-weight: 750;
+      line-height: 1.1;
+    }
+
+    .metric .note {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .panel {
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .panel-note {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 285px);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f1f4f8;
+      color: #344054;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tbody tr:hover {
+      background: #fbfcfe;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #eef2f6;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .status.active,
+    .status.staged_ready,
+    .status.recorded,
+    .status.in_progress {
+      background: #e8f5f0;
+      color: var(--accent-2);
+    }
+
+    .status.blocked,
+    .status.blocked_auth_required,
+    .status.blocked_missing_intake,
+    .status.blocked_missing_capability_sam,
+    .status.blocked_missing_cmbl_intake,
+    .status.blocked_route_or_auth_required {
+      background: #fff1f0;
+      color: var(--blocked);
+    }
+
+    .status.needs_route_validation,
+    .status.auth_required,
+    .status.not_started,
+    .status.staged_supporting {
+      background: #fff7e6;
+      color: var(--risk);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .error {
+      padding: 14px 16px;
+      background: #fff1f0;
+      border: 1px solid #fecdca;
+      border-radius: 8px;
+      color: #912018;
+      margin-bottom: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+        height: auto;
+      }
+
+      nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar,
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      main {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">
+        <div class="mark">LC</div>
+        <div>
+          <h1>Certification Tracker</h1>
+          <p class="subtitle">Metro LeCrown registration control</p>
+        </div>
+      </div>
+      <nav aria-label="Tracker views">
+        <button type="button" data-view="packets" aria-current="true">Registration Packets</button>
+        <button type="button" data-view="execution">Execution Log</button>
+        <button type="button" data-view="queue">Work Queue</button>
+        <button type="button" data-view="requirements">Buyer Requirements</button>
+        <button type="button" data-view="documents">Document Map</button>
+        <button type="button" data-view="buyers">Buyers</button>
+      </nav>
+    </aside>
+
+    <main>
+      <section class="topbar">
+        <div>
+          <h2 id="view-title">Registration Packets</h2>
+          <p class="muted" id="view-summary">Loading tracker data...</p>
+        </div>
+        <div class="toolbar">
+          <input id="search" type="search" placeholder="Search buyer, route, status, next action">
+          <select id="status-filter" aria-label="Filter by status">
+            <option value="">All statuses</option>
+          </select>
+          <select id="owner-filter" aria-label="Filter by owner">
+            <option value="">All owners</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Tracker metrics">
+        <div class="metric">
+          <div class="label">Packets</div>
+          <div class="value" id="metric-packets">0</div>
+          <div class="note">Registration routes tracked</div>
+        </div>
+        <div class="metric">
+          <div class="label">Blocked</div>
+          <div class="value" id="metric-blocked">0</div>
+          <div class="note">Needs auth, intake, or validation</div>
+        </div>
+        <div class="metric">
+          <div class="label">Work Queue</div>
+          <div class="value" id="metric-queue">0</div>
+          <div class="note">Active certification tasks</div>
+        </div>
+        <div class="metric">
+          <div class="label">Execution Rows</div>
+          <div class="value" id="metric-execution">0</div>
+          <div class="note">Route checks recorded</div>
+        </div>
+      </section>
+
+      <div id="error" class="error hidden"></div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h3 class="panel-title" id="panel-title">Registration Packets</h3>
+            <p class="panel-note" id="panel-note">CSV-backed view from the local tracker.</p>
+          </div>
+          <div class="muted" id="row-count">0 rows</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./data-snapshot.js"></script>
+  <script>
+    const views = {
+      packets: {
+        title: "Registration Packets",
+        file: "../data/vendor-registration-packets.csv",
+        columns: ["packet_id", "buyer_name", "portal_or_route", "status", "uses_metro_sbe_certificate", "next_action", "due_date", "owner"],
+        summary: "One row per target portal or registration route."
+      },
+      execution: {
+        title: "Execution Log",
+        file: "../data/vendor-registration-execution-log.csv",
+        columns: ["attempt_date", "packet_id", "buyer_name", "route_check_result", "registration_result", "blocker", "next_action"],
+        summary: "Non-interactive route checks and submission blockers."
+      },
+      queue: {
+        title: "Work Queue",
+        file: "../data/certification-work-queue.csv",
+        columns: ["queue_id", "priority", "status", "certification", "workstream", "next_action", "blocker", "due_date", "owner"],
+        summary: "Operating queue for certifications, documents, and registrations."
+      },
+      requirements: {
+        title: "Buyer Requirements",
+        file: "../data/buyer-certification-requirements.csv",
+        columns: ["buyer_name", "requirement_name", "requirement_type", "priority", "status", "required_evidence_or_data", "next_action"],
+        summary: "Portal requirements and compliance gates by buyer."
+      },
+      documents: {
+        title: "Document Map",
+        file: "../data/document-requirement-map.csv",
+        columns: ["document_id", "requirement_or_buyer", "requirement_type", "priority", "why_needed", "source_or_tracker_reference"],
+        summary: "Reusable documents mapped to buyer and certification needs."
+      },
+      buyers: {
+        title: "Buyers",
+        file: "../data/buyers.csv",
+        columns: ["buyer_id", "buyer_name", "buyer_type", "procurement_portal", "bid_source", "primary_certification_gates", "status", "next_action"],
+        summary: "Agencies, universities, school districts, and prime targets."
+      }
+    };
+
+    const state = {
+      data: {},
+      view: "packets",
+      search: "",
+      status: "",
+      owner: ""
+    };
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let value = "";
+      let quoted = false;
+
+      for (let i = 0; i < text.length; i += 1) {
+        const ch = text[i];
+        const next = text[i + 1];
+        if (quoted) {
+          if (ch === '"' && next === '"') {
+            value += '"';
+            i += 1;
+          } else if (ch === '"') {
+            quoted = false;
+          } else {
+            value += ch;
+          }
+        } else if (ch === '"') {
+          quoted = true;
+        } else if (ch === ",") {
+          row.push(value);
+          value = "";
+        } else if (ch === "\n") {
+          row.push(value);
+          rows.push(row);
+          row = [];
+          value = "";
+        } else if (ch !== "\r") {
+          value += ch;
+        }
+      }
+
+      if (value || row.length) {
+        row.push(value);
+        rows.push(row);
+      }
+
+      const headers = rows.shift() || [];
+      return rows
+        .filter((items) => items.some(Boolean))
+        .map((items) => Object.fromEntries(headers.map((header, index) => [header, items[index] || ""])));
+    }
+
+    function statusClass(value) {
+      return String(value || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function renderCell(key, value) {
+      const safe = escapeHtml(value);
+      if (key.includes("status") || key === "priority" || key === "registration_result" || key === "blocker") {
+        return `<span class="status ${statusClass(value)}">${safe || "TBD"}</span>`;
+      }
+      if ((key.includes("portal") || key.includes("source")) && /^https?:\/\//.test(value)) {
+        return `<a href="${safe}" target="_blank" rel="noreferrer">${safe}</a>`;
+      }
+      return safe || '<span class="muted">TBD</span>';
+    }
+
+    function currentRows() {
+      const config = views[state.view];
+      let rows = state.data[state.view] || [];
+      const query = state.search.trim().toLowerCase();
+      if (query) {
+        rows = rows.filter((row) => Object.values(row).join(" ").toLowerCase().includes(query));
+      }
+      if (state.status) {
+        rows = rows.filter((row) => Object.values(row).some((value) => value === state.status));
+      }
+      if (state.owner) {
+        rows = rows.filter((row) => Object.values(row).some((value) => value === state.owner));
+      }
+      return { rows, config };
+    }
+
+    function refreshFilters() {
+      const rows = state.data[state.view] || [];
+      const statuses = new Set();
+      const owners = new Set();
+      rows.forEach((row) => {
+        Object.entries(row).forEach(([key, value]) => {
+          if (!value) return;
+          if (key.includes("status") || key === "priority" || key === "registration_result" || key === "blocker") statuses.add(value);
+          if (key === "owner" || key === "actor") owners.add(value);
+        });
+      });
+      const statusFilter = document.querySelector("#status-filter");
+      const ownerFilter = document.querySelector("#owner-filter");
+      statusFilter.innerHTML = '<option value="">All statuses</option>' + [...statuses].sort().map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+      ownerFilter.innerHTML = '<option value="">All owners</option>' + [...owners].sort().map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+      state.status = "";
+      state.owner = "";
+    }
+
+    function render() {
+      const { rows, config } = currentRows();
+      document.querySelector("#view-title").textContent = config.title;
+      document.querySelector("#view-summary").textContent = config.summary;
+      document.querySelector("#panel-title").textContent = config.title;
+      document.querySelector("#panel-note").textContent = config.file;
+      document.querySelector("#row-count").textContent = `${rows.length} row${rows.length === 1 ? "" : "s"}`;
+      document.querySelector("#table-head").innerHTML = `<tr>${config.columns.map((key) => `<th>${escapeHtml(key.replaceAll("_", " "))}</th>`).join("")}</tr>`;
+      document.querySelector("#table-body").innerHTML = rows.map((row) => {
+        return `<tr>${config.columns.map((key) => `<td>${renderCell(key, row[key])}</td>`).join("")}</tr>`;
+      }).join("");
+    }
+
+    function renderMetrics() {
+      const packets = state.data.packets || [];
+      const execution = state.data.execution || [];
+      const queue = state.data.queue || [];
+      const blocked = packets.filter((row) => /blocked|auth|required|validation|missing/i.test(row.status || "")).length;
+      document.querySelector("#metric-packets").textContent = packets.length;
+      document.querySelector("#metric-blocked").textContent = blocked;
+      document.querySelector("#metric-queue").textContent = queue.filter((row) => row.status === "active").length;
+      document.querySelector("#metric-execution").textContent = execution.length;
+    }
+
+    async function load() {
+      try {
+        if (window.location.protocol === "file:" && window.TRACKER_DATA) {
+          state.data = window.TRACKER_DATA;
+        } else {
+          await Promise.all(Object.entries(views).map(async ([key, config]) => {
+            const response = await fetch(config.file, { cache: "no-store" });
+            if (!response.ok) throw new Error(`${config.file} returned ${response.status}`);
+            state.data[key] = parseCsv(await response.text());
+          }));
+        }
+        renderMetrics();
+        refreshFilters();
+        render();
+      } catch (error) {
+        const el = document.querySelector("#error");
+        el.classList.remove("hidden");
+        el.textContent = `Tracker data could not be loaded. Start a local server from the repo root, then open /tracker/. ${error.message}`;
+      }
+    }
+
+    document.querySelectorAll("nav button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("nav button").forEach((item) => item.removeAttribute("aria-current"));
+        button.setAttribute("aria-current", "true");
+        state.view = button.dataset.view;
+        refreshFilters();
+        render();
+      });
+    });
+
+    document.querySelector("#search").addEventListener("input", (event) => {
+      state.search = event.target.value;
+      render();
+    });
+
+    document.querySelector("#status-filter").addEventListener("change", (event) => {
+      state.status = event.target.value;
+      render();
+    });
+
+    document.querySelector("#owner-filter").addEventListener("change", (event) => {
+      state.owner = event.target.value;
+      render();
+    });
+
+    load();
+  </script>
+</body>
+</html>

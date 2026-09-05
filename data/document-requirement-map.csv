@@ -1,0 +1,100 @@
+document_id,requirement_or_buyer,requirement_type,priority,why_needed,source_or_tracker_reference
+formation_certificate,SAM.gov Entity Registration,registration,required,Entity identity and registration support,data/certification-steps.csv
+ein_confirmation,SAM.gov Entity Registration,registration,required,TIN/EIN validation,data/certification-steps.csv
+eft_bank_letter,SAM.gov Entity Registration,payment_setup,required,Electronic funds transfer setup,data/certification-steps.csv
+naics_nigp_codes,SAM.gov Entity Registration,classification,required,NAICS selection and profile setup,data/certification-steps.csv
+sam_uei_cage,8(a) Business Development,eligibility,required,SBA 8(a) application sequence requires SAM.gov registration,data/certification-steps.csv
+operating_agreement,WOSB / EDWOSB,ownership_control,required,Ownership and control evidence,data/certification-steps.csv
+ownership_schedule,WOSB / EDWOSB,ownership_control,required,51 percent ownership and control evidence,data/certification-steps.csv
+owner_resumes,WOSB / EDWOSB,experience,recommended,Owner role and control support,data/certification-steps.csv
+personal_net_worth_jie,WOSB / EDWOSB,owner_financial,conditional,Required if pursuing EDWOSB,data/evidence-register.csv
+operating_agreement,8(a) Business Development,ownership_control,required,Ownership/control and eligibility support,data/certification-steps.csv
+tax_returns_5_years,8(a) Business Development,financial,required,Economic disadvantage and business financial review,data/certification-steps.csv
+personal_net_worth_jie,8(a) Business Development,owner_financial,conditional,Economic disadvantage support if Jie is qualifying owner,data/evidence-register.csv
+principal_office_proof,HUBZone,address_control,required,Principal office location evidence,data/certification-steps.csv
+employee_address_roster,HUBZone,hubzone,required,35 percent employee residency evidence,data/certification-steps.csv
+cmbl_profile,University of Houston,state_vendor_registration,recommended,State bid discovery and supplier visibility,data/buyer-certification-requirements.csv
+w9,University of Houston,payment_setup,required_after_award,Vendor/payment setup,data/buyer-certification-requirements.csv
+eft_bank_letter,University of Houston,payment_setup,required_after_award,Vendor/payment setup,data/buyer-certification-requirements.csv
+cmbl_profile,University of Texas at Austin,state_vendor_registration,recommended,State buyer visibility and supplier profile support,data/buyer-certification-requirements.csv
+w9,University of Texas at Austin,payment_setup,required_after_award,VID/PIF support,data/buyer-certification-requirements.csv
+eft_bank_letter,University of Texas at Austin,payment_setup,required_after_award,VID/PIF and payment setup support,data/buyer-certification-requirements.csv
+texas_hub_or_vethub_proof,University of Texas at Austin,supplier_diversity,conditional,VetHUB/small business participation tracking,data/buyer-certification-requirements.csv
+capability_statement,University of Texas at Austin,supplier_profile,recommended,Small business and proposal positioning,data/buyer-certification-requirements.csv
+w9,City of Houston,vendor_registration,required,Strategic Purchasing vendor/supplier registration,data/buyer-certification-requirements.csv
+affidavit_certification_jie,City of Houston OBO M/WBE or SBE,local_certification,required,OBO certification packet,data/evidence-register.csv
+affidavit_non_interest,City of Houston OBO M/WBE or SBE,local_certification,required,OBO missing document list,data/buyer-certification-requirements.csv
+customer_references,City of Houston OBO M/WBE or SBE,past_performance,required,OBO missing document list,data/buyer-certification-requirements.csv
+tax_returns_5_years,City of Houston OBO M/WBE or SBE,financial,required,OBO missing document list,data/buyer-certification-requirements.csv
+owner_resumes,City of Houston OBO M/WBE or SBE,experience,required,OBO missing document list,data/buyer-certification-requirements.csv
+bank_resolution,City of Houston OBO M/WBE or SBE,financial_authority,required,OBO missing document list,data/buyer-certification-requirements.csv
+financial_statements,City of Houston OBO M/WBE or SBE,financial,required,OBO missing document list,data/buyer-certification-requirements.csv
+licenses_permits,City of Houston OBO M/WBE or SBE,qualification,conditional,OBO missing document list if applicable,data/buyer-certification-requirements.csv
+equipment_vehicle_proof,City of Houston OBO M/WBE or SBE,capacity,conditional,OBO missing document list if applicable,data/buyer-certification-requirements.csv
+prior_certifications_denials,City of Houston OBO M/WBE or SBE,certification_history,conditional,OBO missing document list if applicable,data/buyer-certification-requirements.csv
+corporate_minutes,City of Houston OBO M/WBE or SBE,governance,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+business_age_or_invoice_proof,City of Houston OBO M/WBE or SBE,business_history,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+ownership_contribution_proof,City of Houston OBO M/WBE or SBE,ownership_control,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+stock_certificates_ledger,City of Houston OBO M/WBE or SBE,ownership_control,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+corporate_bylaws,City of Houston OBO M/WBE or SBE,governance,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+formation_certificate,City of Houston OBO M/WBE or SBE,entity_identity,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+city_supplier_registration_proof,City of Houston OBO M/WBE or SBE,vendor_registration,required,Portal application 6369689 mandatory document list,B2Gnow CertAppID 1218660
+owner_identity_proof,City of Houston OBO M/WBE or SBE,owner_identity,conditional_required_for_mbe_wbe,Portal says identity proof is mandatory if applying for MBE or WBE certification,B2Gnow CertAppID 1218660
+operating_agreement,Houston METRO SBDBE,local_certification,required,Ownership/control certification support,data/buyer-certification-requirements.csv
+ownership_schedule,Houston METRO SBDBE,local_certification,required,Ownership/control certification support,data/buyer-certification-requirements.csv
+capability_statement,Houston METRO,proposal_readiness,recommended,Vendor relationship and opportunity positioning,data/buyer-certification-requirements.csv
+metro_sbe_certificate,Houston METRO Certification,certification_proof,required,Proof of active METRO SBE certification and renewal tracking,B2Gnow VID 20922339
+metro_sbe_certificate,Houston METRO Ariba,vendor_registration,recommended,Small business certification dates may be used in SAP Ariba vendor profile,METRO FAQ
+metro_sbe_certificate,GovSpend small purchases,bid_source,recommended,Small business proof supports METRO small-purchase positioning,METRO FAQ
+metro_sbe_certificate,METRO SBE business assessment,readiness_assessment,recommended,Proof of active SBE status supports procurement guidance,METRO procurement opportunities page
+metro_sbe_certificate,University of Houston,supplier_profile,conditional,Supporting certification evidence if requested in vendor or opportunity profile,UH vendor resources page
+metro_sbe_certificate,University of Texas at Austin,supplier_diversity,conditional,Supporting certification evidence where Bonfire or supplier profile asks for small-business certifications,UT procurement small business page
+metro_sbe_certificate,City of Houston BeaconBid,supplier_profile,conditional,Related certification proof for vendor packet but not a substitute for City OBO approval,Certification tracker
+metro_sbe_certificate,Harris County Bonfire,supplier_profile,conditional,Supporting certification evidence if Bonfire profile or solicitation asks for small-business proof,Harris County Bonfire registration
+capability_statement,Harris County Bonfire,vendor_registration,recommended,Vendor profile and solicitation positioning,Harris County Bonfire registration
+naics_nigp_codes,Harris County Bonfire,vendor_registration,required,Opportunity notifications depend on NIGP code selections,Harris County purchasing page
+w9,Harris County vendor setup,payment_setup,required_after_award,Vendor setup after award or county request,Harris County Supplier Inquiry page
+eft_bank_letter,Harris County vendor setup,payment_setup,conditional_after_award,ACH setup if direct deposit is chosen,Harris County Supplier Inquiry page
+metro_sbe_certificate,TDCJ,bid_source,conditional,Supporting proof in state buyer packet while CMBL and solicitation route are verified,Certification tracker
+metro_sbe_certificate,Federal prime subcontracting targets,supplier_diversity,recommended,Local SBE proof supports supplier-diversity profile and outreach packets,data/prime-subcontracting-targets.csv
+naics_nigp_codes,Houston METRO Ariba,vendor_registration,required,Commodity/category setup,data/buyer-certification-requirements.csv
+w9,Houston METRO Ariba,vendor_registration,required,Vendor setup support,data/buyer-certification-requirements.csv
+naics_nigp_codes,GovSpend small purchases,bid_source,recommended,Saved filters and opportunity matching,data/buyer-certification-requirements.csv
+capability_statement,Katy ISD OpenGov Procurement,vendor_registration,recommended,Vendor profile and opportunity positioning,data/buyer-certification-requirements.csv
+naics_nigp_codes,Katy ISD OpenGov Procurement,vendor_registration,recommended,Vendor notification categories,data/buyer-certification-requirements.csv
+w9,Katy ISD VSS,payment_setup,required_after_award,Payment setup if selected or requested,Katy ISD vendor information page
+compliance_certifications,Katy ISD VSS,payment_setup,required_after_award,Debarment HB 89 and SB 252 forms are listed for payment setup,Katy ISD vendor information page
+metro_sbe_certificate,HCC Bonfire,supplier_profile,conditional,Supporting certification evidence if HCC recognizes METRO SBE or profile asks for certifications,HCC SBDP page
+capability_statement,HCC Bonfire,vendor_registration,recommended,Vendor profile and opportunity positioning,HCC procurement page
+naics_nigp_codes,HCC Bonfire,vendor_registration,required,Opportunity and category notifications,HCC procurement page
+w9,HCC vendor application,vendor_registration,conditional,Vendor application or payment readiness if requested,HCC procurement and terms pages
+conflict_of_interest_form,HCC vendor application,vendor_registration,conditional,HCC procurement page links conflict-of-interest resources,HCC procurement page
+metro_sbe_certificate,Lone Star College,supplier_profile,conditional,Supporting certification evidence if supplier profile asks for certifications,LSCS purchasing page
+capability_statement,Lone Star College,vendor_registration,recommended,Vendor profile and opportunity positioning,LSCS purchasing page
+naics_nigp_codes,Lone Star College,vendor_registration,required,Commodity/category notifications,LSCS purchasing page
+w9,Lone Star College supplier setup,payment_setup,conditional,Payment or supplier setup only if requested,LSCS FAQ
+metro_sbe_certificate,San Jacinto College,supplier_profile,conditional,Supporting certification evidence if e-bidding profile asks for certifications,San Jacinto vendor page
+capability_statement,San Jacinto College,vendor_registration,recommended,Vendor profile and opportunity positioning,San Jacinto vendor page
+naics_nigp_codes,San Jacinto College,vendor_registration,required,Category selection and bid matching,San Jacinto vendor page
+metro_sbe_certificate,HISD IonWave,supplier_profile,conditional,Supporting certification evidence if IonWave profile asks for certifications,HISD purchasing page
+capability_statement,HISD IonWave,vendor_registration,recommended,Vendor profile and opportunity positioning,HISD purchasing page
+naics_nigp_codes,HISD IonWave,vendor_registration,required,Commodity code selections drive solicitation notifications,HISD purchasing page
+metro_sbe_certificate,Spring Branch ISD,supplier_profile,conditional,Supporting certification evidence if SBISD registration asks for certifications,SBISD vendor registration page
+capability_statement,Spring Branch ISD,vendor_registration,recommended,Vendor profile and opportunity positioning,SBISD purchasing page
+w9,Spring Branch ISD vendor registration,vendor_registration,conditional,May be required before business opportunity,SBISD vendor booklet
+eft_bank_letter,Spring Branch ISD vendor registration,payment_setup,conditional,EFT authorization may be required if onboarding proceeds,SBISD vendor booklet
+certificate_of_insurance,Spring Branch ISD vendor registration,insurance,conditional,May be required before business opportunity,SBISD vendor booklet
+conflict_of_interest_form,Spring Branch ISD vendor registration,disclosure,conditional,May be required before business opportunity,SBISD vendor booklet
+metro_sbe_certificate,TEA Bonfire,supplier_profile,conditional,Supporting certification evidence if TEA profile or solicitation asks for certifications,TEA contracts and purchasing page
+capability_statement,TEA Bonfire,vendor_registration,recommended,Vendor profile and solicitation positioning,TEA contracts and purchasing page
+naics_nigp_codes,TEA Bonfire,vendor_registration,required,NIGP codes drive TEA opportunity notifications,TEA contracts and purchasing page
+cmbl_profile,TEA Bonfire,state_vendor_registration,recommended,Texas buyer visibility and ESBD readiness,Certification tracker
+metro_sbe_certificate,TRS PAVES,supplier_profile,conditional,Supporting certification evidence if PAVES profile or solicitation asks for certifications,TRS PAVES page
+capability_statement,TRS PAVES,vendor_registration,recommended,Vendor profile and solicitation positioning,TRS PAVES page
+naics_nigp_codes,TRS PAVES,vendor_registration,recommended,Profile/category matching and Texas buyer readiness,TRS PAVES page
+cmbl_profile,TRS PAVES,state_vendor_registration,recommended,Texas buyer visibility and ESBD readiness,Certification tracker
+capability_statement,Federal prime subcontracting targets,supplier_diversity,required,Prime supplier profile and outreach packet,data/prime-subcontracting-targets.csv
+naics_nigp_codes,Federal prime subcontracting targets,supplier_diversity,required,Prime NAICS match and opportunity routing,data/prime-subcontracting-targets.csv
+sam_entity_record,Federal prime subcontracting targets,federal_foundation,recommended,Federal prime supplier profiles commonly ask for UEI/SAM status,data/prime-subcontracting-targets.csv
+cmbl_profile,TDCJ,bid_source,recommended,Texas opportunity visibility and vendor readiness,data/buyer-certification-requirements.csv
+capability_statement,TDCJ,bid_source,recommended,Proposal and vendor profile readiness,data/buyer-certification-requirements.csv
