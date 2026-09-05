@@ -1,11 +1,12 @@
 name: Publish LeCrown Platform Images
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: Commit SHA from the standalone LeCrown backoffice repository
+        required: true
+        type: string
       environment:
         description: Deploy environment
         required: true
@@ -27,6 +28,10 @@ on:
 permissions:
   contents: read
   packages: write
+
+env:
+  SOURCE_REPOSITORY: benlagrone/lecrown-properties-platform
+  SOURCE_SHA: ${{ inputs.source_sha }}
 
 jobs:
   publish:
@@ -52,6 +57,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -72,7 +80,7 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=sha-${{ env.SOURCE_SHA }}
             type=raw,value=latest
 
       - name: Build and push
@@ -88,9 +96,9 @@ jobs:
 
   resolve_deploy_path:
     needs: publish
-    if: ${{ github.event_name == 'push' || inputs.deploy_to_prod }}
+    if: ${{ inputs.deploy_to_prod }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
+    environment: ${{ inputs.environment }}
     outputs:
       deploy_path: ${{ steps.resolve.outputs.deploy_path }}
       credential_source: ${{ steps.resolve.outputs.credential_source }}
@@ -189,10 +197,10 @@ jobs:
       - resolve_deploy_path
     if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'direct' }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
+    environment: ${{ inputs.environment }}
     env:
-      DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
-      RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+      RUN_PUBLIC_SMOKE: ${{ inputs.run_public_smoke }}
     steps:
       - name: Resolve Deploy Credentials
         id: resolve_deploy
@@ -312,7 +320,7 @@ jobs:
           GOOGLE_LOGIN_CLIENT_ID_B64="$(printf '%s' "${GOOGLE_LOGIN_CLIENT_ID_SECRET}" | base64 | tr -d '\n')"
 
           ssh -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "DEPLOY_ROOT='${DEPLOY_ROOT}' REPO_URL='https://github.com/${GITHUB_REPOSITORY}.git' REPO_SLUG='${GITHUB_REPOSITORY}' SOURCE_SHA='${GITHUB_SHA}' REPO_TOKEN='${WORKFLOW_TOKEN}' GHCR_TOKEN='${WORKFLOW_TOKEN}' GOOGLE_LOGIN_CLIENT_ID_B64='${GOOGLE_LOGIN_CLIENT_ID_B64}' bash -s" <<'REMOTE'
+            "DEPLOY_ROOT='${DEPLOY_ROOT}' REPO_URL='https://github.com/${SOURCE_REPOSITORY}.git' REPO_SLUG='${SOURCE_REPOSITORY}' SOURCE_SHA='${SOURCE_SHA}' REPO_TOKEN='${WORKFLOW_TOKEN}' GHCR_TOKEN='${WORKFLOW_TOKEN}' GOOGLE_LOGIN_CLIENT_ID_B64='${GOOGLE_LOGIN_CLIENT_ID_B64}' bash -s" <<'REMOTE'
           set -euo pipefail
 
           fail_repo() {
@@ -337,6 +345,19 @@ jobs:
               printf '%s\n' "${repo_status}" >&2
               fail_repo "deploy checkout is dirty at ${repo_path}"
             fi
+          }
+
+          migrate_legacy_origin() {
+            local repo_path="$1"
+            local intended_url="$2"
+            local origin_url=""
+
+            origin_url="$(git -C "$repo_path" remote get-url origin 2>/dev/null || true)"
+            case "${origin_url}" in
+              https://github.com/benlagrone/lecrown-platform.git|https://github.com/benlagrone/lecrown-platform|git@github.com:benlagrone/lecrown-platform.git|ssh://git@github.com/benlagrone/lecrown-platform.git)
+                git -C "$repo_path" remote set-url origin "$intended_url"
+                ;;
+            esac
           }
 
           assert_expected_origin() {
@@ -382,6 +403,7 @@ jobs:
             git clone "${REPO_URL}" "${DEPLOY_ROOT}"
           fi
 
+          migrate_legacy_origin "${DEPLOY_ROOT}" "${REPO_URL}"
           assert_expected_origin "${DEPLOY_ROOT}" "${REPO_SLUG}"
           require_no_tracked_changes "${DEPLOY_ROOT}"
 
@@ -644,7 +666,7 @@ jobs:
           {
             echo "## Production Deploy"
             echo ""
-            echo "- Source SHA: \`${GITHUB_SHA}\`"
+            echo "- Source SHA: \`${SOURCE_SHA}\`"
             echo "- Environment: \`${DEPLOY_ENVIRONMENT}\`"
             echo "- Public smoke: \`${RUN_PUBLIC_SMOKE}\`"
             echo "- Deploy credential source: \`${{ steps.resolve_deploy.outputs.credential_source }}\`"
@@ -658,10 +680,10 @@ jobs:
       - resolve_deploy_path
     if: ${{ needs.resolve_deploy_path.outputs.deploy_path == 'fortress-dispatch' }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
+    environment: ${{ inputs.environment }}
     env:
-      DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && 'prod' || inputs.environment }}
-      RUN_PUBLIC_SMOKE: ${{ github.event_name == 'push' && 'true' || inputs.run_public_smoke }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+      RUN_PUBLIC_SMOKE: ${{ inputs.run_public_smoke }}
     steps:
       - name: Dispatch Fortress Deploy
         shell: bash
@@ -678,7 +700,7 @@ jobs:
           {
             "event_type": "deploy-lecrown-platform",
             "client_payload": {
-              "source_sha": "${GITHUB_SHA}",
+              "source_sha": "${SOURCE_SHA}",
               "environment": "${DEPLOY_ENVIRONMENT}",
               "run_public_smoke": ${RUN_PUBLIC_SMOKE}
             }
@@ -691,7 +713,7 @@ jobs:
           {
             echo "## Fortress Deploy Dispatch"
             echo ""
-            echo "- Source SHA: \`${GITHUB_SHA}\`"
+            echo "- Source SHA: \`${SOURCE_SHA}\`"
             echo "- Environment: \`${DEPLOY_ENVIRONMENT}\`"
             echo "- Public smoke: \`${RUN_PUBLIC_SMOKE}\`"
             echo "- Deploy path: \`fortress-dispatch\`"
