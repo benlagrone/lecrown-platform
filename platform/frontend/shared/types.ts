@@ -271,6 +271,7 @@ export interface GovContractTrackedSource {
 export interface GovContractCapabilities {
   gmail_rfq_sync_enabled: boolean;
   gmail_rfq_feed_label?: string | null;
+  candidate_inbox_enabled?: boolean;
 }
 
 export interface GovContractKeywordRule {

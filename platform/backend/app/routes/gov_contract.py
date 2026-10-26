@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,10 +21,11 @@ from app.schemas.gov_contract import (
     GovContractKeywordRuleWrite,
     GovContractOpportunityRead,
     GovContractOpportunitySearchRead,
+    GovContractPromotionRequest,
     GovContractRefreshRequest,
     GovContractTrackedSourceRead,
 )
-from app.services import gov_contract_service
+from app.services import gov_contract_service, candidate_inbox
 
 router = APIRouter()
 settings = get_settings()
@@ -34,6 +36,7 @@ def get_contract_capabilities(_: object = Depends(get_current_user)) -> GovContr
     return GovContractCapabilitiesRead(
         gmail_rfq_sync_enabled=settings.gmail_rfq_feed_enabled,
         gmail_rfq_feed_label=settings.gmail_rfq_feed_label,
+        candidate_inbox_enabled=candidate_inbox.configured(),
     )
 
 
@@ -223,7 +226,10 @@ def refresh_tracked_sources(
     db: Session = Depends(get_db),
     _: dict = Depends(get_current_admin),
 ) -> list[GovContractImportRunRead]:
-    return gov_contract_service.refresh_tracked_procurement_sources(db)
+    try:
+        return gov_contract_service.refresh_tracked_procurement_sources(db)
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/refresh-all", response_model=list[GovContractImportRunRead])
@@ -314,6 +320,38 @@ def funnel_contract(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{contract_id}/promote", response_model=GovContractOpportunityRead)
+def promote_candidate(
+    contract_id: str,
+    payload: GovContractPromotionRequest,
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> GovContractOpportunityRead:
+    try:
+        return gov_contract_service.serialize_opportunity(gov_contract_service.promote_candidate_to_crm(db, contract_id, payload))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except candidate_inbox.CandidateInboxError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/candidates/export.json")
+def export_candidate_inbox(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_current_admin),
+) -> Response:
+    try:
+        gov_contract_service.capture_candidate_inbox(db)
+        snapshot = candidate_inbox.snapshot()
+    except (candidate_inbox.CandidateInboxError, gov_contract_service.GovContractSourceError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(json.dumps(snapshot, ensure_ascii=True, indent=2), media_type="application/json", headers={
+        "Content-Disposition": 'attachment; filename="procurement-candidates.json"', "Cache-Control": "no-store",
+    })
 
 
 @router.get("/runs", response_model=list[GovContractImportRunRead])

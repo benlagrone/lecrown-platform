@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,6 +26,15 @@ class GovContractFunnelRequest(BaseModel):
 class GovContractCapabilitiesRead(BaseModel):
     gmail_rfq_sync_enabled: bool
     gmail_rfq_feed_label: Optional[str] = None
+    candidate_inbox_enabled: bool = False
+
+
+class GovContractPromotionRequest(BaseModel):
+    confirmed: Literal[True]
+    amount: float = Field(ge=0, allow_inf_nan=False)
+    close_date: date
+    stage: Literal["Prospecting", "Qualification", "Proposal", "Negotiation"] = "Prospecting"
+    notes: str = Field(default="", max_length=8000)
 
 
 class GovContractKeywordRuleWrite(BaseModel):

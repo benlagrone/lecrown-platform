@@ -84,8 +84,12 @@ class Settings:
 
     espocrm_base_url: str = os.getenv("ESPOCRM_BASE_URL", "")
     espocrm_api_key: str = os.getenv("ESPOCRM_API_KEY", "")
-    espocrm_username: str = os.getenv("ESPOCRM_USERNAME", os.getenv("ESPOCRM_ADMIN_USERNAME", ""))
-    espocrm_password: str = os.getenv("ESPOCRM_PASSWORD", os.getenv("ESPOCRM_ADMIN_PASSWORD", ""))
+    espocrm_username: str = os.getenv("ESPOCRM_USERNAME") or os.getenv("ESPOCRM_ADMIN_USERNAME") or os.getenv("ESPOLOGIN", "")
+    espocrm_password: str = os.getenv("ESPOCRM_PASSWORD") or os.getenv("ESPOCRM_ADMIN_PASSWORD") or os.getenv("ESPOPW", "")
+    gov_contract_source_catalog: str = os.getenv("GOV_CONTRACT_SOURCE_CATALOG", "auto")
+    procurement_candidate_json_path: str = os.getenv("PROCUREMENT_CANDIDATE_JSON_PATH", "")
+    gov_contract_portal_batch_size: int = int(os.getenv("GOV_CONTRACT_PORTAL_BATCH_SIZE", "10"))
+    gov_contract_portal_interval_seconds: float = float(os.getenv("GOV_CONTRACT_PORTAL_INTERVAL_SECONDS", "6"))
     espocrm_timeout_seconds: int = int(os.getenv("ESPOCRM_TIMEOUT_SECONDS", "15"))
     espocrm_lead_source: str = os.getenv("ESPOCRM_LEAD_SOURCE", "Web Site")
     espocrm_allowed_extra_fields: list[str] = [

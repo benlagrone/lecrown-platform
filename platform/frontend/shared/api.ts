@@ -354,6 +354,20 @@ export async function funnelGovContract(
   });
 }
 
+export async function promoteGovCandidate(
+  contractId: string,
+  payload: { confirmed: true; amount: number; close_date: string; stage: string; notes: string },
+): Promise<GovContractOpportunity> {
+  return request<GovContractOpportunity>(`/contracts/${contractId}/promote`, {
+    method: "POST", body: JSON.stringify(payload),
+  });
+}
+
+export async function downloadCandidateInbox(): Promise<void> {
+  const response = await fetch(resolveApiUrl("/contracts/candidates/export.json"), { headers: buildHeaders() });
+  await downloadResponse(response, "procurement-candidates.json");
+}
+
 export function getGovContractsExportUrl(windowDays = 7): string {
   const query = new URLSearchParams({ window_days: String(windowDays) });
   return `${API_BASE_URL}/contracts/export.csv?${query.toString()}`;

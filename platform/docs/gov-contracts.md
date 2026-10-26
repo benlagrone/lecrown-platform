@@ -4,6 +4,57 @@ The platform can now pull Texas ESBD opportunities from `txsmartbuy.gov`, federa
 
 ## Source
 
+### EspoCRM Source Catalog
+
+When EspoCRM is configured, `POST /contracts/refresh-tracked-sources`, the tracked-source
+step of `POST /contracts/refresh-all`, and `app.jobs.refresh_gov_contracts` read the
+complete paginated EspoCRM Account catalog before searching portals. The existing
+Sources and Opportunities pages display the resulting coverage and scored records.
+This direction is **CRM to platform**: the refresh does not write Accounts, enroll
+vendors, log in to buyer portals, or create CRM opportunities.
+
+- `GOV_CONTRACT_SOURCE_CATALOG=auto` (default) selects CRM when its URL or credentials
+  are present; otherwise the original static registry remains available.
+- `GOV_CONTRACT_SOURCE_CATALOG=espocrm` requires CRM and fails closed on missing or
+  invalid configuration. Use this setting for the Development deployment.
+- `GOV_CONTRACT_SOURCE_CATALOG=static` explicitly selects the legacy registry.
+- Configure `ESPOCRM_BASE_URL` plus `ESPOCRM_API_KEY`, or `ESPOCRM_USERNAME` and
+  `ESPOCRM_PASSWORD`. `ESPOLOGIN` and `ESPOPW` are supported aliases. Secrets must be
+  injected server-side; this app never reads another project's environment file.
+
+Source Accounts use the procurement classification descriptions maintained by the
+`espocrm-procurement-sources` skill. Ordinary customer Accounts are excluded. Account
+IDs preserve identity across edits; normalized listing URLs deduplicate sources and
+preserve legacy source keys. JAGGAER `CustomerOrg` remains part of URL identity.
+Deleted/unclassified sources become inactive after a complete successful snapshot;
+historical opportunities are retained. An empty, incomplete, or failed catalog read
+retains the previous snapshot and records a failed `espocrm_catalog` run, without
+searching stale sources. Core ESBD, federal, grants, SBA and Gmail feeds remain separate.
+
+Buyer-specific Bonfire portals use the public JSON listing adapter, excluding private
+projects. Existing dedicated buyer adapters remain available for exact recognized URLs.
+Bonfire refreshes are idempotent, and records absent from a successful complete open
+snapshot are marked closed. Unsupported portals report `manual_review`; registration-only
+and overlap records report `cataloged`, not a successful search. Public adapter requests
+do not follow redirects or receive CRM credentials. A reachable portal does not establish
+document access, eligibility, qualification, or successful bid submission.
+
+Bonfire enforces shared rate limits across buyer hosts. Public imports are paced by
+`GOV_CONTRACT_PORTAL_INTERVAL_SECONDS` (default 6 seconds), with at most
+`GOV_CONTRACT_PORTAL_BATCH_SIZE` (default 10) attempts per refresh. Never-attempted and
+oldest-attempted buyers go first, so repeated runs cover the full catalog rather than
+repeating its alphabetic beginning. HTTP 429 records a blocked run, persists the
+`Retry-After` cooldown, and defers remaining Bonfire requests. Deferred sources are
+not counted as searched. Scheduled CLI runs should repeat until the catalog is covered;
+the importer itself does not install a schedule. Failed or blocked imports produce a
+nonzero CLI exit status.
+
+The refresh is a potentially long-running multi-source batch. Use the existing CLI job
+for scheduled full-catalog runs; the synchronous API must have a sufficient request
+timeout. Check `/contracts/runs` for per-source failures, not just HTTP success.
+Deployment still requires a Development-owned target through the workspace deployment
+runway; the Properties compatibility publishing workflow is not this release path.
+
 - public ESBD page: `https://www.txsmartbuy.gov/esbd`
 - ESBD service used by the site export: `https://www.txsmartbuy.gov/app/extensions/CPA/CPAMain/1.0.0/services/ESBD.Service.ss`
 - public federal forecast page: `https://acquisitiongateway.gov/forecast`
@@ -46,6 +97,37 @@ The first tracked-but-not-fully-loaded sources are:
 - H-GAC OpenGov embed
 
 ## Backend API
+
+### Local Candidate Inbox and Explicit Promotion
+
+Set `PROCUREMENT_CANDIDATE_JSON_PATH` to a durable, private, server-local file.
+Discovery writes deduplicated candidate snapshots to that JSON file; the SQL tables
+remain the search/scoring projection for the existing UI. Collection never creates
+EspoCRM Leads or Opportunities. The file is atomically replaced, fsynced, mode 0600,
+and guarded by inter-process locks. Corrupt files fail closed rather than being reset.
+
+The Opportunities page is a candidate inbox. `Select for EspoCRM` opens a review form;
+only `Create EspoCRM Opportunity` submits the chosen candidate. EspoCRM requires an
+estimated USD amount and expected close date. Neither is invented by the importer;
+the displayed solicitation deadline must be reviewed before using it as a close date.
+The legacy Lead funnel API remains for compatibility but is no longer the inbox action.
+
+- `GET /contracts/candidates/export.json` downloads the private JSON inbox (admin only).
+- `POST /contracts/{id}/promote` requires admin access and `confirmed: true`, `amount`,
+  `close_date`, optional `stage` and `notes`. It creates an EspoCRM `Opportunity`, not a Lead.
+- The JSON promotion receipt is written before sending. A stable source-key marker
+  reconciles existing CRM records. Uncertain writes are never blindly retried; known
+  record IDs are read back and verified before reporting success.
+- Recollection preserves promotion receipts and updates discovery metadata without
+  creating another CRM record. Existing source snapshots are retained across restarts.
+- `app.jobs.collect_procurement_candidates` runs bounded CRM-source batches every
+  `PROCUREMENT_COLLECTION_INTERVAL_SECONDS` (default 900). It does not promote records.
+  A shared collection lock prevents overlap with manual refreshes.
+
+The separate Development deployment stores the inbox at
+`/app/data/procurement-candidates.json` in `lecrown_development_data`.
+See [Development deployment](development-deployment.md) for the locked runway,
+source publication, credentials, verification, and rollback boundaries.
 
 - `POST /contracts/refresh`
 - `POST /contracts/refresh-federal`

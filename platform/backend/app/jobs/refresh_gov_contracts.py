@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-tracked-sources",
         action="store_true",
-        help="Skip the tracked municipal, county, and regional procurement sources.",
+        help="Skip EspoCRM catalog synchronization and portal searches (or static sites when CRM is disabled).",
     )
     parser.add_argument(
         "--gmail-limit",
@@ -126,6 +126,8 @@ def main() -> None:
                 f"{index}. [{match.source}][{match.fit_bucket.upper()}:{match.score}|priority:{match.priority_score}] {match.title} "
                 f"| {agency} | due {due} | {match.source_url}"
             )
+        if failures or any(run.status in {"failed", "blocked"} for run in runs):
+            raise SystemExit(1)
     finally:
         db.close()
 

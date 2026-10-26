@@ -14,7 +14,8 @@ import {
   downloadFederalContractsExport,
   downloadGovContractsExport,
   downloadGrantsContractsExport,
-  funnelGovContract,
+  promoteGovCandidate,
+  downloadCandidateInbox,
   getAuthConfig,
   getIntakeDashboard,
   getCurrentAdmin,
@@ -695,6 +696,11 @@ export default function App() {
   const [downloadingFederalExport, setDownloadingFederalExport] = useState(false);
   const [downloadingGrantsExport, setDownloadingGrantsExport] = useState(false);
   const [funnelingContractId, setFunnelingContractId] = useState<string | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<GovContractOpportunity | null>(null);
+  const [promotionAmount, setPromotionAmount] = useState("");
+  const [promotionCloseDate, setPromotionCloseDate] = useState("");
+  const [promotionStage, setPromotionStage] = useState("Prospecting");
+  const [promotionNotes, setPromotionNotes] = useState("");
   const [retryingSubmissionId, setRetryingSubmissionId] = useState<string | null>(null);
   const [opportunitiesAuthStatus, setOpportunitiesAuthStatus] =
     useState<OpportunitiesAuthStatus>("checking");
@@ -1077,11 +1083,12 @@ export default function App() {
     try {
       const runs = await refreshAllGovSources();
       await refreshContractsView();
-      const completedCount = runs.filter((run) => run.status === "completed").length;
+      const completedCount = runs.filter((run) => run.status === "completed" && run.source !== "espocrm_catalog").length;
+      const deferredCount = runs.filter((run) => run.status === "deferred").length;
       const reviewCount = runs.filter((run) => run.status === "manual_review" || run.status === "cataloged").length;
       const blockedCount = runs.filter((run) => run.status === "blocked" || run.status === "failed").length;
       setMessage(
-        `All sources checked. ${completedCount} loaded, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
+        `Source batch finished. ${completedCount} loaded, ${deferredCount} deferred, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
       );
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -1158,11 +1165,12 @@ export default function App() {
     try {
       const runs = await refreshTrackedGovSources();
       await refreshContractsView();
-      const completedCount = runs.filter((run) => run.status === "completed").length;
+      const completedCount = runs.filter((run) => run.status === "completed" && run.source !== "espocrm_catalog").length;
+      const deferredCount = runs.filter((run) => run.status === "deferred").length;
       const reviewCount = runs.filter((run) => run.status === "manual_review" || run.status === "cataloged").length;
       const blockedCount = runs.filter((run) => run.status === "blocked" || run.status === "failed").length;
       setMessage(
-        `Tracked sources refreshed. ${completedCount} loaded, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
+        `Source batch finished. ${completedCount} loaded, ${deferredCount} deferred, ${reviewCount} need review, ${blockedCount} blocked or failed.`,
       );
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -1210,19 +1218,19 @@ export default function App() {
     }
   }
 
-  async function handleFunnelContract(contract: GovContractOpportunity) {
+  async function handleFunnelContract(event: FormEvent<HTMLFormElement>, contract: GovContractOpportunity) {
+    event.preventDefault();
     setFunnelingContractId(contract.id);
     setMessage("");
     setShowFunnelShortcut(false);
     try {
-      const result = await funnelGovContract(contract.id);
-      await Promise.all([refreshContractsView(), refreshIntakeDashboard()]);
-      const syncMessage =
-        result.funnel_delivery_status === "delivered"
-          ? `Contract sent to CRM lead funnel${result.funnel_record_id ? ` as ${result.funnel_record_id}` : ""}.`
-          : "Contract was recorded in the local funnel, but CRM delivery failed.";
-      setShowFunnelShortcut(true);
-      setMessage(syncMessage);
+      const result = await promoteGovCandidate(contract.id, {
+        confirmed: true, amount: Number(promotionAmount), close_date: promotionCloseDate,
+        stage: promotionStage, notes: promotionNotes,
+      });
+      await refreshContractsView();
+      setSelectedCandidate(null);
+      setMessage(`EspoCRM Opportunity verified: ${result.funnel_record_id}. Other candidates remain local.`);
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -1844,7 +1852,7 @@ export default function App() {
 
         <div className="content-footer">
           <div className="status-stack">
-            <span>Funnel: {formatFunnelLabel(contract)}</span>
+            <span>{contract.funnel_delivery_target === "espocrm_opportunity" ? "CRM Opportunity" : "Candidate"}: {formatFunnelLabel(contract)}</span>
             {contract.funnel_record_id ? <span>CRM record: {contract.funnel_record_id}</span> : null}
             <span>Last seen: {formatTimestamp(contract.last_seen_at)}</span>
           </div>
@@ -1852,14 +1860,20 @@ export default function App() {
             {isAdminUser ? (
               <button
                 type="button"
-                onClick={() => void handleFunnelContract(contract)}
-                disabled={funnelingContractId === contract.id}
+                onClick={() => {
+                  setSelectedCandidate(contract);
+                  setPromotionAmount("");
+                  setPromotionCloseDate(contract.due_date ?? "");
+                  setPromotionStage("Prospecting");
+                  setPromotionNotes("");
+                }}
+                disabled={!contractCapabilities.candidate_inbox_enabled || funnelingContractId === contract.id || (contract.funnel_delivery_target === "espocrm_opportunity" && contract.funnel_delivery_status === "delivered")}
               >
                 {funnelingContractId === contract.id
                   ? "Sending..."
-                  : contract.funnel_delivery_status === "delivered"
-                    ? "Resend to CRM"
-                    : "Add to lead funnel"}
+                  : contract.funnel_delivery_target === "espocrm_opportunity" && contract.funnel_delivery_status === "delivered"
+                    ? "Promoted to EspoCRM"
+                    : "Select for EspoCRM"}
               </button>
             ) : null}
             <a className="button-link secondary-link" href={contract.source_url} target="_blank" rel="noreferrer">
@@ -1867,6 +1881,21 @@ export default function App() {
             </a>
           </div>
         </div>
+        {selectedCandidate?.id === contract.id ? (
+          <form className="content-form auth-form" onSubmit={(event) => void handleFunnelContract(event, contract)}>
+            <h3>Review Opportunity creation</h3>
+            <p>Create one EspoCRM Opportunity for <strong>{contract.title}</strong>. This does not submit a bid or create a Lead.</p>
+            <label><span>Estimated value (USD)</span><input required type="number" min="0" step="0.01" value={promotionAmount} onChange={(event) => setPromotionAmount(event.target.value)} /></label>
+            <label><span>Expected close date</span><input required type="date" value={promotionCloseDate} onChange={(event) => setPromotionCloseDate(event.target.value)} /></label>
+            <p>Review the close date; a solicitation deadline is not necessarily the expected award date.</p>
+            <label><span>Initial stage</span><select value={promotionStage} onChange={(event) => setPromotionStage(event.target.value)}>{["Prospecting", "Qualification", "Proposal", "Negotiation"].map((stage) => <option key={stage}>{stage}</option>)}</select></label>
+            <label><span>Promotion notes</span><textarea maxLength={8000} value={promotionNotes} onChange={(event) => setPromotionNotes(event.target.value)} /></label>
+            <div className="action-row">
+              <button type="submit" disabled={funnelingContractId === contract.id}>{funnelingContractId === contract.id ? "Creating and verifying..." : "Create EspoCRM Opportunity"}</button>
+              <button type="button" disabled={funnelingContractId === contract.id} onClick={() => setSelectedCandidate(null)}>Keep candidate local</button>
+            </div>
+          </form>
+        ) : null}
       </article>
     );
   }
@@ -2940,6 +2969,7 @@ export default function App() {
     const needsReviewCount = trackedSources.filter(
       (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
     ).length;
+    const deferredSourceCount = trackedSources.filter((source) => source.latest_run_status === "deferred").length;
     const blockedSourceCount = trackedSources.filter(
       (source) => source.latest_run_status === "blocked" || source.latest_run_status === "failed",
     ).length;
@@ -2959,18 +2989,18 @@ export default function App() {
                   onClick={() => void handleTrackedSourceRefresh()}
                   disabled={refreshingTrackedSources}
                 >
-                  {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
+                  {refreshingTrackedSources ? "Refreshing..." : "Refresh catalog and sites"}
                 </button>
               ) : null}
             </div>
           </div>
 
           <p className="panel-subcopy">
-            This page reconciles the opportunity feeds, buyer registrations, certification programs, subcontracting channels,
-            and supplier-diversity organizations supplied in the operating trackers and knowledge package. A listed resource is
-            not automatically represented as a working data feed. The `Refresh tracked sites` action probes the local municipal,
-            county, and regional portals; core feeds like ESBD, federal forecast, Grants.gov, and SBA SUBNet still refresh through
-            their source-specific jobs.
+            When EspoCRM is configured, source Accounts drive this catalog. Refresh catalog and sites reads the latest CRM
+            sources, imports opportunities from supported public portals, and reports unsupported or access-restricted sites
+            for review. Registration-only resources and upstream overlaps are not searched as separate feeds. Cataloged does
+            not mean searched. Public portals rotate through paced batches; deferred sources wait for a later refresh.
+            Core feeds and Gmail RFQs remain available through their source-specific jobs.
           </p>
 
           <div className="metric-row">
@@ -3005,6 +3035,10 @@ export default function App() {
             <div className="metric-pill">
               <strong>{needsReviewCount}</strong>
               <span>need review</span>
+            </div>
+            <div className="metric-pill">
+              <strong>{deferredSourceCount}</strong>
+              <span>awaiting a later batch</span>
             </div>
             <div className="metric-pill">
               <strong>{blockedSourceCount}</strong>
@@ -3156,10 +3190,13 @@ export default function App() {
           <div className="panel-heading contract-toolbar">
             <div>
               <p className="eyebrow">Government Work Finder</p>
-              <h2>Federal, state, municipal, county, and regional opportunities for LeCrown</h2>
+              <h2>Candidate inbox: review before creating CRM Opportunities</h2>
             </div>
 
             <div className="action-row">
+              {isAdminUser && contractCapabilities.candidate_inbox_enabled ? (
+                <button type="button" onClick={() => void downloadCandidateInbox().catch((error) => setMessage(getErrorMessage(error)))}>Download candidate JSON</button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void handleFederalContractExport()}
@@ -3222,7 +3259,7 @@ export default function App() {
                     onClick={() => void handleTrackedSourceRefresh()}
                     disabled={refreshingTrackedSources || refreshingAllSources}
                   >
-                    {refreshingTrackedSources ? "Refreshing..." : "Refresh tracked sites"}
+                    {refreshingTrackedSources ? "Refreshing..." : "Refresh catalog and sites"}
                   </button>
                 </>
               ) : null}
@@ -3240,6 +3277,12 @@ export default function App() {
               Gmail RFQ sync will report a source status, but email opportunities require Gmail OAuth or GMAIL_RFQ_FEED_URL before label:{contractCapabilities.gmail_rfq_feed_label ?? "RFQs"} can be imported.
             </p>
           ) : null}
+
+          <p className="panel-subcopy">
+            {contractCapabilities.candidate_inbox_enabled
+              ? "Discovered candidates are saved in the server-local JSON inbox. Select a candidate, review its value and close date, then explicitly create an EspoCRM Opportunity. Collection never creates CRM records."
+              : "The JSON candidate inbox is not configured. CRM Opportunity promotion is disabled until durable local storage is available."}
+          </p>
 
           <div className="vendor-resource-grid">
             {METRO_VENDOR_RESOURCES.map((resource) => (
@@ -3966,7 +4009,7 @@ export default function App() {
                 ? "Protected invoice creation and Gmail draft workflow"
               : view === "profile"
                 ? "Profile and Workspace access"
-                : "Opportunity list and lead-funnel review"}
+                : "Candidate inbox and CRM opportunities"}
           </h1>
           <p className="hero-copy">
             {view === "dashboard"
@@ -3981,7 +4024,7 @@ export default function App() {
                 ? "Prepare LeCrown invoices, generate the exact platform PDF on the backend, and create a Gmail draft with the PDF attached without leaving the admin surface."
               : view === "profile"
                 ? "Review your verified LeCrown Google Workspace identity and application role."
-                : "Review matched federal forecast opportunities, Grants.gov opportunities, SBA SUBNet subcontracting opportunities, ESBD opportunities, and Gmail RFQs, then push strong fits into the CRM lead funnel."}
+                : "Collect public procurement candidates locally, review the strongest fits, and promote only your selections into EspoCRM Opportunities."}
           </p>
         </div>
 

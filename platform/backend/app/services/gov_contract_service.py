@@ -4,11 +4,13 @@ import csv
 import base64
 import io
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from html import unescape
+from email.utils import parsedate_to_datetime
 from math import ceil
-from urllib.parse import quote, urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -25,7 +27,7 @@ from app.models.gov_contract import (
 )
 from app.schemas.gov_contract import GovContractOpportunityRead
 from app.schemas.intake import IntakeLeadCreate
-from app.services import intake_service
+from app.services import intake_service, espocrm_service, procurement_source_catalog, candidate_inbox
 from app.utils.helpers import new_uuid
 
 settings = get_settings()
@@ -305,6 +307,20 @@ PROPERTY_OPPORTUNITY_RULES: tuple[tuple[str, int], ...] = (
 
 class GovContractSourceError(RuntimeError):
     """Raised when an upstream opportunity source cannot be fetched or parsed."""
+
+
+class GovContractRateLimitError(GovContractSourceError):
+    def __init__(self, source_label: str, retry_after: str | None):
+        seconds = 60.0
+        try:
+            seconds = float(retry_after)
+        except (TypeError, ValueError):
+            try:
+                seconds = (parsedate_to_datetime(retry_after) - datetime.now(timezone.utc)).total_seconds()
+            except (TypeError, ValueError, OverflowError):
+                pass
+        self.retry_at = datetime.now(timezone.utc) + timedelta(seconds=max(1, seconds))
+        super().__init__(f"{source_label} rate limited requests; retry after {self.retry_at.isoformat()}")
 
 
 @dataclass(frozen=True)
@@ -1498,6 +1514,7 @@ def _request_json_payload(
     *,
     source_label: str,
     params: dict[str, object] | None = None,
+    allow_redirects: bool = True,
 ) -> dict[str, object]:
     try:
         response = requests.get(
@@ -1505,8 +1522,13 @@ def _request_json_payload(
             params=params,
             timeout=settings.gov_contract_request_timeout_seconds,
             headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+            allow_redirects=allow_redirects,
         )
+        if response.status_code == 429:
+            raise GovContractRateLimitError(source_label, response.headers.get("Retry-After"))
         response.raise_for_status()
+        if not allow_redirects and response.status_code in (301, 302, 303, 307, 308):
+            raise GovContractSourceError(f"{source_label} redirected; source requires review")
         payload = response.json()
     except (requests.RequestException, ValueError) as exc:
         raise GovContractSourceError(f"Failed to fetch {source_label}: {exc}") from exc
@@ -2511,13 +2533,13 @@ def _houston_metro_tab_context(element_name: str | None) -> tuple[str, str] | No
     return mapping.get(_clean(element_name))
 
 
-def _dart_project_url(project: dict[str, object]) -> str:
+def _dart_project_url(project: dict[str, object], *, origin: str = "https://dart.bonfirehub.com") -> str:
     project_id = _clean(project.get("ProjectID"))
     private_project_id = _clean(project.get("PrivateProjectID"))
     visibility_id = _clean(project.get("ProjectVisibilityID"))
     if visibility_id and visibility_id != "1" and private_project_id:
-        return f"https://dart.bonfirehub.com/opportunities/private/{private_project_id}"
-    return f"https://dart.bonfirehub.com/opportunities/{project_id}"
+        return f"{origin}/opportunities/private/{quote(private_project_id, safe='')}"
+    return f"{origin}/opportunities/{quote(project_id, safe='')}"
 
 
 def _build_dart_record(
@@ -2530,9 +2552,9 @@ def _build_dart_record(
     title = _clean(project.get("ProjectName")) or solicitation_id
     due_date, due_time = _bonfire_due_parts(_clean(project.get("DateClose")))
     return GovContractSourceRecord(
-        source_key=f"{DART_PROCUREMENT_SOURCE_NAME}:{DART_OPEN_CONTEXT}:{project_id}",
+        source_key=f"{definition.source}:{DART_OPEN_CONTEXT}:{project_id}",
         solicitation_id=solicitation_id,
-        source_url=_dart_project_url(project),
+        source_url=_dart_project_url(project, origin=f"https://{urlsplit(definition.listing_url).hostname}"),
         title=title,
         agency_name=definition.label,
         agency_number=_clean(project.get("DepartmentID")),
@@ -2561,28 +2583,41 @@ def _build_dart_record(
 
 def fetch_dart_contracts() -> GovContractFetchResult:
     definition = TRACKED_PROCUREMENT_SOURCES[DART_PROCUREMENT_SOURCE_NAME]
-    payload = _request_json_payload(DART_BONFIRE_OPEN_OPPORTUNITIES_URL, source_label=definition.label)
+    return fetch_bonfire_contracts(definition)
+
+
+def fetch_bonfire_contracts(definition: GovContractTrackedSourceDefinition) -> GovContractFetchResult:
+    origin = procurement_source_catalog.bonfire_origin(definition.listing_url)
+    # The legacy DART definition uses its buyer overview; its vetted API is fixed.
+    if definition.source == DART_PROCUREMENT_SOURCE_NAME:
+        origin = "https://dart.bonfirehub.com"
+    if not origin:
+        raise GovContractSourceError("Source is not an approved public Bonfire portal URL")
+    url = f"{origin}/PublicPortal/getOpenPublicOpportunitiesSectionData"
+    payload = _request_json_payload(url, source_label=definition.label, allow_redirects=False)
     if payload.get("success") != 1 or not isinstance(payload.get("payload"), dict):
-        raise GovContractSourceError("DART returned an unsuccessful or malformed response")
+        raise GovContractSourceError(f"{definition.label} returned an unsuccessful or malformed response")
     projects = payload["payload"].get("projects")
     if isinstance(projects, dict):
         projects = list(projects.values())
     if not isinstance(projects, list):
-        raise GovContractSourceError("DART response is missing its projects collection")
+        raise GovContractSourceError(f"{definition.label} response is missing its projects collection")
     records = []
     seen = set()
     for project in projects:
         if not isinstance(project, dict):
-            raise GovContractSourceError("DART returned a malformed project")
+            raise GovContractSourceError(f"{definition.label} returned a malformed project")
         project_id = _clean(project.get("ProjectID"))
         if not project_id:
-            raise GovContractSourceError("DART project is missing ProjectID")
+            raise GovContractSourceError(f"{definition.label} project is missing ProjectID")
         if _clean(project.get("ProjectVisibilityID")) != "1" or project_id in seen:
             continue
         seen.add(project_id)
-        records.append(_build_dart_record(definition=definition, project=project))
+        record = _build_dart_record(definition=definition, project=project)
+        record.source_url = _dart_project_url(project, origin=origin)
+        records.append(record)
     return GovContractFetchResult(
-        request_payload={"url": DART_BONFIRE_OPEN_OPPORTUNITIES_URL},
+        request_payload={"url": url},
         source_total_records=len(projects),
         csv_text=_records_to_simple_csv(records),
         records=records,
@@ -3624,7 +3659,21 @@ def _persist_source_records(
     db.add(run)
     db.commit()
     db.refresh(run)
+    capture_candidate_inbox(db, source=source_name)
     return run
+
+
+def capture_candidate_inbox(db: Session, *, source: str | None = None) -> None:
+    if not candidate_inbox.configured():
+        return
+    statement = select(GovContractOpportunity)
+    if source:
+        statement = statement.where(GovContractOpportunity.source == source)
+    records = [serialize_opportunity(record).model_dump(mode="json") for record in db.scalars(statement).all()]
+    try:
+        candidate_inbox.capture(records)
+    except (candidate_inbox.CandidateInboxError, OSError) as exc:
+        raise GovContractSourceError("Could not persist candidate JSON inbox; source refresh requires retry") from exc
 
 
 def refresh_contracts(
@@ -3855,6 +3904,7 @@ def refresh_gmail_contracts(db: Session, *, limit: int | None = None) -> GovCont
         db.add(run)
         db.commit()
         db.refresh(run)
+        capture_candidate_inbox(db, source=GMAIL_RFQ_SOURCE_NAME)
         return run
     except GovContractSourceError as exc:
         _mark_run_failed(db, run, str(exc))
@@ -3987,7 +4037,7 @@ def _matches_search_keyword(opportunity: GovContractOpportunityRead, keyword: st
             opportunity.agency_number,
             opportunity.solicitation_id,
             opportunity.nigp_codes,
-            SOURCE_LABELS.get(opportunity.source, opportunity.source),
+            SOURCE_LABELS.get(opportunity.source, opportunity.agency_name or opportunity.source),
             opportunity.source_context_label,
             *_opportunity_search_tags(opportunity),
         ]
@@ -4112,7 +4162,7 @@ def search_contracts(
         "offset": offset,
         "category_counts": category_counts,
         "source_counts": _facet_counts(
-            [(opportunity.source, SOURCE_LABELS.get(opportunity.source, opportunity.source)) for opportunity in source_base]
+            [(opportunity.source, SOURCE_LABELS.get(opportunity.source, opportunity.agency_name or opportunity.source)) for opportunity in source_base]
         ),
         "source_context_counts": _facet_counts(
             [
@@ -4141,7 +4191,9 @@ def _ensure_tracked_sources(db: Session) -> None:
     }
     changed = False
 
-    for definition in PROCUREMENT_SOURCE_DEFINITIONS:
+    definitions = (CORE_PROCUREMENT_SOURCE_DEFINITIONS if procurement_source_catalog.enabled(settings)
+                   else PROCUREMENT_SOURCE_DEFINITIONS)
+    for definition in definitions:
         tracked_source = existing_by_source.get(definition.source)
         if tracked_source is None:
             db.add(
@@ -4163,6 +4215,7 @@ def _ensure_tracked_sources(db: Session) -> None:
             continue
 
         for field_name, value in {
+            "active": True,
             "label": definition.label,
             "listing_url": definition.listing_url,
             "platform_name": definition.platform_name,
@@ -4206,8 +4259,15 @@ def list_tracked_sources(db: Session) -> list[dict[str, object]]:
         stored_counts[opportunity.source] = stored_counts.get(opportunity.source, 0) + 1
 
     payload: list[dict[str, object]] = []
+    crm_catalog = procurement_source_catalog.enabled(settings)
     for tracked_source in tracked_sources:
+        if not tracked_source.active:
+            continue
+        if not crm_catalog and tracked_source.source not in PROCUREMENT_SOURCE_DEFINITIONS_BY_SOURCE:
+            continue
         definition = PROCUREMENT_SOURCE_DEFINITIONS_BY_SOURCE.get(tracked_source.source)
+        if procurement_source_catalog.account_id(tracked_source):
+            definition = _crm_source_definition(tracked_source)
         latest_run = latest_runs.get(tracked_source.source)
         payload.append(
             {
@@ -4425,6 +4485,16 @@ def refresh_tracked_source_probe(db: Session, source_name: str) -> GovContractIm
 
 
 def refresh_tracked_procurement_sources(db: Session) -> list[GovContractImportRun]:
+    try:
+        with candidate_inbox.collection_lock():
+            return _refresh_tracked_procurement_sources(db)
+    except candidate_inbox.CandidateInboxError as exc:
+        raise GovContractSourceError(str(exc)) from exc
+
+
+def _refresh_tracked_procurement_sources(db: Session) -> list[GovContractImportRun]:
+    if procurement_source_catalog.enabled(settings):
+        return refresh_crm_procurement_sources(db)
     _ensure_tracked_sources(db)
     runs: list[GovContractImportRun] = []
     for definition in TRACKED_PROCUREMENT_SOURCE_DEFINITIONS:
@@ -4447,6 +4517,115 @@ def refresh_tracked_procurement_sources(db: Session) -> list[GovContractImportRu
             latest_run = _latest_import_run_for_source(db, definition.source)
             if latest_run is not None:
                 runs.append(latest_run)
+    return runs
+
+
+def _crm_source_definition(source: GovContractTrackedSource) -> GovContractTrackedSourceDefinition:
+    summary = "Public opportunity importer" if source.load_scope == "opportunities" else "Adapter or portal access required"
+    if source.extraction_mode == "reference":
+        summary = "Registration/reference only; not searched"
+    elif source.extraction_mode == "overlap":
+        summary = "Upstream overlap; not searched twice"
+    return GovContractTrackedSourceDefinition(
+        source=source.source, label=source.label, listing_url=source.listing_url,
+        platform_name=source.platform_name, jurisdiction_type=source.jurisdiction_type,
+        extraction_mode=source.extraction_mode, load_scope=source.load_scope,
+        automation_summary=summary, automation_detail="Catalog managed in EspoCRM Accounts; refreshed before portal searches.",
+        notes=source.notes, resource_type=procurement_source_catalog.resource_type(source),
+    )
+
+
+def refresh_crm_procurement_sources(db: Session) -> list[GovContractImportRun]:
+    catalog_run = _create_single_day_import_run(db, "espocrm_catalog")
+    try:
+        _ensure_tracked_sources(db)
+        counts = procurement_source_catalog.sync(
+            db, definitions=PROCUREMENT_SOURCE_DEFINITIONS,
+            core_sources={item.source for item in CORE_PROCUREMENT_SOURCE_DEFINITIONS},
+        )
+    except espocrm_service.EspoCRMError as exc:
+        db.rollback()
+        _mark_run_failed(db, catalog_run, str(exc))
+        return [catalog_run]
+    _complete_non_loading_run(db, catalog_run, status="completed", detail="EspoCRM source catalog synchronized (read-only).", request_payload=counts)
+    runs = [catalog_run]
+    legacy_loaders = {
+        AUSTIN_AFO_SOURCE_NAME: refresh_austin_afo_contracts,
+        SAN_ANTONIO_BIDS_SOURCE_NAME: refresh_san_antonio_contracts,
+        TRAVIS_COUNTY_BIDNET_SOURCE_NAME: refresh_travis_county_contracts,
+        DALLAS_COUNTY_BIDNET_SOURCE_NAME: refresh_dallas_county_bidnet_contracts,
+        HOUSTON_METRO_PROCUREMENT_SOURCE_NAME: refresh_houston_metro_contracts,
+        DART_PROCUREMENT_SOURCE_NAME: refresh_dart_contracts,
+    }
+    core = {item.source for item in CORE_PROCUREMENT_SOURCE_DEFINITIONS}
+    sources = list(db.scalars(_tracked_sources_statement()).all())
+    last_attempt: dict[str, float] = {}
+    retry_at = datetime.min.replace(tzinfo=timezone.utc)
+    for previous in db.scalars(select(GovContractImportRun).where(GovContractImportRun.status != "deferred")).all():
+        last_attempt[previous.source] = max(last_attempt.get(previous.source, 0), previous.created_at.timestamp())
+        retry_value = (previous.request_payload or {}).get("bonfire_retry_at")
+        if isinstance(retry_value, str):
+            retry_at = max(retry_at, datetime.fromisoformat(retry_value))
+    # Never-attempted and oldest-attempted buyers go first, so bounded batches rotate.
+    sources.sort(key=lambda source: (last_attempt.get(source.source, 0), source.label, source.source))
+    attempts = 0
+    last_request = None
+    for source in sources:
+        if not source.active or source.source in core or not procurement_source_catalog.account_id(source):
+            continue
+        definition = _crm_source_definition(source)
+        if source.load_scope == "opportunities" and source.extraction_mode != "bonfire_public_json" and source.source in legacy_loaders:
+            try:
+                runs.append(legacy_loaders[source.source](db))
+            except GovContractSourceError:
+                runs.append(_latest_import_run_for_source(db, source.source))
+            continue
+        run = _create_single_day_import_run(db, source.source)
+        runs.append(run)
+        if source.extraction_mode != "bonfire_public_json":
+            _complete_non_loading_run(
+                db, run, status="cataloged" if source.extraction_mode in {"reference", "overlap"} else "manual_review",
+                detail=definition.automation_summary,
+                request_payload={"listing_url": source.listing_url, "crm_account_id": procurement_source_catalog.account_id(source)},
+            )
+            continue
+        if retry_at > datetime.now(timezone.utc) or attempts >= max(1, settings.gov_contract_portal_batch_size):
+            _complete_non_loading_run(
+                db, run, status="deferred",
+                detail=(f"Bonfire cooldown until {retry_at.isoformat()}" if retry_at > datetime.now(timezone.utc)
+                        else "Public portal batch limit reached; this source rotates into a later refresh."),
+                request_payload={"crm_account_id": procurement_source_catalog.account_id(source)},
+            )
+            continue
+        try:
+            interval = max(0, settings.gov_contract_portal_interval_seconds)
+            if last_request is not None:
+                time.sleep(max(0, interval - (time.monotonic() - last_request)))
+            last_request = time.monotonic()
+            attempts += 1
+            fetched = fetch_bonfire_contracts(definition)
+            fetched.request_payload["crm_account_id"] = procurement_source_catalog.account_id(source)
+            for record in fetched.records:
+                record.raw_payload["crm_account_id"] = procurement_source_catalog.account_id(source)
+            _persist_source_records(
+                db, run=run, source_name=source.source, fetched=fetched,
+                is_open_resolver=lambda record, *, today: _is_open_contract(record.status_code, record.due_date, today=today),
+            )
+            # Bonfire supplies a complete open snapshot; absent records are no longer open.
+            current_keys = {record.source_key for record in fetched.records}
+            for opportunity in db.scalars(select(GovContractOpportunity).where(GovContractOpportunity.source == source.source)).all():
+                if opportunity.source_key not in current_keys:
+                    opportunity.is_open = False
+            db.commit()
+            capture_candidate_inbox(db, source=source.source)
+        except GovContractRateLimitError as exc:
+            retry_at = exc.retry_at
+            _complete_non_loading_run(db, run, status="blocked", detail=str(exc), request_payload={
+                "crm_account_id": procurement_source_catalog.account_id(source),
+                "bonfire_retry_at": retry_at.isoformat(),
+            })
+        except GovContractSourceError as exc:
+            _mark_run_failed(db, run, str(exc))
     return runs
 
 
@@ -4517,6 +4696,34 @@ def export_federal_contracts_csv() -> tuple[str, date]:
 def export_grants_contracts_csv() -> tuple[str, date]:
     fetched = fetch_grants_contracts()
     return fetched.csv_text, date.today()
+
+
+def promote_candidate_to_crm(db: Session, contract_id: str, request) -> GovContractOpportunity:
+    contract = get_contract_by_id(db, contract_id)
+    if contract is None:
+        raise LookupError("Candidate not found")
+    if not candidate_inbox.configured():
+        raise candidate_inbox.CandidateInboxError("The candidate JSON inbox is not configured")
+    capture_candidate_inbox(db, source=contract.source)
+    description = _build_contract_description(contract, notes=request.notes)
+    payload = {
+        "name": contract.title[:255], "amount": request.amount, "amountCurrency": "USD",
+        "closeDate": request.close_date.isoformat(), "stage": request.stage,
+        "description": f"{description}\nEstimated USD value and expected close date reviewed by the promoting user.",
+    }
+    receipt = candidate_inbox.promote(contract.source_key, payload)
+    contract.funnel_status = "promoted"
+    contract.funnel_delivery_target = "espocrm_opportunity"
+    contract.funnel_delivery_status = "delivered"
+    contract.funnel_record_id = receipt["crm_record_id"]
+    contract.funnel_payload = receipt.get("payload", payload)
+    contract.funnel_response = {"id": receipt["crm_record_id"], "entity_type": "Opportunity", "verified_at": receipt["verified_at"]}
+    contract.funneled_at = datetime.now(timezone.utc)
+    db.add(contract)
+    db.commit()
+    db.refresh(contract)
+    capture_candidate_inbox(db, source=contract.source)
+    return contract
 
 
 def funnel_contract_to_crm(

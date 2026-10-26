@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from urllib.parse import quote
 from typing import Any
 
 import requests
@@ -78,6 +79,7 @@ def _get_access_token() -> str:
             url,
             headers=headers,
             timeout=settings.espocrm_timeout_seconds,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         raise EspoCRMError("EspoCRM authentication request failed") from exc
@@ -125,3 +127,92 @@ def create_lead(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     return body
+
+
+def list_accounts() -> list[dict[str, Any]]:
+    """Read a complete catalog or fail; never return a partial snapshot."""
+    headers = _headers()
+    accounts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    expected_total = None
+    for _ in range(500):
+        try:
+            response = requests.get(
+                f"{_base_url()}/Account",
+                headers=headers,
+                params={"select": "id,name,website,description", "maxSize": 200,
+                        "offset": len(accounts), "orderBy": "id", "order": "asc"},
+                timeout=settings.espocrm_timeout_seconds,
+                allow_redirects=False,
+            )
+            if not 200 <= response.status_code < 300:
+                raise EspoCRMError("EspoCRM Account read failed", status_code=response.status_code)
+            body = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise EspoCRMError("EspoCRM Account read failed") from exc
+        rows = body.get("list") if isinstance(body, dict) else None
+        total = body.get("total") if isinstance(body, dict) else None
+        if not isinstance(rows, list) or type(total) is not int or total < 0:
+            raise EspoCRMError("EspoCRM Account response is malformed or has no exact total")
+        if expected_total is not None and total != expected_total:
+            raise EspoCRMError("EspoCRM catalog changed during pagination; retry the refresh")
+        expected_total = total
+        for row in rows:
+            account_id = row.get("id") if isinstance(row, dict) else None
+            if not isinstance(account_id, str) or not account_id or account_id in seen:
+                raise EspoCRMError("EspoCRM Account pagination returned a missing or repeated ID")
+            seen.add(account_id)
+            accounts.append(row)
+        if len(accounts) == total:
+            return accounts
+        if not rows or len(accounts) > total:
+            raise EspoCRMError("EspoCRM Account pagination ended before a complete snapshot")
+    raise EspoCRMError("EspoCRM Account catalog exceeded the pagination safety limit")
+
+
+def _opportunity_request(method: str, path: str = "", **kwargs) -> dict[str, Any]:
+    try:
+        response = requests.request(
+            method, f"{_base_url()}/Opportunity{path}", headers=_headers(),
+            timeout=settings.espocrm_timeout_seconds, allow_redirects=False, **kwargs,
+        )
+    except requests.RequestException as exc:
+        raise EspoCRMError("EspoCRM Opportunity request failed; delivery may be uncertain") from exc
+    if not 200 <= response.status_code < 300:
+        raise EspoCRMError("EspoCRM Opportunity request was rejected", status_code=response.status_code)
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise EspoCRMError("EspoCRM Opportunity response was not JSON; delivery may be uncertain") from exc
+    if not isinstance(body, dict):
+        raise EspoCRMError("EspoCRM Opportunity response was malformed")
+    return body
+
+
+def create_opportunity(payload: dict[str, Any]) -> dict[str, Any]:
+    body = _opportunity_request("POST", json=payload)
+    if not isinstance(body.get("id"), str) or not body["id"]:
+        raise EspoCRMError("EspoCRM did not return an Opportunity ID; delivery may be uncertain")
+    return body
+
+
+def get_opportunity(record_id: str) -> dict[str, Any]:
+    body = _opportunity_request("GET", f"/{quote(record_id, safe='')}")
+    if body.get("id") != record_id:
+        raise EspoCRMError("EspoCRM Opportunity verification returned a different record")
+    return body
+
+
+def find_opportunity(marker: str) -> dict[str, Any] | None:
+    body = _opportunity_request("GET", params={
+        "select": "id,description", "maxSize": 2,
+        "where[0][type]": "contains", "where[0][attribute]": "description", "where[0][value]": marker,
+    })
+    rows, total = body.get("list"), body.get("total")
+    if not isinstance(rows, list) or type(total) is not int or total != len(rows) or total > 1:
+        raise EspoCRMError("Cannot safely reconcile existing CRM Opportunities for this candidate")
+    if not rows:
+        return None
+    if not isinstance(rows[0], dict) or not rows[0].get("id") or marker not in str(rows[0].get("description") or ""):
+        raise EspoCRMError("CRM Opportunity reconciliation returned a mismatched record")
+    return rows[0]
