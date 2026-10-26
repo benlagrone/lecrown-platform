@@ -41,6 +41,34 @@ class GovContractTrackedSourcesTest(unittest.TestCase):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
+    def test_source_sync_updates_an_existing_account_by_official_url(self) -> None:
+        definition = next(
+            item
+            for item in gov_contract_service.PROCUREMENT_SOURCE_DEFINITIONS
+            if item.source == gov_contract_service.SOURCE_NAME
+        )
+        existing = {
+            "id": "account-1",
+            "name": definition.label,
+            "website": definition.listing_url,
+            "description": "outdated",
+        }
+        with patch.object(gov_contract_service.espocrm_service, "is_configured", return_value=True), patch.object(
+            gov_contract_service.espocrm_service,
+            "list_accounts",
+            return_value=[existing],
+        ), patch.object(gov_contract_service.espocrm_service, "update_account") as update_account, patch.object(
+            gov_contract_service,
+            "PROCUREMENT_SOURCE_DEFINITIONS",
+            (definition,),
+        ):
+            result = gov_contract_service.sync_procurement_sources_to_espocrm()
+
+        self.assertEqual({"created": [], "updated": [definition.source], "unchanged": [], "total": 1}, result)
+        update_account.assert_called_once()
+        self.assertEqual("account-1", update_account.call_args.args[0])
+        self.assertEqual(definition.listing_url, update_account.call_args.args[1]["website"])
+
     def test_refresh_tracked_procurement_sources_records_load_and_probe_statuses(self) -> None:
         austin_html = """
         <html>

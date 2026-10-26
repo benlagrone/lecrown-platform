@@ -25,6 +25,7 @@ from app.models.gov_contract import (
 )
 from app.schemas.gov_contract import GovContractOpportunityRead
 from app.schemas.intake import IntakeLeadCreate
+from app.services import espocrm_service
 from app.services import intake_service
 from app.utils.helpers import new_uuid
 
@@ -4237,6 +4238,76 @@ def list_tracked_sources(db: Session) -> list[dict[str, object]]:
             }
         )
     return payload
+
+
+def _procurement_source_account_payload(definition: GovContractTrackedSourceDefinition) -> dict[str, str]:
+    access_note = definition.notes or definition.automation_summary
+    description = (
+        "Procurement opportunity source. "
+        f"Source key: {definition.source}. "
+        f"Classification: {definition.resource_type}. "
+        f"Platform: {definition.platform_name}. "
+        f"Jurisdiction: {definition.jurisdiction_type}. "
+        f"Access: {access_note}"
+    )
+    return {
+        "name": definition.label,
+        "website": definition.listing_url,
+        "description": description,
+    }
+
+
+def sync_procurement_sources_to_espocrm() -> dict[str, object]:
+    """Create or update CRM Accounts for the opportunity-source registry.
+
+    The official URL is the primary reconciliation key; the label is a fallback
+    for sources whose listing URL changes. Non-opportunity reference resources
+    and the private Gmail label feed remain outside the CRM Account catalog.
+    """
+    if not espocrm_service.is_configured():
+        raise espocrm_service.EspoCRMError("EspoCRM source sync is not configured")
+
+    existing_accounts = espocrm_service.list_accounts()
+    by_url = {
+        str(account.get("website", "")).rstrip("/").casefold(): account
+        for account in existing_accounts
+        if account.get("website")
+    }
+    by_name = {
+        str(account.get("name", "")).strip().casefold(): account
+        for account in existing_accounts
+        if account.get("name")
+    }
+    created: list[str] = []
+    updated: list[str] = []
+    unchanged: list[str] = []
+    for definition in PROCUREMENT_SOURCE_DEFINITIONS:
+        if definition.resource_type != "opportunity_feed" or definition.source == GMAIL_RFQ_SOURCE_NAME:
+            continue
+        payload = _procurement_source_account_payload(definition)
+        account = by_url.get(payload["website"].rstrip("/").casefold()) or by_name.get(payload["name"].casefold())
+        if account is None:
+            result = espocrm_service.create_account(payload)
+            created.append(definition.source)
+            by_url[payload["website"].rstrip("/").casefold()] = result
+            by_name[payload["name"].casefold()] = result
+            continue
+        current = {key: account.get(key) for key in payload}
+        if current == payload:
+            unchanged.append(definition.source)
+            continue
+        account_id = account.get("id")
+        if not isinstance(account_id, str) or not account_id:
+            raise espocrm_service.EspoCRMError("EspoCRM account list included a record without an id")
+        espocrm_service.update_account(account_id, payload)
+        updated.append(definition.source)
+
+    return {
+        "created": created,
+        "updated": updated,
+        "unchanged": unchanged,
+        "total": len(created) + len(updated) + len(unchanged),
+    }
 
 
 def _create_single_day_import_run(db: Session, source: str) -> GovContractImportRun:

@@ -24,6 +24,7 @@ from app.schemas.gov_contract import (
     GovContractTrackedSourceRead,
 )
 from app.services import gov_contract_service
+from app.services import espocrm_service
 
 router = APIRouter()
 settings = get_settings()
@@ -239,6 +240,16 @@ def refresh_all_sources(
         end_date=request.end_date,
         window_days=request.window_days,
     )
+
+
+@router.post("/sync-sources-to-crm")
+def sync_procurement_sources_to_crm(
+    _: dict = Depends(get_current_admin),
+) -> dict[str, object]:
+    try:
+        return gov_contract_service.sync_procurement_sources_to_espocrm()
+    except espocrm_service.EspoCRMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/list", response_model=list[GovContractOpportunityRead])

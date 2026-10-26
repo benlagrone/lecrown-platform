@@ -125,3 +125,61 @@ def create_lead(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     return body
+
+
+def _response_body(response: requests.Response, *, operation: str) -> dict[str, Any]:
+    try:
+        body = response.json()
+    except ValueError:
+        body = {"raw": response.text}
+    if response.status_code < 200 or response.status_code >= 300:
+        raise EspoCRMError(
+            f"EspoCRM {operation} request failed",
+            status_code=response.status_code,
+            body=body,
+        )
+    if not isinstance(body, dict):
+        raise EspoCRMError(f"EspoCRM {operation} response was not an object")
+    return body
+
+
+def list_accounts() -> list[dict[str, Any]]:
+    try:
+        response = requests.get(
+            f"{_base_url()}/Account?maxSize=200&select=id,name,website,description",
+            headers=_headers(),
+            timeout=settings.espocrm_timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise EspoCRMError("EspoCRM account list request failed") from exc
+    body = _response_body(response, operation="account list")
+    records = body.get("list")
+    if not isinstance(records, list):
+        raise EspoCRMError("EspoCRM account list response did not include a list")
+    return [record for record in records if isinstance(record, dict)]
+
+
+def create_account(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        response = requests.post(
+            f"{_base_url()}/Account",
+            json=payload,
+            headers=_headers(),
+            timeout=settings.espocrm_timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise EspoCRMError("EspoCRM account create request failed") from exc
+    return _response_body(response, operation="account create")
+
+
+def update_account(account_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        response = requests.patch(
+            f"{_base_url()}/Account/{account_id}",
+            json=payload,
+            headers=_headers(),
+            timeout=settings.espocrm_timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise EspoCRMError("EspoCRM account update request failed") from exc
+    return _response_body(response, operation="account update")

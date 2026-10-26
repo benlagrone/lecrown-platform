@@ -53,6 +53,7 @@ The first tracked-but-not-fully-loaded sources are:
 - `POST /contracts/refresh-sba-subnet`
 - `POST /contracts/refresh-gmail`
 - `POST /contracts/refresh-tracked-sources`
+- `POST /contracts/sync-sources-to-crm`
 - `POST /contracts/{id}/funnel`
 - `GET /contracts/list?limit=12&matches_only=true&open_only=true&min_priority_score=0`
 - `GET /contracts/runs?limit=5`
@@ -95,6 +96,8 @@ Optional exact dates:
 `POST /contracts/refresh-gmail` checks the Gmail RFQ source every time it is requested. If `GMAIL_RFQ_FEED_URL` is configured, it imports RFQ messages from that feed. Otherwise it uses the configured Google OAuth refresh token to search Gmail directly for `label:rfqs`, requests up to 5,000 messages, and splits digest emails with multiple bid links into separate opportunity records. If neither the feed nor Gmail OAuth is configured, it records a `manual_review` source run instead of hiding Gmail RFQs from the source list.
 
 `POST /contracts/refresh-tracked-sources` refreshes the municipal/county/regional tracked-source batch. Parser-backed sources import opportunities. Harder portals still generate a run record with statuses like `manual_review`, `cataloged`, or `blocked` so the admin UI shows coverage gaps instead of silently dropping them.
+
+`POST /contracts/sync-sources-to-crm` is an admin-only, idempotent reconciliation of the registry's opportunity sources into EspoCRM Accounts. It matches by official listing URL first and source label second, then reports `created`, `updated`, and `unchanged` source keys. Add a newly verified source to the registry before running this sync; it does not register vendors, submit bids, or create Leads or Opportunities.
 
 The admin app now has a dedicated `Sources` page alongside `Opportunities`. The `Sources` page lists the full
 government-contracting resource catalog, groups it by purpose, and spells out the automation path for each one,
