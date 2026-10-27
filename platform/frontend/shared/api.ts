@@ -525,7 +525,7 @@ export async function listUserInvites(): Promise<UserInvite[]> {
   return request<UserInvite[]>("/auth/invitations");
 }
 
-export async function createUserInvite(payload: { email: string }): Promise<UserInviteCreateResponse> {
+export async function createUserInvite(payload: { email: string; is_admin?: boolean }): Promise<UserInviteCreateResponse> {
   return request<UserInviteCreateResponse>("/auth/invitations", {
     method: "POST",
     body: JSON.stringify(payload),

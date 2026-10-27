@@ -145,6 +145,7 @@ export interface ChangePasswordRequest {
 }
 
 export interface UserInvite {
+  is_admin: boolean;
   id: string;
   email: string;
   created_by_user_id: string;

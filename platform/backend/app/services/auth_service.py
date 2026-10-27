@@ -173,7 +173,10 @@ def create_user_invite(
     *,
     current_user: User,
     email: str,
+    is_admin: bool = False,
 ) -> UserInviteCreateResult:
+    if not current_user.is_active or not current_user.is_admin:
+        raise ValueError("Only active administrators may create invitations")
     cleaned_email = _normalize_email(email)
     if not cleaned_email or "@" not in cleaned_email:
         raise ValueError("A valid email is required")
@@ -197,6 +200,7 @@ def create_user_invite(
     invite = UserInvite(
         id=new_uuid(),
         email=cleaned_email,
+        is_admin=is_admin,
         invite_token_hash=invite_token_hash,
         created_by_user_id=current_user.id,
         expires_at=_utc_now() + timedelta(days=max(1, settings.user_invite_expire_days)),
@@ -282,7 +286,7 @@ def accept_user_invite(
         email=invite.email,
         hashed_password=hash_password(password),
         is_active=True,
-        is_admin=False,
+        is_admin=bool(invite.is_admin),
     )
     db.add(user)
     db.flush()

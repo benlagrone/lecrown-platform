@@ -70,6 +70,7 @@ class PrivilegedAuthResponse(BaseModel):
 
 class UserInviteCreateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
+    is_admin: bool = False
 
 
 class UserInviteAcceptRequest(BaseModel):
@@ -81,6 +82,7 @@ class UserInviteAcceptRequest(BaseModel):
 class UserInviteRead(BaseModel):
     id: str
     email: str
+    is_admin: bool = False
     created_by_user_id: str
     accepted_by_user_id: Optional[str] = None
     expires_at: datetime
@@ -220,6 +222,7 @@ def create_invitation(
             db,
             current_user=current_user,
             email=payload.email,
+            is_admin=payload.is_admin,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

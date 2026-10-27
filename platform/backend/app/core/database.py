@@ -82,6 +82,12 @@ def _run_lightweight_migrations() -> bool:
                 )
             )
 
+    if inspector.has_table("user_invites"):
+        invite_columns = {column["name"] for column in inspector.get_columns("user_invites")}
+        if "is_admin" not in invite_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE user_invites ADD COLUMN is_admin BOOLEAN DEFAULT 0 NOT NULL"))
+
     if not inspector.has_table("gov_contract_opportunities"):
         return False
 

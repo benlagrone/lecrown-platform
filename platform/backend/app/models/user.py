@@ -28,6 +28,7 @@ class UserInvite(Base):
 
     id = Column(String, primary_key=True)
     email = Column(String, nullable=False, index=True)
+    is_admin = Column(Boolean, default=False, server_default="0", nullable=False)
     invite_token_hash = Column(String, unique=True, nullable=False, index=True)
     created_by_user_id = Column(String, nullable=False, index=True)
     accepted_by_user_id = Column(String, nullable=True, index=True)

@@ -728,6 +728,7 @@ export default function App() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteIsAdmin, setInviteIsAdmin] = useState(false);
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [minPriorityScoreFilter, setMinPriorityScoreFilter] = useState(0);
@@ -1311,9 +1312,10 @@ export default function App() {
       setMessage("Invite accepted. Your account is ready.");
       navigateToView("profile");
     } catch (error) {
-      clearAuthToken();
-      setCurrentAdmin(null);
-      setOpportunitiesAuthStatus("unauthenticated");
+      if (!currentAdmin) {
+        clearAuthToken();
+        setOpportunitiesAuthStatus("unauthenticated");
+      }
       setAuthMessage(getErrorMessage(error));
     } finally {
       setAcceptingInvite(false);
@@ -1393,8 +1395,9 @@ export default function App() {
     setCreatingInvite(true);
     setMessage("");
     try {
-      const invite = await createUserInvite({ email: inviteEmail });
+      const invite = await createUserInvite({ email: inviteEmail, is_admin: inviteIsAdmin });
       setInviteEmail("");
+      setInviteIsAdmin(false);
       setLatestInvite(invite);
       await refreshContractsView();
       setMessage(buildInviteCreateMessage(invite));
@@ -1609,7 +1612,7 @@ export default function App() {
         {authMessage ? <div className="message-banner auth-banner">{authMessage}</div> : null}
 
         <section className="grid auth-grid">
-          <article className="panel auth-panel">
+          {!inviteCode ? <article className="panel auth-panel">
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">{eyebrow}</p>
@@ -1648,7 +1651,7 @@ export default function App() {
                 </button>
               </div>
             </form>
-          </article>
+          </article> : null}
 
           <article className="panel auth-panel">
             <div className="panel-heading">
@@ -1706,6 +1709,11 @@ export default function App() {
                 <button type="submit" disabled={acceptingInvite}>
                   {acceptingInvite ? "Activating..." : "Accept invite"}
                 </button>
+                {currentAdmin ? (
+                  <button type="button" className="secondary-link" onClick={() => setInviteCode("")}>
+                    Continue with current account
+                  </button>
+                ) : null}
               </div>
             </form>
           </article>
@@ -2314,6 +2322,10 @@ export default function App() {
                     required
                   />
                 </label>
+                <label className="checkbox-row">
+                  <input type="checkbox" checked={inviteIsAdmin} onChange={(event) => setInviteIsAdmin(event.target.checked)} />
+                  <span>Administrator access: manage invitations, sources, and CRM promotion</span>
+                </label>
                 <div className="action-row keyword-form-actions">
                   <button type="submit" disabled={creatingInvite}>
                     {creatingInvite ? "Creating..." : "Create invite"}
@@ -2325,6 +2337,7 @@ export default function App() {
                 <div className="invite-code-card">
                   <div className="invite-code-card-copy">
                     <strong>{latestInvite.email}</strong>
+                    <span>Access: {latestInvite.is_admin ? "Administrator" : "Member"}</span>
                     <span>
                       {latestInvite.email_delivery_status === "sent"
                         ? "Invite email sent automatically. They can still use this one-time invite code manually."
@@ -2351,6 +2364,7 @@ export default function App() {
                     <div className="invite-row" key={invite.id}>
                       <div className="invite-row-meta">
                         <strong>{invite.email}</strong>
+                        <span>Access: {invite.is_admin ? "Administrator" : "Member"}</span>
                         <span>Status: {formatInviteStatus(invite)}</span>
                         <span>Created: {formatTimestamp(invite.created_at)}</span>
                         <span>Expires: {formatTimestamp(invite.expires_at)}</span>
@@ -3885,7 +3899,7 @@ export default function App() {
     );
   }
 
-  if (opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
+  if ((inviteCode && authConfig.mode === "password") || opportunitiesAuthStatus === "unauthenticated" || !currentAdmin) {
     if (authConfig.mode === "google_workspace") {
       const allowedDomain = authConfig.allowed_domains[0] ?? "lecrowndevelopment.com";
       return (

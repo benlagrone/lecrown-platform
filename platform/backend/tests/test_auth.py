@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -208,6 +209,71 @@ class AuthServiceTest(unittest.TestCase):
                     "Invite email delivery is not configured.",
                     invite_result.email_delivery_detail,
                 )
+
+    def make_admin(self, db) -> User:
+        admin = User(id="existing-admin", username="admin", email="admin@lecrown.local",
+                     hashed_password=auth_service.hash_password("ExistingPass123"), is_admin=True, is_active=True)
+        db.add(admin)
+        db.commit()
+        return admin
+
+    def test_explicit_admin_invite_preserves_existing_admin_and_activates_once(self) -> None:
+        with self.Session() as db, patch.object(auth_service.invite_email_service, "send_user_invite_email",
+                side_effect=invite_email_service.InviteEmailConfigurationError("Not configured")):
+            admin = self.make_admin(db)
+            old_hash = admin.hashed_password
+            invitation = auth_service.create_user_invite(db, current_user=admin,
+                email="owner@example.com", is_admin=True)
+            self.assertTrue(invitation.invite.is_admin)
+            self.assertEqual(1, db.query(User).count())
+            user = auth_service.accept_user_invite(db, invite_code=invitation.invite_code,
+                username="owner", password="OwnerChooses123")
+            self.assertTrue(user.is_admin)
+            self.assertEqual("owner@example.com", user.email)
+            self.assertIsNotNone(auth_service.authenticate_user(db, user.email, "OwnerChooses123"))
+            self.assertIsNotNone(auth_service.authenticate_user(db, "admin", "ExistingPass123"))
+            self.assertEqual(old_hash, admin.hashed_password)
+            with self.assertRaises(ValueError):
+                auth_service.accept_user_invite(db, invite_code=invitation.invite_code,
+                    username="duplicate", password="Duplicate123")
+
+    def test_non_admin_and_inactive_admin_cannot_issue_invites(self) -> None:
+        with self.Session() as db:
+            user = self.make_admin(db)
+            for active, admin in [(True, False), (False, True)]:
+                user.is_active, user.is_admin = active, admin
+                with self.assertRaises(ValueError):
+                    auth_service.create_user_invite(db, current_user=user,
+                        email="owner@example.com", is_admin=True)
+            self.assertEqual(0, db.query(UserInvite).count())
+
+    def test_expired_admin_invite_cannot_grant_access(self) -> None:
+        with self.Session() as db, patch.object(auth_service.invite_email_service, "send_user_invite_email",
+                side_effect=invite_email_service.InviteEmailConfigurationError("Not configured")):
+            admin = self.make_admin(db)
+            invitation = auth_service.create_user_invite(db, current_user=admin,
+                email="owner@example.com", is_admin=True)
+            invitation.invite.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+            db.commit()
+            with self.assertRaises(ValueError):
+                auth_service.accept_user_invite(db, invite_code=invitation.invite_code,
+                    username="owner", password="OwnerChooses123")
+            self.assertEqual(1, db.query(User).count())
+
+    def test_reissued_invite_does_not_keep_prior_admin_grant(self) -> None:
+        with self.Session() as db, patch.object(auth_service.invite_email_service, "send_user_invite_email",
+                side_effect=invite_email_service.InviteEmailConfigurationError("Not configured")):
+            admin = self.make_admin(db)
+            first = auth_service.create_user_invite(db, current_user=admin,
+                email="member@example.com", is_admin=True)
+            replacement = auth_service.create_user_invite(db, current_user=admin,
+                email="member@example.com")
+            with self.assertRaises(ValueError):
+                auth_service.accept_user_invite(db, invite_code=first.invite_code,
+                    username="owner", password="OwnerChooses123")
+            user = auth_service.accept_user_invite(db, invite_code=replacement.invite_code,
+                username="member", password="MemberChooses123")
+            self.assertFalse(user.is_admin)
 
 
 if __name__ == "__main__":
