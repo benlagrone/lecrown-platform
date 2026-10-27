@@ -134,72 +134,75 @@ STATUS_NAME_TO_CODE = {
     "no award": "11",
 }
 DEFAULT_MATCH_RULES: tuple[tuple[str, int], ...] = (
-    ("property management", 9),
-    ("real estate", 8),
-    ("building maintenance", 7),
-    ("facility maintenance", 7),
-    ("facilities maintenance", 7),
     ("information technology", 7),
-    ("facility management", 6),
-    ("facilities management", 6),
-    ("construction", 6),
-    ("site development", 6),
-    ("site work", 6),
-    ("renovation", 6),
-    ("rehabilitation", 6),
-    ("general contractor", 6),
+    ("it services", 6),
+    ("it professional services", 6),
+    ("it support", 6),
+    ("it consulting", 6),
+    ("it staffing", 6),
+    ("it training", 5),
+    ("it modernization", 6),
+    ("technology modernization", 6),
+    ("digital modernization", 6),
+    ("digital transformation", 6),
     ("cybersecurity", 6),
+    ("cyber security", 6),
+    ("information security", 6),
     ("managed it services", 6),
     ("software development", 6),
     ("systems integration", 6),
+    ("system integration", 6),
     ("application development", 5),
-    ("appraisal", 5),
-    ("demolition", 5),
-    ("roofing", 5),
-    ("concrete", 5),
-    ("asphalt", 5),
-    ("paving", 5),
+    ("software", 5),
+    ("enterprise software", 5),
+    ("software licenses", 5),
+    ("software licensing", 5),
+    ("software subscription", 5),
+    ("software implementation", 5),
+    ("software maintenance", 5),
+    ("software support", 5),
+    ("web development", 5),
+    ("website development", 5),
+    ("website redesign", 5),
+    ("application support", 5),
+    ("saas", 5),
+    ("artificial intelligence", 6),
+    ("ai", 5),
+    ("machine learning", 6),
+    ("data analytics", 6),
+    ("data engineering", 6),
+    ("data migration", 5),
+    ("data management", 5),
+    ("business intelligence", 5),
+    ("database", 5),
+    ("erp", 5),
+    ("crm", 5),
     ("cloud services", 5),
     ("cloud migration", 5),
+    ("cloud hosting", 5),
     ("network infrastructure", 5),
-    ("hvac", 4),
-    ("electrical", 4),
-    ("plumbing", 4),
-    ("landscaping", 4),
-    ("janitorial", 4),
-    ("custodial", 4),
-    ("painting", 4),
-    ("fencing", 4),
-    ("flooring", 4),
-    ("data center", 4),
-    ("help desk", 4),
-    ("maintenance and repair", 4),
-    ("service desk", 4),
-    ("technical support", 4),
-    ("surveying", 4),
-    ("mowing", 3),
-    ("grounds maintenance", 3),
+    ("network security", 5),
+    ("network equipment", 5),
+    ("computer hardware", 5),
+    ("computer equipment", 5),
+    ("computer related services", 5),
+    ("data center", 5),
+    ("help desk", 5),
+    ("service desk", 5),
+    ("telecommunications", 5),
+    ("structured cabling", 5),
+    ("voip", 5),
 )
 DEFAULT_EXTRA_KEYWORD_WEIGHT = 3
 DEFAULT_AGENCY_AFFINITY_SCORE = 5
 NON_MATCHING_AGENCY_AFFINITY_SCORE = 3
 COMPETITION_SIGNAL_RULES: tuple[tuple[str, int], ...] = (
-    ("property management", 2),
-    ("grounds maintenance", 2),
-    ("janitorial", 2),
-    ("custodial", 2),
     ("cybersecurity", 2),
-    ("roofing", 1),
-    ("plumbing", 1),
-    ("electrical", 1),
-    ("hvac", 1),
     ("help desk", 1),
     ("network infrastructure", 1),
     ("service desk", 1),
     ("software development", 1),
     ("systems integration", 1),
-    ("surveying", 1),
-    ("appraisal", 1),
     ("statewide", -2),
     ("job order contract", -2),
     ("joc", -2),
@@ -207,10 +210,6 @@ COMPETITION_SIGNAL_RULES: tuple[tuple[str, int], ...] = (
     ("on call", -1),
     ("multiple award", -2),
     ("master agreement", -2),
-    ("general contractor", -1),
-    ("construction", -1),
-    ("design build", -2),
-    ("cmar", -2),
     ("professional services", -1),
     ("consulting", -1),
 )
@@ -220,8 +219,8 @@ IT_SERVICES_CATEGORY = "it_services"
 PROPERTY_SERVICES_CATEGORY = "property_services"
 OTHER_OPPORTUNITIES_CATEGORY = "other"
 OPPORTUNITY_CATEGORY_LABELS = {
-    IT_SERVICES_CATEGORY: "IT services",
-    PROPERTY_SERVICES_CATEGORY: "Real estate / property",
+    IT_SERVICES_CATEGORY: "IT and adjacent services",
+    PROPERTY_SERVICES_CATEGORY: "Construction / property (out of scope)",
     OTHER_OPPORTUNITIES_CATEGORY: "Other",
 }
 OPPORTUNITY_SOURCE_TYPE_TAGS = {
@@ -236,32 +235,7 @@ OPPORTUNITY_SOURCE_TYPE_TAGS = {
     DALLAS_COUNTY_BIDNET_SOURCE_NAME: "Bid",
     HOUSTON_METRO_PROCUREMENT_SOURCE_NAME: "Bid",
 }
-IT_OPPORTUNITY_RULES: tuple[tuple[str, int], ...] = (
-    ("Information Technology", 8),
-    ("IT services", 7),
-    ("Managed IT services", 7),
-    ("IT support", 6),
-    ("IT modernization", 6),
-    ("Technology modernization", 6),
-    ("Digital modernization", 5),
-    ("Cybersecurity", 7),
-    ("Software development", 7),
-    ("Application development", 6),
-    ("Systems integration", 6),
-    ("Cloud services", 6),
-    ("Cloud migration", 6),
-    ("Enterprise software", 5),
-    ("Software licenses", 5),
-    ("Artificial intelligence", 5),
-    ("AI", 4),
-    ("Machine learning", 5),
-    ("Network infrastructure", 5),
-    ("Data center", 4),
-    ("Help desk", 4),
-    ("Service desk", 4),
-    ("Technical support", 4),
-    ("Computer related services", 4),
-)
+IT_OPPORTUNITY_RULES = DEFAULT_MATCH_RULES
 PROPERTY_OPPORTUNITY_RULES: tuple[tuple[str, int], ...] = (
     ("Property management", 9),
     ("Real estate", 8),
@@ -1221,7 +1195,7 @@ def _build_score_breakdown(
         ),
     )
 
-    return priority_score, {
+    return priority_score if raw_score > 0 else 0, {
         "closeness": closeness_score,
         "timing": timing_score,
         "competition": competition_score,
@@ -1406,7 +1380,7 @@ def _opportunity_classification_parts(opportunity: GovContractOpportunity) -> li
 
 def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, object]:
     parts = _opportunity_classification_parts(opportunity)
-    it_score, it_tags = _score_text_parts(parts, list(IT_OPPORTUNITY_RULES))
+    it_score, it_tags = _score_it_scope(_opportunity_score_parts(opportunity), list(IT_OPPORTUNITY_RULES))
     property_score, property_tags = _score_text_parts(parts, list(PROPERTY_OPPORTUNITY_RULES))
 
     categories: list[str] = []
@@ -1445,35 +1419,54 @@ def _classify_opportunity(opportunity: GovContractOpportunity) -> dict[str, obje
 
 
 def _record_score_parts(record: GovContractSourceRecord) -> list[str | None]:
-    return [
-        record.title,
-        record.agency_name,
-        record.nigp_codes,
-        *_payload_score_parts(record.raw_payload),
-    ]
+    return _service_scope_parts(record.title, record.nigp_codes, record.raw_payload)
+
+
+def _service_scope_parts(title: str, codes: str | None, payload: dict | None) -> list[str | None]:
+    # Buyer names, portal metadata and inherited matches are not deliverable evidence.
+    payload = payload or {}
+    return [title, codes, *[
+        _clean(_strip_html(payload.get(key))) for key in
+        ("body", "description", "summary_description", "project_description", "project_name")
+    ]]
+
+
+def _score_it_scope(parts: list[str | None], match_rules: list[tuple[str, int]]) -> tuple[int, list[str]]:
+    title_score, _ = _score_text_parts(parts[:1], list(IT_OPPORTUNITY_RULES))
+    # Generic portal/software boilerplate is insufficient evidence in a description.
+    body_rules = [rule for rule in IT_OPPORTUNITY_RULES if rule[0] not in {
+        "software", "ai", "saas", "erp", "crm", "database", "data center",
+    }]
+    if not title_score and not _score_text_parts(parts[1:], body_rules)[0]:
+        return 0, []
+    physical_score, _ = _score_text_parts(parts[:1], list(PROPERTY_OPPORTUNITY_RULES))
+    if physical_score:
+        # IT/software for a physical-work buyer is valid; building a data center is not.
+        explicit_it_rules = [rule for rule in IT_OPPORTUNITY_RULES if rule[0] not in {
+            "data center", "network infrastructure", "structured cabling", "ai",
+        }]
+        if not _score_text_parts(parts[:1], explicit_it_rules)[0]:
+            return 0, []
+    excluded = {_normalize_text(phrase) for phrase, _ in PROPERTY_OPPORTUNITY_RULES}
+    return _score_text_parts(parts, [rule for rule in match_rules if _normalize_text(rule[0]) not in excluded])
 
 
 def _score_record(
     record: GovContractSourceRecord,
     match_rules: list[tuple[str, int]],
 ) -> tuple[int, list[str]]:
-    return _score_text_parts(_record_score_parts(record), match_rules)
+    return _score_it_scope(_record_score_parts(record), match_rules)
 
 
 def _opportunity_score_parts(opportunity: GovContractOpportunity) -> list[str | None]:
-    return [
-        opportunity.title,
-        opportunity.agency_name,
-        opportunity.nigp_codes,
-        *_payload_score_parts(opportunity.raw_payload),
-    ]
+    return _service_scope_parts(opportunity.title, opportunity.nigp_codes, opportunity.raw_payload)
 
 
 def _score_opportunity(
     opportunity: GovContractOpportunity,
     match_rules: list[tuple[str, int]],
 ) -> tuple[int, list[str]]:
-    return _score_text_parts(_opportunity_score_parts(opportunity), match_rules)
+    return _score_it_scope(_opportunity_score_parts(opportunity), match_rules)
 
 
 def _resolve_window(
@@ -3362,10 +3355,7 @@ def _score_gmail_record(
     record: GovContractSourceRecord,
     match_rules: list[tuple[str, int]],
 ) -> tuple[int, list[str]]:
-    score, matched_keywords = _score_record(record, match_rules)
-    matched_keywords, payload_keyword_count = _append_payload_keywords(matched_keywords, record.raw_payload)
-    score = max(score + payload_keyword_count, settings.gmail_rfq_match_score_floor)
-    return score, matched_keywords
+    return _score_record(record, match_rules)
 
 
 def _is_open_gmail_record(record: GovContractSourceRecord, *, today: date) -> bool:
@@ -3399,10 +3389,7 @@ def _score_gmail_opportunity(
     opportunity: GovContractOpportunity,
     match_rules: list[tuple[str, int]],
 ) -> tuple[int, list[str]]:
-    score, matched_keywords = _score_opportunity(opportunity, match_rules)
-    matched_keywords, payload_keyword_count = _append_payload_keywords(matched_keywords, opportunity.raw_payload)
-    score = max(score + payload_keyword_count, settings.gmail_rfq_match_score_floor)
-    return score, matched_keywords
+    return _score_opportunity(opportunity, match_rules)
 
 
 def rescore_stored_opportunities(db: Session) -> None:
@@ -3435,7 +3422,7 @@ def rescore_stored_opportunities(db: Session) -> None:
                 ),
                 today=today,
             )
-            opportunity.is_match = True
+            opportunity.is_match = score >= settings.gov_contract_match_min_score
         elif opportunity.source == FEDERAL_FORECAST_SOURCE_NAME:
             score, matched_keywords = _score_opportunity(opportunity, match_rules)
             opportunity.is_open = _is_open_federal_contract(opportunity.status_name)
@@ -3884,7 +3871,7 @@ def refresh_gmail_contracts(db: Session, *, limit: int | None = None) -> GovCont
             opportunity.score = score
             opportunity.priority_score = priority_score
             opportunity.fit_bucket = _fit_bucket(score)
-            opportunity.is_match = True
+            opportunity.is_match = score >= settings.gov_contract_match_min_score
             opportunity.is_open = is_open
             opportunity.matched_keywords = matched_keywords
             opportunity.score_breakdown = score_breakdown
@@ -3893,7 +3880,8 @@ def refresh_gmail_contracts(db: Session, *, limit: int | None = None) -> GovCont
             opportunity.last_seen_at = now
 
             db.add(opportunity)
-            matched_records += 1
+            if opportunity.is_match:
+                matched_records += 1
             if is_open:
                 open_records += 1
 

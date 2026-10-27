@@ -184,8 +184,8 @@ class GovContractFederalSourceTest(unittest.TestCase):
         payload = build_federal_payload(
             build_federal_listing_item(
                 "2001",
-                title="Federal roofing rehabilitation",
-                body="Roofing and rehabilitation package",
+                title="Federal software development",
+                body="Software development and systems integration package",
                 department="General Services Administration",
                 organization="Public Buildings Service",
                 award_status="Acquisition Planning",
@@ -202,8 +202,8 @@ class GovContractFederalSourceTest(unittest.TestCase):
         )
 
         with self.Session() as db:
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="roofing", weight=5))
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="rehabilitation", weight=6))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="software development", weight=5))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="systems integration", weight=6))
             db.commit()
 
             with patch("app.services.gov_contract_service.requests.get", return_value=mock_response(payload)):

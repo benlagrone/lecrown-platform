@@ -181,8 +181,8 @@ class GovContractGrantsSourceTest(unittest.TestCase):
             build_grants_row(
                 "grant-2001",
                 opportunity_number="GRANT-2001",
-                title="Property rehabilitation pilot grant",
-                summary_description="Property rehabilitation, roofing, and facility maintenance funding.",
+                title="IT modernization pilot grant",
+                summary_description="Software development, cybersecurity, and cloud migration funding.",
                 agency_name="Department of Housing and Urban Development",
                 top_level_agency_name="Department of Housing and Urban Development",
                 close_date="2030-06-01",
@@ -200,9 +200,9 @@ class GovContractGrantsSourceTest(unittest.TestCase):
         )
 
         with self.Session() as db:
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="property rehabilitation", weight=8))
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="roofing", weight=5))
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="facility maintenance", weight=6))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="software development", weight=8))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="cybersecurity", weight=5))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="cloud migration", weight=6))
             db.commit()
 
             with patch("app.services.gov_contract_service.requests.get", return_value=mock_csv_response(csv_text)):
@@ -268,9 +268,9 @@ class GovContractGrantsSourceTest(unittest.TestCase):
             serialized_item = gov_contract_service.serialize_opportunity(all_items[0])
             self.assertEqual(["it_services"], serialized_item.opportunity_categories)
             self.assertIn("Grant", serialized_item.auto_tags)
-            self.assertIn("IT services", serialized_item.auto_tags)
-            self.assertIn("Cybersecurity", serialized_item.auto_tags)
-            self.assertIn("Cloud services", serialized_item.auto_tags)
+            self.assertIn("IT and adjacent services", serialized_item.auto_tags)
+            self.assertIn("cybersecurity", serialized_item.auto_tags)
+            self.assertIn("cloud services", serialized_item.auto_tags)
 
 
 if __name__ == "__main__":

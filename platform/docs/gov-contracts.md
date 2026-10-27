@@ -282,15 +282,22 @@ The stored opportunity list stays complete. The admin UI filters what is shown i
 - `Open only`
 - `Min priority`
 
-Keyword rules control fit matching and can be managed directly from the opportunities page. The default rules are tuned for LeCrown-style work across state, federal, grant, and subcontracting sources, with heavier weight on:
+LeCrown Development's business scope is IT and adjacent services, not real estate,
+road work, construction, or facilities services. Keyword rules rank candidates within
+that scope; they do not establish eligibility or qualification. Defaults cover:
 
-- property management
-- real estate
-- building or facility maintenance
-- construction, renovation, demolition, paving, concrete
-- HVAC, electrical, plumbing, landscaping, janitorial
 - information technology, managed IT services, cybersecurity
 - software development, systems integration, cloud services, network infrastructure
+- data engineering, analytics, AI, machine learning, database and application services
+- IT consulting, staffing, training, support, telecommunications and structured cabling
+
+Actual title/scope evidence is required. Buyer names, portal metadata, inherited
+keywords and Gmail RFQ labels do not qualify a candidate. Physical-work titles
+cannot qualify from incidental IT text; explicit IT deliverables such as property
+management software remain eligible for relevance review. Non-IT candidates stay
+in the raw inbox with no positive match or priority. Deployment migrates the old
+property keyword defaults and startup rescoring updates both SQL and JSON without
+changing candidate identity, promotion receipts, accounts, or CRM records.
 
 On a fresh install, the platform now seeds those default keyword rules automatically the first time the keyword list is loaded, so the matcher is usable before any manual tuning.
 

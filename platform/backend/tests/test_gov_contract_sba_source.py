@@ -147,7 +147,7 @@ class GovContractSbaSourceTest(unittest.TestCase):
                 href="/opportunity/subnet-2001",
                 solicitation_id="SUBNET-2001",
                 business_name="Prime Builder Three",
-                description="Property rehabilitation and roofing subcontract package.",
+                description="Software development and systems integration subcontract package.",
                 closing_date="4/20/2030",
                 performance_start_date="8/20/2030",
                 place_of_performance="Georgia",
@@ -172,8 +172,8 @@ class GovContractSbaSourceTest(unittest.TestCase):
         )
 
         with self.Session() as db:
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="property rehabilitation", weight=8))
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="roofing", weight=5))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="software development", weight=8))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="systems integration", weight=5))
             db.commit()
 
             with patch("app.services.gov_contract_service.requests.get", return_value=mock_html_response(page)):

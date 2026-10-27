@@ -43,15 +43,15 @@ class GovContractScoringTest(unittest.TestCase):
 
     def test_agency_affinity_rescores_and_min_priority_filters_view(self) -> None:
         with self.Session() as db:
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="roofing", weight=5))
-            db.add(GovContractKeywordRule(id=new_uuid(), phrase="rehabilitation", weight=6))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="software development", weight=5))
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="systems integration", weight=6))
             db.add(
                 GovContractOpportunity(
                     id=new_uuid(),
                     source=SOURCE_NAME,
                     source_key="sol-high",
                     source_url="https://example.com/high",
-                    title="Dormitory roofing rehabilitation project",
+                    title="Software development and systems integration project",
                     solicitation_id="SOL-HIGH",
                     agency_name="Texas A&M University System - 710",
                     agency_number="710",
@@ -59,7 +59,7 @@ class GovContractScoringTest(unittest.TestCase):
                     status_name="Posted",
                     due_date=date.today() + timedelta(days=14),
                     posting_date=date.today(),
-                    nigp_codes="construction; roofing",
+                    nigp_codes="software development; systems integration",
                     score=0,
                     priority_score=0,
                     fit_bucket="none",

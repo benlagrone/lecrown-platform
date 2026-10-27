@@ -32,15 +32,14 @@ def init_db() -> None:
 
     inspector = inspect(engine)
     had_gov_contract_keyword_rules = inspector.has_table("gov_contract_keyword_rules")
-    had_gov_contract_agency_preferences = inspector.has_table("gov_contract_agency_preferences")
 
     Base.metadata.create_all(bind=engine)
-    should_rescore_gov_contracts = _run_lightweight_migrations()
+    _run_lightweight_migrations()
     _seed_bootstrap_admin_user()
     if not had_gov_contract_keyword_rules:
         _seed_gov_contract_keyword_rules()
-    if should_rescore_gov_contracts or not had_gov_contract_agency_preferences:
-        _backfill_gov_contract_scores()
+    # Apply current relevance policy and date-sensitive status to retained candidates.
+    _backfill_gov_contract_scores()
 
 
 def _run_lightweight_migrations() -> bool:
@@ -162,8 +161,9 @@ def _seed_bootstrap_admin_user() -> None:
 
 
 def _backfill_gov_contract_scores() -> None:
-    from app.services.gov_contract_service import rescore_stored_opportunities
+    from app.services.gov_contract_service import capture_candidate_inbox, rescore_stored_opportunities
 
     with SessionLocal() as db:
         rescore_stored_opportunities(db)
         db.commit()
+        capture_candidate_inbox(db)

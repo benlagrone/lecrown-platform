@@ -195,13 +195,13 @@ class GovContractHoustonMetroSourceTest(unittest.TestCase):
             self.assertIn("METRO", serialized_data_center_item.auto_tags)
             self.assertIn("Bonfire", serialized_data_center_item.auto_tags)
             self.assertIn("Open procurement", serialized_data_center_item.auto_tags)
-            self.assertIn("IT services", serialized_data_center_item.auto_tags)
+            self.assertIn("IT and adjacent services", serialized_data_center_item.auto_tags)
 
             major_item = next(item for item in items if item.title == "Roof Replacements For BOF's")
             serialized_major_item = gov_contract_service.serialize_opportunity(major_item)
             self.assertEqual("Major construction", serialized_major_item.source_context_label)
             self.assertIn("Major construction", serialized_major_item.auto_tags)
-            self.assertIn("Real estate / property", serialized_major_item.auto_tags)
+            self.assertIn("Construction / property (out of scope)", serialized_major_item.auto_tags)
 
             apn_item = next(
                 item

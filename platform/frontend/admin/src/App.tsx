@@ -175,8 +175,8 @@ const DEFAULT_KEYWORD_WEIGHT = 3;
 const DEFAULT_AGENCY_WEIGHT = 7;
 const OPPORTUNITY_CATEGORY_TABS: Array<{ id: OpportunityCategoryTab; label: string }> = [
   { id: "all", label: "All opportunities" },
-  { id: "it_services", label: "IT services" },
-  { id: "property_services", label: "Real estate / property" },
+  { id: "it_services", label: "IT and adjacent" },
+  { id: "property_services", label: "Construction / property (out of scope)" },
   { id: "other", label: "Other" },
 ];
 const METRO_VENDOR_RESOURCES: MetroVendorResource[] = [
@@ -1733,7 +1733,7 @@ export default function App() {
           <div className="contract-score-stack">
             <span className="fit-tag fit-tag-high">Priority {contract.priority_score}</span>
             <span className={`fit-tag fit-tag-${contract.fit_bucket}`}>
-              {contract.fit_bucket} fit - {contract.score}
+              {contract.fit_bucket} IT relevance - {contract.score}
             </span>
           </div>
         </div>
@@ -3298,6 +3298,12 @@ export default function App() {
               : "The JSON candidate inbox is not configured. CRM Opportunity promotion is disabled until durable local storage is available."}
           </p>
 
+          <p className="panel-subcopy">
+            LeCrown Development pursues IT and adjacent services: software, cloud, cybersecurity, data/AI,
+            systems integration, networks, and IT support. Real estate, road work, construction, and
+            facilities services are not business-fit matches. Relevance still requires human qualification.
+          </p>
+
           <div className="vendor-resource-grid">
             {METRO_VENDOR_RESOURCES.map((resource) => (
               <article className="vendor-resource-card" key={resource.title}>
@@ -3330,7 +3336,7 @@ export default function App() {
                   setMatchesOnlyFilter(event.target.checked);
                 }}
               />
-              <span>Fit matches only</span>
+              <span>IT-relevant candidates only</span>
             </label>
             <label className="toggle">
               <input
@@ -3364,7 +3370,7 @@ export default function App() {
                   setOpportunityPage(1);
                   setOpportunityKeywordFilter(event.target.value);
                 }}
-                placeholder="AI, roofing, HUD, cybersecurity"
+                placeholder="AI, cloud, data analytics, cybersecurity"
               />
             </label>
             {opportunityKeywordFilter.trim() ? (
@@ -3421,7 +3427,7 @@ export default function App() {
           )}
 
           <p className="panel-subcopy opportunity-count-explainer">
-            "Fit matches" are records whose title, agency, codes, or scope text met the configured keyword score threshold. The tabs below count visible records after the current filters; they are not the same as the latest-source import totals above.
+            IT-relevant candidates require IT evidence in the actual title or scope and must meet the keyword threshold. Buyer names, RFQ labels, deadlines, and agency preferences cannot qualify unrelated work. Counts reflect the current filters, not all collected candidates. Eligibility, geography, and delivery capacity still need review.
           </p>
 
           <div className="opportunity-tab-row" role="tablist" aria-label="Opportunity category tabs">
@@ -3608,8 +3614,8 @@ export default function App() {
           ) : null}
 
           <p className="panel-subcopy opportunity-tab-copy">
-            Tabs group opportunities by matched keywords, title, and scope text so you can jump between IT services,
-            real estate / property work, and everything else while keeping all sources merged into one ranked list.
+            IT and adjacent services are the pursuit scope. Other categories preserve raw discoveries for
+            audit; turn off the relevance filter to inspect them. They are not recommended pursuits.
           </p>
         </section>
 
@@ -4774,10 +4780,10 @@ function formatOpportunityCategoryTabLabel(tab: OpportunityCategoryTab): string 
     return "All opportunities";
   }
   if (tab === "it_services") {
-    return "IT services";
+    return "IT and adjacent";
   }
   if (tab === "property_services") {
-    return "Real estate / property";
+    return "Construction / property (out of scope)";
   }
   return "Other opportunities";
 }
