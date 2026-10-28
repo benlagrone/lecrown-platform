@@ -34,9 +34,7 @@ class FeedbackRanker:
         for key, entry in self.entries.items():
             rating = entry.get("fit_feedback", {}).get("rating")
             self.counts[rating if rating in {"high", "low"} else "unreviewed"] += 1
-            categories = entry["candidate"].get("opportunity_categories", [])
-            physical_only = "property_services" in categories and "it_services" not in categories
-            if rating in {"high", "low"} and not physical_only:
+            if rating in {"high", "low"}:
                 self.examples.append((key, rating, _tokens(entry["candidate"]), entry["candidate"]["title"]))
 
     @classmethod
@@ -47,14 +45,16 @@ class FeedbackRanker:
         entry = self.entries.get(candidate.source_key, {})
         feedback = entry.get("fit_feedback", {})
         rating = feedback.get("rating")
+        keyword_categories = (candidate.keyword_opportunity_categories
+                              if candidate.keyword_opportunity_categories is not None
+                              else candidate.opportunity_categories)
         examples = []
         adjustment = 0
         qualified = candidate.is_match
         basis = "keyword"
         reason = "IT keyword evidence meets the threshold." if qualified else "No qualifying IT keyword evidence yet."
-        physical_only = ("property_services" in candidate.opportunity_categories
-                         and "it_services" not in candidate.opportunity_categories)
-        # Explicit reviews can override one record, but never teach road/construction matches.
+        physical_only = "property_services" in keyword_categories and "it_services" not in keyword_categories
+        # Human labels train selection, but unreviewed physical-only work still needs direct review.
         if rating is None and not physical_only:
             tokens = _tokens({"title": candidate.title})
             for key, label, other_tokens, title in self.examples:
@@ -86,11 +86,15 @@ class FeedbackRanker:
         if rating in {"high", "low"}:
             qualified = rating == "high"
             basis = "human_high" if qualified else "human_low"
-            reason = "Included by your High fit rating." if qualified else "Excluded by your Low fit rating."
+            reason = ("Included as IT and adjacent by your High fit rating." if qualified
+                      else "Excluded by your Low fit rating.")
         priority = 100 if rating == "high" else 0 if rating == "low" else max(
             0, min(99, candidate.priority_score + adjustment))
         return GovContractOpportunityRead.model_validate({
             **candidate.model_dump(),
+            "keyword_opportunity_categories": keyword_categories,
+            "opportunity_categories": ["it_services"] if rating == "high" else keyword_categories,
+            "category_basis": "human_high" if rating == "high" else "keyword",
             "fit_feedback_rating": rating,
             "fit_feedback_version": feedback.get("version", 0),
             "fit_feedback_at": feedback.get("reviewed_at"),

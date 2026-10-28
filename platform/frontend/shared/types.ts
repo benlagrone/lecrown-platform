@@ -202,6 +202,8 @@ export interface GovContractOpportunity {
   is_open: boolean;
   matched_keywords: string[];
   opportunity_categories: string[];
+  keyword_opportunity_categories?: string[] | null;
+  category_basis?: "keyword" | "human_high";
   auto_tags: string[];
   source_context?: string | null;
   source_context_label?: string | null;

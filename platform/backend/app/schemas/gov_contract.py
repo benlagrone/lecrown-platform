@@ -144,6 +144,8 @@ class GovContractOpportunityRead(BaseModel):
     is_open: bool
     matched_keywords: list[str] = Field(default_factory=list)
     opportunity_categories: list[str] = Field(default_factory=list)
+    keyword_opportunity_categories: Optional[list[str]] = None
+    category_basis: Literal["keyword", "human_high"] = "keyword"
     auto_tags: list[str] = Field(default_factory=list)
     source_context: Optional[str] = None
     source_context_label: Optional[str] = None

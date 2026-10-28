@@ -1788,7 +1788,7 @@ export default function App() {
           <div className="contract-score-stack">
             <span className="fit-tag fit-tag-high">Review priority {contract.review_priority_score}</span>
             <span className={`fit-tag fit-tag-${contract.fit_bucket}`}>
-              {contract.fit_bucket} IT relevance - {contract.score}
+              {contract.fit_bucket} keyword IT relevance - {contract.score}
             </span>
           </div>
         </div>
@@ -1817,6 +1817,14 @@ export default function App() {
           <strong>{contract.qualification_match ? "Included in qualified leads" : "Outside qualified leads"}.</strong>{" "}
           {contract.qualification_reason}
         </p>
+        {contract.category_basis === "human_high" ? (
+          <p className="panel-subcopy" aria-label="Human category override">
+            <strong>IT and adjacent: human-confirmed.</strong>{" "}
+            Original automatic category: {(contract.keyword_opportunity_categories ?? []).map(
+              (category) => OPPORTUNITY_CATEGORY_TABS.find((tab) => tab.id === category)?.label ?? category,
+            ).join(", ")}. Clear rating restores automatic classification.
+          </p>
+        ) : null}
         {contract.feedback_examples?.length > 0 ? (
           <details className="fit-learning-detail">
             <summary>Training evidence: {contract.qualification_basis === "learned_high" ? "learned high fit" : contract.qualification_basis === "learned_low" ? "learned low fit" : "priority adjustment"} ({contract.feedback_adjustment > 0 ? "+" : ""}{contract.feedback_adjustment})</summary>
@@ -3415,7 +3423,7 @@ export default function App() {
               </button>
             </div>
             <p className="panel-subcopy">
-              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. High fit includes that lead; Low fit excludes it from Qualified leads. Your ratings also train qualification for similar titles. Clear rating removes that example. All leads always keeps every captured candidate, including low fits and closed notices. This is local example-based learning, not an AI model fine-tune.
+              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. High fit classifies that lead as IT and adjacent and includes it in Qualified leads; Low fit trains exclusion. Your ratings also train qualification for similar titles. Clear rating removes the example and restores automatic classification. All leads always keeps every captured candidate, including low fits and closed notices. This is local example-based learning, not an AI model fine-tune.
               {!opportunitySearch.fit_feedback_enabled ? " Rating storage is not available." : null}
             </p>
             <p className="feedback-status" role="status" aria-live="polite">{feedbackMessage}</p>
@@ -3551,7 +3559,7 @@ export default function App() {
           )}
 
           <p className="panel-subcopy opportunity-count-explainer">
-            Qualified leads uses your High/Low fit ratings first, then strong similar examples, then IT keyword evidence. Automatic learning cannot turn physical work into IT work. Category tabs describe scope, not your fit rating. Min priority uses the trained review priority. Eligibility, geography, and delivery capacity still need review; qualification is not a bid recommendation.
+            Qualified leads uses your High/Low fit ratings first, then strong similar examples, then IT keyword evidence. High fit also moves the reviewed lead into IT and adjacent; its original category stays visible on the card. Unreviewed physical-work leads still need direct review. Min priority uses the trained review priority. Eligibility, geography, and delivery capacity still need review; qualification is not a bid recommendation.
           </p>
 
           <div className="opportunity-tab-row" role="tablist" aria-label="Opportunity category tabs">

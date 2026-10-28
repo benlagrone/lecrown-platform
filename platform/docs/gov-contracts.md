@@ -328,21 +328,32 @@ revision returns 409 instead of overwriting another review. Missing or unreadabl
 storage fails closed. The candidate JSON download includes the review history.
 
 Ratings immediately change the **Qualified leads** filter as well as review order.
-High fit includes that record; Low fit excludes it. All leads retains every record,
+High fit includes that record and classifies it as human-confirmed **IT and adjacent**;
+Low fit excludes it from Qualified leads. All leads retains every record,
 including low fits and closed notices. Human-rating filters remain distinct from
-learned predictions. The IT category describes source scope, not qualification.
+learned predictions. The IT category includes explicit High fit overrides, including
+ratings saved before this behavior was released. No data migration is needed: the
+override is computed at read time from the durable rating, before category filters
+and counts. Low fit and Clear restore the original automatic category; Low fit
+still excludes the record, while Clear restores automatic qualification too.
 
 Unreviewed candidates learn from up to five similar labeled titles, requiring two
 meaningful shared words and Jaccard similarity of 0.25 for a bounded priority
 adjustment. Qualification changes require similarity of at least 0.5 and weighted
 label consensus of at least 60%. Conflicting or weak evidence falls back to the
-keyword decision. Physical-work records without explicit IT scope cannot teach or
-receive automatic learned matches; a direct human High fit can override only the
-reviewed record. No predicted labels are reused as training data.
+keyword decision. Every explicit High/Low rating is a training example, even if the
+original category was wrong. Unreviewed physical-work-only records cannot receive
+automatic learned matches; direct High fit is required to override their category.
+Learned qualification alone does not relabel a candidate as IT. No predicted labels
+are reused as training data.
 
 Search applies feedback before the match, priority, facet, and pagination filters.
 `qualification_match`, `qualification_basis` and `qualification_reason` explain the
-decision while original `is_match`, scores and categories remain keyword evidence.
+decision while original `is_match` and scores remain keyword evidence.
+`opportunity_categories` holds the effective category used for tabs and counts;
+`keyword_opportunity_categories` preserves the original automatic classification,
+and `category_basis` distinguishes `human_high` from `keyword`. The UI shows the
+original category beside the human override. Captured source data stays unchanged.
 Minimum priority uses `review_priority_score`. The UI exposes examples and the total
 qualified count before view filters. Clearing a rating removes it from training.
 This is deterministic local example-based learning, not an external AI service or

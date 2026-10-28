@@ -154,6 +154,7 @@ class FitFeedbackTest(unittest.TestCase):
         self.assertEqual("learned_high", target.qualification_basis)
         self.assertFalse(target.is_match)
         self.assertEqual(["other"], target.opportunity_categories)
+        self.assertEqual("keyword", target.category_basis)
         result = service.search_contracts(self.db, matches_only=True, open_only=False)
         self.assertIn("novel-similar", {item.id for item in result["items"]})
         self.rate("novel", rating=None, version=1)
@@ -191,11 +192,69 @@ class FitFeedbackTest(unittest.TestCase):
         high = FeedbackRanker.load().apply(self.candidate("road"))
         self.assertTrue(high.qualification_match)
         self.assertEqual("human_high", high.qualification_basis)
-        self.assertNotIn("it_services", high.opportunity_categories)
+        self.assertEqual(["it_services"], high.opportunity_categories)
+        self.assertIn("property_services", high.keyword_opportunity_categories)
+        self.assertEqual("human_high", high.category_basis)
+        self.assertIn("road", {example[0] for example in FeedbackRanker.load().examples})
         self.assertNotIn("road", {item.id for item in service.search_contracts(
             self.db, matches_only=True, open_only=True)["items"]})
         self.assertIn("road", {item.id for item in service.search_contracts(
             self.db, matches_only=True, open_only=False)["items"]})
+
+    def test_high_fit_moves_other_to_it_facets_without_rewriting_source(self):
+        self.add("novel", "Identity governance lifecycle", priority=0, is_match=False)
+        original = self.candidate("novel")
+        self.assertEqual(["other"], original.opportunity_categories)
+        self.rate("novel")
+        high = FeedbackRanker.load().apply(original)
+        self.assertEqual(["it_services"], high.opportunity_categories)
+        self.assertEqual(["other"], high.keyword_opportunity_categories)
+        self.assertEqual("human_high", high.category_basis)
+        self.assertFalse(high.is_match)
+        self.assertEqual(original.score, high.score)
+        self.assertEqual(["other"], original.opportunity_categories)
+        stored = inbox.snapshot()["candidates"][inbox.candidate_id("novel")]["candidate"]
+        self.assertEqual(["other"], stored["opportunity_categories"])
+        results = service.search_contracts(self.db, matches_only=False, open_only=False,
+                                          category="it_services", fit_feedback="high")
+        self.assertEqual(["novel"], [item.id for item in results["items"]])
+        self.assertEqual({"all": 1, "it_services": 1, "property_services": 0, "other": 0},
+                         results["category_counts"])
+        other = service.search_contracts(self.db, matches_only=False, open_only=False, category="other")
+        self.assertNotIn("novel", {item.id for item in other["items"]})
+
+    def test_low_and_clear_restore_original_category_and_remove_positive_training(self):
+        self.add("novel", "Identity governance lifecycle", priority=0, is_match=False)
+        self.add("novel-similar", "Identity governance lifecycle consulting", priority=0, is_match=False)
+        self.rate("novel")
+        high = FeedbackRanker.load().apply(self.candidate("novel"))
+        self.rate("novel", rating="low", version=1)
+        low = FeedbackRanker.load().apply(high)
+        self.assertEqual(["other"], low.opportunity_categories)
+        self.assertEqual("keyword", low.category_basis)
+        self.assertFalse(low.qualification_match)
+        learned = FeedbackRanker.load().apply(self.candidate("novel-similar"))
+        self.assertEqual("learned_low", learned.qualification_basis)
+        self.assertFalse(learned.qualification_match)
+        self.rate("novel", rating=None, version=2)
+        cleared = FeedbackRanker.load().apply(high)
+        self.assertEqual(["other"], cleared.opportunity_categories)
+        self.assertEqual("keyword", cleared.category_basis)
+        self.assertFalse(cleared.qualification_match)
+        self.assertEqual([], FeedbackRanker.load().apply(self.candidate("novel-similar")).feedback_examples)
+
+    def test_high_category_survives_recapture_and_ranker_reload(self):
+        self.rate("road")
+        first = FeedbackRanker.load().apply(self.candidate("road"))
+        inbox.capture([self.candidate("road").model_dump(mode="json")])
+        reloaded = FeedbackRanker.load().apply(first)
+        self.assertEqual(["it_services"], reloaded.opportunity_categories)
+        self.assertEqual(first.keyword_opportunity_categories, reloaded.keyword_opportunity_categories)
+        self.assertEqual(1, reloaded.fit_feedback_version)
+        self.rate("road", rating=None, version=1)
+        cleared = FeedbackRanker.load().apply(reloaded)
+        self.assertEqual(first.keyword_opportunity_categories, cleared.opportunity_categories)
+        self.assertFalse(cleared.qualification_match)
 
     def test_generic_bid_terms_do_not_train_unrelated_candidates(self):
         self.add("generic-example", "County RFP professional software services")
