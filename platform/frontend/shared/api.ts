@@ -371,7 +371,7 @@ export async function funnelGovContract(
 
 export async function promoteGovCandidate(
   contractId: string,
-  payload: { confirmed: true; amount: number; close_date: string; stage: string; notes: string },
+  payload: { confirmed: true; amount: number | null; close_date: string | null; stage: string; notes: string },
 ): Promise<GovContractOpportunity> {
   return request<GovContractOpportunity>(`/contracts/${contractId}/promote`, {
     method: "POST", body: JSON.stringify(payload),

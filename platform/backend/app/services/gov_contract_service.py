@@ -4706,10 +4706,18 @@ def promote_candidate_to_crm(db: Session, contract_id: str, request) -> GovContr
     capture_candidate_inbox(db, source=contract.source)
     description = _build_contract_description(contract, notes=request.notes)
     payload = {
-        "name": contract.title[:255], "amount": request.amount, "amountCurrency": "USD",
-        "closeDate": request.close_date.isoformat(), "stage": request.stage,
-        "description": f"{description}\nEstimated USD value and expected close date reviewed by the promoting user.",
+        "name": contract.title[:255], "stage": request.stage,
+        "amount": request.amount,
+        "closeDate": request.close_date.isoformat() if request.close_date is not None else None,
+        "description": f"{description}\n"
+        + ("Estimated USD value: unknown; to be qualified." if request.amount is None
+           else "Estimated USD value supplied by the promoting user.")
+        + "\n"
+        + ("Expected close date: unknown; to be qualified." if request.close_date is None
+           else "Expected close date supplied by the promoting user."),
     }
+    if request.amount is not None:
+        payload["amountCurrency"] = "USD"
     receipt = candidate_inbox.promote(contract.source_key, payload)
     contract.funnel_status = "promoted"
     contract.funnel_delivery_target = "espocrm_opportunity"

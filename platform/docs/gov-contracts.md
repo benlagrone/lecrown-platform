@@ -107,14 +107,20 @@ EspoCRM Leads or Opportunities. The file is atomically replaced, fsynced, mode 0
 and guarded by inter-process locks. Corrupt files fail closed rather than being reset.
 
 The Opportunities page is a candidate inbox. `Select for EspoCRM` opens a review form;
-only `Create EspoCRM Opportunity` submits the chosen candidate. EspoCRM requires an
-estimated USD amount and expected close date. Neither is invented by the importer;
-the displayed solicitation deadline must be reviewed before using it as a close date.
+only `Create EspoCRM Opportunity` submits the chosen candidate. At `Prospecting`,
+estimated USD amount and expected close date are optional. Blanks are sent as null
+and recorded as unknown, never as zero or an invented date. The bid deadline remains
+in source details and is not prefilled as the close date. Later stages require both
+estimates. EspoCRM's Opportunity amount and closeDate fields use matching conditional
+required rules (`stage != Prospecting`), enforced by its v9.3.4 form and API. This
+configuration does not modify existing Opportunity values.
 The legacy Lead funnel API remains for compatibility but is no longer the inbox action.
 
 - `GET /contracts/candidates/export.json` downloads the private JSON inbox (admin only).
-- `POST /contracts/{id}/promote` requires admin access and `confirmed: true`, `amount`,
-  `close_date`, optional `stage` and `notes`. It creates an EspoCRM `Opportunity`, not a Lead.
+- `POST /contracts/{id}/promote` requires admin access and `confirmed: true`.
+  `amount` and `close_date` may be omitted or null at the default `Prospecting` stage;
+  they are required for `Qualification`, `Proposal`, and `Negotiation`. `stage` and
+  `notes` are optional. It creates an EspoCRM `Opportunity`, not a Lead.
 - The JSON promotion receipt is written before sending. A stable source-key marker
   reconciles existing CRM records. Uncertain writes are never blindly retried; known
   record IDs are read back and verified before reporting success.

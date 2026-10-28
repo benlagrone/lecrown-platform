@@ -119,12 +119,66 @@ class CandidateInboxTest(unittest.TestCase):
         with inbox.collection_lock():
             pass
 
-    def test_promotion_requires_confirmation_value_and_date(self):
+    def test_promotion_requires_confirmation_and_valid_estimates_when_supplied(self):
         for payload in ({}, {"confirmed": False, "amount": 1, "close_date": "2027-01-01"},
                         {"confirmed": True, "amount": float("nan"), "close_date": "2027-01-01"},
                         {"confirmed": True, "amount": -1, "close_date": "2027-01-01"}):
             with self.assertRaises(ValidationError):
                 GovContractPromotionRequest(**payload)
+
+    def test_prospect_allows_unknowns_but_later_stages_require_estimates(self):
+        for values in ({}, {"amount": None, "close_date": None}, {"amount": 25000},
+                       {"close_date": "2027-01-01"}):
+            request = GovContractPromotionRequest(confirmed=True, **values)
+            self.assertEqual("Prospecting", request.stage)
+        self.assertIsNone(GovContractPromotionRequest(confirmed=True).amount)
+        self.assertIsNone(GovContractPromotionRequest(confirmed=True).close_date)
+        for stage in ("Qualification", "Proposal", "Negotiation"):
+            for values in ({}, {"amount": 25000}, {"close_date": "2027-01-01"}):
+                with self.subTest(stage=stage, values=values), self.assertRaises(ValidationError):
+                    GovContractPromotionRequest(confirmed=True, stage=stage, **values)
+            request = GovContractPromotionRequest(confirmed=True, stage=stage, amount=0, close_date="2027-01-01")
+            self.assertEqual(0, request.amount)
+
+    def test_prospect_payload_preserves_unknown_or_explicit_estimates(self):
+        from datetime import date
+
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        try:
+            with Session(engine) as db:
+                for index, values in enumerate(({}, {"amount": 0}, {"amount": 25000},
+                                                {"close_date": "2027-01-01"},
+                                                {"amount": 25000, "close_date": "2027-01-01"})):
+                    with self.subTest(values=values):
+                        row = GovContractOpportunity(id=f"prospect-{index}", source="test",
+                            source_key=f"prospect-{index}", source_url="https://buyer.example/rfp/1",
+                            title="Software development", solicitation_id=f"RFP-{index}",
+                            due_date=date(2026, 11, 15))
+                        db.add(row)
+                        db.commit()
+                        marker = f"ProcurementCandidate: {inbox.candidate_id(row.source_key)}"
+                        request = GovContractPromotionRequest(confirmed=True, **values)
+                        with patch.object(espo, "find_opportunity", return_value=None), patch.object(espo, "create_opportunity", return_value={"id": f"crm-{index}"}) as create, patch.object(espo, "get_opportunity", return_value={"id": f"crm-{index}", "description": marker}):
+                            gov_contract_service.promote_candidate_to_crm(db, row.id, request)
+                        payload = create.call_args.args[0]
+                        self.assertEqual(values.get("amount"), payload["amount"])
+                        self.assertEqual(values.get("close_date"), payload["closeDate"])
+                        self.assertNotEqual("2026-11-15", payload["closeDate"])
+                        self.assertEqual("Prospecting", payload["stage"])
+                        if "amount" in values:
+                            self.assertEqual("USD", payload["amountCurrency"])
+                        else:
+                            self.assertNotIn("amountCurrency", payload)
+                            self.assertIn("Estimated USD value: unknown", payload["description"])
+                        if "close_date" not in values:
+                            self.assertIn("Expected close date: unknown", payload["description"])
+                        self.assertNotIn("Estimated USD value and expected close date reviewed", payload["description"])
+                        saved = inbox.snapshot()["candidates"][inbox.candidate_id(row.source_key)]
+                        self.assertEqual(values.get("amount"), saved["promotion"]["payload"]["amount"])
+                        self.assertEqual(values.get("close_date"), saved["promotion"]["payload"]["closeDate"])
+        finally:
+            engine.dispose()
 
     def test_definite_rejection_can_be_corrected_without_uncertain_retry(self):
         inbox.capture([self.record])

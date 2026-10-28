@@ -1279,7 +1279,9 @@ export default function App() {
     setShowFunnelShortcut(false);
     try {
       const result = await promoteGovCandidate(contract.id, {
-        confirmed: true, amount: Number(promotionAmount), close_date: promotionCloseDate,
+        confirmed: true,
+        amount: promotionAmount.trim() === "" ? null : Number(promotionAmount),
+        close_date: promotionCloseDate || null,
         stage: promotionStage, notes: promotionNotes,
       });
       await refreshContractsView();
@@ -1954,7 +1956,7 @@ export default function App() {
                 onClick={() => {
                   setSelectedCandidate(contract);
                   setPromotionAmount("");
-                  setPromotionCloseDate(contract.due_date ?? "");
+                  setPromotionCloseDate("");
                   setPromotionStage("Prospecting");
                   setPromotionNotes("");
                 }}
@@ -1976,10 +1978,13 @@ export default function App() {
           <form className="content-form auth-form" onSubmit={(event) => void handleFunnelContract(event, contract)}>
             <h3>Review Opportunity creation</h3>
             <p>Create one EspoCRM Opportunity for <strong>{contract.title}</strong>. This does not submit a bid or create a Lead.</p>
-            <label><span>Estimated value (USD)</span><input required type="number" min="0" step="0.01" value={promotionAmount} onChange={(event) => setPromotionAmount(event.target.value)} /></label>
-            <label><span>Expected close date</span><input required type="date" value={promotionCloseDate} onChange={(event) => setPromotionCloseDate(event.target.value)} /></label>
-            <p>Review the close date; a solicitation deadline is not necessarily the expected award date.</p>
             <label><span>Initial stage</span><select value={promotionStage} onChange={(event) => setPromotionStage(event.target.value)}>{["Prospecting", "Qualification", "Proposal", "Negotiation"].map((stage) => <option key={stage}>{stage}</option>)}</select></label>
+            <p>{promotionStage === "Prospecting"
+              ? "Just a prospect? Leave value and expected close date blank. They will remain unknown in EspoCRM, not zero or an invented date."
+              : "After Prospecting, enter an estimated value and expected close date before creating the Opportunity."}</p>
+            <label><span>Estimated value (USD){promotionStage === "Prospecting" ? " (optional)" : " (required)"}</span><input required={promotionStage !== "Prospecting"} type="number" min="0" step="0.01" placeholder="Unknown" value={promotionAmount} onChange={(event) => setPromotionAmount(event.target.value)} /></label>
+            <label><span>Expected close date{promotionStage === "Prospecting" ? " (optional)" : " (required)"}</span><input required={promotionStage !== "Prospecting"} type="date" value={promotionCloseDate} onChange={(event) => setPromotionCloseDate(event.target.value)} /></label>
+            <p>The bid deadline remains in the source details; it is not an expected award or close date.</p>
             <label><span>Promotion notes</span><textarea maxLength={8000} value={promotionNotes} onChange={(event) => setPromotionNotes(event.target.value)} /></label>
             <div className="action-row">
               <button type="submit" disabled={funnelingContractId === contract.id}>{funnelingContractId === contract.id ? "Creating and verifying..." : "Create EspoCRM Opportunity"}</button>

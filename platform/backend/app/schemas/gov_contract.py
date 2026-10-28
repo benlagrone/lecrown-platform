@@ -50,10 +50,16 @@ class GovContractCapabilitiesRead(BaseModel):
 
 class GovContractPromotionRequest(BaseModel):
     confirmed: Literal[True]
-    amount: float = Field(ge=0, allow_inf_nan=False)
-    close_date: date
+    amount: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    close_date: Optional[date] = None
     stage: Literal["Prospecting", "Qualification", "Proposal", "Negotiation"] = "Prospecting"
     notes: str = Field(default="", max_length=8000)
+
+    @model_validator(mode="after")
+    def require_qualified_estimates(self) -> "GovContractPromotionRequest":
+        if self.stage != "Prospecting" and (self.amount is None or self.close_date is None):
+            raise ValueError("Amount and expected close date are required after Prospecting")
+        return self
 
 
 class GovContractKeywordRuleWrite(BaseModel):
