@@ -192,6 +192,9 @@ export interface GovContractOpportunity {
   fit_feedback_at?: string | null;
   fit_feedback_by?: string | null;
   review_priority_score: number;
+  qualification_match: boolean;
+  qualification_basis: string;
+  qualification_reason: string;
   feedback_adjustment: number;
   feedback_examples: Array<{ source_key: string; title: string; rating: "high" | "low"; similarity: number }>;
   fit_bucket: "high" | "medium" | "low" | "none";
@@ -233,6 +236,7 @@ export interface GovContractOpportunitySearchResponse {
   source_context_counts: GovContractFacetCount[];
   fit_feedback_counts?: Record<string, number>;
   fit_feedback_enabled?: boolean;
+  qualified_count?: number;
 }
 
 export interface GovContractImportRun {

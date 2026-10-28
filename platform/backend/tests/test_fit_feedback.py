@@ -116,7 +116,10 @@ class FitFeedbackTest(unittest.TestCase):
         self.assertEqual(target.score, learned.score)
         self.assertEqual(target.is_match, learned.is_match)
         self.rate(rating="low", version=1)
-        self.assertLess(FeedbackRanker.load().apply(target).review_priority_score, target.priority_score)
+        learned_low = FeedbackRanker.load().apply(target)
+        self.assertLess(learned_low.review_priority_score, target.priority_score)
+        self.assertFalse(learned_low.qualification_match)
+        self.assertEqual("learned_low", learned_low.qualification_basis)
         self.rate(rating=None, version=2)
         self.assertEqual(target.priority_score, FeedbackRanker.load().apply(target).review_priority_score)
 
@@ -128,6 +131,71 @@ class FitFeedbackTest(unittest.TestCase):
         self.assertEqual(0, target.review_priority_score)
         self.assertFalse(target.is_match)
         self.assertEqual([], target.feedback_examples)
+        self.assertFalse(target.qualification_match)
+
+    def test_high_and_low_override_qualified_filter_without_changing_keyword_evidence(self):
+        self.rate(rating="low")
+        result = service.search_contracts(self.db, matches_only=True, open_only=False)
+        self.assertEqual([], result["items"])
+        self.assertEqual(0, result["qualified_count"])
+        self.assertTrue(self.db.get(GovContractOpportunity, "example").is_match)
+        self.assertEqual(3, service.search_contracts(self.db, matches_only=False, open_only=False)["total"])
+        self.rate(rating="high", version=1)
+        result = service.search_contracts(self.db, matches_only=True, open_only=False)
+        self.assertEqual({"example", "similar"}, {item.id for item in result["items"]})
+        self.assertEqual(2, result["category_counts"]["it_services"])
+
+    def test_high_feedback_teaches_missing_terminology_and_clear_removes_example(self):
+        self.add("novel", "Identity governance lifecycle", priority=0, is_match=False)
+        self.add("novel-similar", "Identity governance lifecycle consulting", priority=0, is_match=False)
+        self.rate("novel")
+        target = FeedbackRanker.load().apply(self.candidate("novel-similar"))
+        self.assertTrue(target.qualification_match)
+        self.assertEqual("learned_high", target.qualification_basis)
+        self.assertFalse(target.is_match)
+        self.assertEqual(["other"], target.opportunity_categories)
+        result = service.search_contracts(self.db, matches_only=True, open_only=False)
+        self.assertIn("novel-similar", {item.id for item in result["items"]})
+        self.rate("novel", rating=None, version=1)
+        target = FeedbackRanker.load().apply(self.candidate("novel-similar"))
+        self.assertFalse(target.qualification_match)
+        self.assertEqual([], target.feedback_examples)
+
+    def test_weak_or_conflicting_examples_do_not_change_qualification(self):
+        self.rate(rating="low")
+        self.add("weak", "Cloud software integration migration analytics reporting dashboard")
+        weak = FeedbackRanker.load().apply(self.candidate("weak"))
+        self.assertTrue(weak.qualification_match)
+        self.assertEqual("keyword", weak.qualification_basis)
+        self.assertLess(weak.feedback_adjustment, 0)
+        self.add("opposite", "Cloud software integration")
+        self.rate("opposite")
+        conflict = FeedbackRanker.load().apply(self.candidate("similar"))
+        self.assertTrue(conflict.qualification_match)
+        self.assertEqual("keyword", conflict.qualification_basis)
+
+    def test_review_priority_filter_and_pagination_use_learned_results(self):
+        self.add("novel", "Identity governance lifecycle", priority=0, is_match=False)
+        self.rate("novel")
+        result = service.search_contracts(self.db, matches_only=True, open_only=False, min_priority_score=100)
+        self.assertEqual(["novel"], [item.id for item in result["items"]])
+        self.assertEqual(3, result["qualified_count"])
+        first = service.search_contracts(self.db, matches_only=True, open_only=False, limit=1)
+        second = service.search_contracts(self.db, matches_only=True, open_only=False, limit=1, offset=1)
+        self.assertEqual(3, first["total"])
+        self.assertEqual(first["category_counts"], second["category_counts"])
+        self.assertNotEqual(first["items"][0].id, second["items"][0].id)
+
+    def test_physical_override_is_explicit_only_and_does_not_train_other_roads(self):
+        self.rate("road")
+        high = FeedbackRanker.load().apply(self.candidate("road"))
+        self.assertTrue(high.qualification_match)
+        self.assertEqual("human_high", high.qualification_basis)
+        self.assertNotIn("it_services", high.opportunity_categories)
+        self.assertNotIn("road", {item.id for item in service.search_contracts(
+            self.db, matches_only=True, open_only=True)["items"]})
+        self.assertIn("road", {item.id for item in service.search_contracts(
+            self.db, matches_only=True, open_only=False)["items"]})
 
     def test_generic_bid_terms_do_not_train_unrelated_candidates(self):
         self.add("generic-example", "County RFP professional software services")

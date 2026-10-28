@@ -84,6 +84,46 @@ class DevelopmentITScopeTest(unittest.TestCase):
         self.assertEqual((0, []), service._score_opportunity(candidate, list(service.DEFAULT_MATCH_RULES)))
         self.assertNotIn(service.IT_SERVICES_CATEGORY, service._classify_opportunity(candidate)["opportunity_categories"])
 
+    def test_requested_adjacent_it_leads_are_included_but_generic_terms_are_not(self):
+        included = ["Managed Security Services Provider (MSSP)",
+                    "Mobile Application Usability Enhancements",
+                    "Electronic Content Management (ECM) - Implementation",
+                    "RFP - Integrated Law Enforcement Data Platform",
+                    "Enterprise databases administration", "Computer Assisted Mass Appraisal (CAMA) System"]
+        excluded = ["Security guard services", "Leadership Development Program", "Road development",
+                    "Grant application services", "Concrete platform installation"]
+        for title in included + excluded:
+            with self.subTest(title=title):
+                row = self.candidate(title)
+                score, _ = service._score_opportunity(row, list(service.DEFAULT_MATCH_RULES))
+                self.assertEqual(title in included, score >= service.settings.gov_contract_match_min_score)
+                self.assertEqual(title in included, "it_services" in service._classify_opportunity(row)["opportunity_categories"])
+
+    def test_adjacent_terms_migration_preserves_custom_weights_and_reclassifies_existing_rows(self):
+        spec = importlib.util.spec_from_file_location("adjacent_it_migration",
+            Path(__file__).resolve().parents[1] / "migrations/versions/20261027_0005_adjacent_it_terms.py")
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        with Session(self.engine) as db:
+            db.add(GovContractKeywordRule(id=new_uuid(), phrase="managed security services", weight=9))
+            row = self.candidate("Mobile Application Usability Enhancements")
+            row.funnel_record_id = "existing-crm-record"
+            db.add(row)
+            db.commit()
+        with self.engine.begin() as connection, Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+            migration.upgrade()
+        with Session(self.engine) as db:
+            rules = {rule.phrase: rule.weight for rule in db.scalars(select(GovContractKeywordRule))}
+            self.assertEqual(9, rules["managed security services"])
+            self.assertEqual(len(migration.TERMS), len(rules))
+            self.assertTrue(set(migration.TERMS).issubset(set(service.DEFAULT_MATCH_RULES)))
+            service.rescore_stored_opportunities(db)
+            db.commit()
+            row = db.scalars(select(GovContractOpportunity)).one()
+            self.assertTrue(row.is_match)
+            self.assertEqual("existing-crm-record", row.funnel_record_id)
+
     def test_gmail_does_not_force_match_or_trust_upstream_keyword_tags(self):
         with Session(self.engine) as db:
             service.list_keyword_rules(db)

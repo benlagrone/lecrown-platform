@@ -148,11 +148,28 @@ DEFAULT_MATCH_RULES: tuple[tuple[str, int], ...] = (
     ("cybersecurity", 6),
     ("cyber security", 6),
     ("information security", 6),
+    ("managed security services", 6),
+    ("mssp", 6),
+    ("security operations center", 6),
+    ("penetration testing", 6),
+    ("endpoint protection", 6),
+    ("identity and access management", 6),
+    ("privileged access management", 6),
     ("managed it services", 6),
     ("software development", 6),
     ("systems integration", 6),
     ("system integration", 6),
     ("application development", 5),
+    ("mobile application", 5),
+    ("mobile applications", 5),
+    ("mobile app", 5),
+    ("electronic content management", 5),
+    ("enterprise content management", 5),
+    ("content management system", 5),
+    ("case management system", 5),
+    ("computerized maintenance management system", 5),
+    ("computer aided dispatch", 5),
+    ("computer assisted mass appraisal", 5),
     ("software", 5),
     ("enterprise software", 5),
     ("software licenses", 5),
@@ -173,8 +190,12 @@ DEFAULT_MATCH_RULES: tuple[tuple[str, int], ...] = (
     ("data engineering", 6),
     ("data migration", 5),
     ("data management", 5),
+    ("data platform", 5),
+    ("data platforms", 5),
     ("business intelligence", 5),
     ("database", 5),
+    ("databases", 5),
+    ("database administration", 5),
     ("erp", 5),
     ("crm", 5),
     ("cloud services", 5),
@@ -183,6 +204,8 @@ DEFAULT_MATCH_RULES: tuple[tuple[str, int], ...] = (
     ("network infrastructure", 5),
     ("network security", 5),
     ("network equipment", 5),
+    ("network cabling", 5),
+    ("virtualization", 5),
     ("computer hardware", 5),
     ("computer equipment", 5),
     ("computer related services", 5),
@@ -1435,7 +1458,7 @@ def _score_it_scope(parts: list[str | None], match_rules: list[tuple[str, int]])
     title_score, _ = _score_text_parts(parts[:1], list(IT_OPPORTUNITY_RULES))
     # Generic portal/software boilerplate is insufficient evidence in a description.
     body_rules = [rule for rule in IT_OPPORTUNITY_RULES if rule[0] not in {
-        "software", "ai", "saas", "erp", "crm", "database", "data center",
+        "software", "ai", "saas", "erp", "crm", "database", "databases", "data center",
     }]
     if not title_score and not _score_text_parts(parts[1:], body_rules)[0]:
         return 0, []
@@ -4096,12 +4119,17 @@ def search_contracts(
         list_contracts(
             db,
             limit=50000,
-            matches_only=matches_only,
-            open_only=open_only,
-            min_priority_score=min_priority_score,
+            matches_only=False,
+            open_only=False,
+            min_priority_score=0,
         )
     )
     candidates = [ranker.apply(candidate) for candidate in candidates]
+    qualified_count = sum(candidate.qualification_match for candidate in candidates)
+    candidates = [candidate for candidate in candidates
+                  if (not matches_only or candidate.qualification_match)
+                  and (not open_only or candidate.is_open)
+                  and candidate.review_priority_score >= min_priority_score]
     if fit_feedback:
         candidates = [candidate for candidate in candidates
                       if (candidate.fit_feedback_rating or "unreviewed") == fit_feedback]
@@ -4169,6 +4197,7 @@ def search_contracts(
         ),
         "fit_feedback_counts": ranker.counts,
         "fit_feedback_enabled": candidate_inbox.configured(),
+        "qualified_count": qualified_count,
     }
 
 

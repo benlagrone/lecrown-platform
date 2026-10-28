@@ -295,6 +295,8 @@ that scope; they do not establish eligibility or qualification. Defaults cover:
 - information technology, managed IT services, cybersecurity
 - software development, systems integration, cloud services, network infrastructure
 - data engineering, analytics, AI, machine learning, database and application services
+- managed security/MSSP, mobile applications, ECM/content management, data platforms,
+  case management, database administration and adjacent enterprise systems
 - IT consulting, staffing, training, support, telecommunications and structured cabling
 
 Actual title/scope evidence is required. Buyer names, portal metadata, inherited
@@ -325,14 +327,31 @@ JSON. Atomic locked writes preserve them during rescans and restarts. A stale
 revision returns 409 instead of overwriting another review. Missing or unreadable
 storage fails closed. The candidate JSON download includes the review history.
 
-Ratings immediately affect review order: explicitly high-fit leads rank first,
-low-fit leads last. Unreviewed IT candidates receive a bounded priority adjustment
-from up to five similar labeled titles (at least two meaningful shared words and
-Jaccard similarity of 0.25). The UI shows the supporting examples. Clearing a
-rating removes it from training. This is deterministic local example-based
-learning, not an external AI service or model fine-tune. Original IT scores and
-match flags are unchanged, and out-of-scope candidates cannot gain an automatic
-IT match through feedback. The minimum-priority filter still uses the base score.
+Ratings immediately change the **Qualified leads** filter as well as review order.
+High fit includes that record; Low fit excludes it. All leads retains every record,
+including low fits and closed notices. Human-rating filters remain distinct from
+learned predictions. The IT category describes source scope, not qualification.
+
+Unreviewed candidates learn from up to five similar labeled titles, requiring two
+meaningful shared words and Jaccard similarity of 0.25 for a bounded priority
+adjustment. Qualification changes require similarity of at least 0.5 and weighted
+label consensus of at least 60%. Conflicting or weak evidence falls back to the
+keyword decision. Physical-work records without explicit IT scope cannot teach or
+receive automatic learned matches; a direct human High fit can override only the
+reviewed record. No predicted labels are reused as training data.
+
+Search applies feedback before the match, priority, facet, and pagination filters.
+`qualification_match`, `qualification_basis` and `qualification_reason` explain the
+decision while original `is_match`, scores and categories remain keyword evidence.
+Minimum priority uses `review_priority_score`. The UI exposes examples and the total
+qualified count before view filters. Clearing a rating removes it from training.
+This is deterministic local example-based learning, not an external AI service or
+model fine-tune. Ratings/history survive rescans, rescoring, and restarts.
+
+The opportunity page separately shows registered sources, sources with captured
+candidates, deferred batches and manual/access gaps. A deferred latest batch does
+not erase previously collected candidates or imply that a source was never scanned.
+Manual-review portals remain listed but are not represented as fully collected.
 
 Rating never promotes a lead or writes to EspoCRM. Explicit promotion remains a
 separate admin action. No fabricated labels are seeded.

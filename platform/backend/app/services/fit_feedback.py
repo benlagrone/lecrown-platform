@@ -1,4 +1,4 @@
-"""Explainable example-based ranking; human ratings never rewrite source evidence."""
+"""Explainable learned qualification, separate from immutable keyword evidence."""
 from __future__ import annotations
 
 import re
@@ -15,6 +15,7 @@ services service professional expert performance contract contracts term year ye
 county city state university district school public department authority port basis open
 provide providing procurement purchase purchasing supply supplies renewal agreement
 solicitation number requested including related requirements support management system systems
+project projects implementation solution solutions program programs annual initial phase
 """.split())
 
 
@@ -33,7 +34,9 @@ class FeedbackRanker:
         for key, entry in self.entries.items():
             rating = entry.get("fit_feedback", {}).get("rating")
             self.counts[rating if rating in {"high", "low"} else "unreviewed"] += 1
-            if rating in {"high", "low"}:
+            categories = entry["candidate"].get("opportunity_categories", [])
+            physical_only = "property_services" in categories and "it_services" not in categories
+            if rating in {"high", "low"} and not physical_only:
                 self.examples.append((key, rating, _tokens(entry["candidate"]), entry["candidate"]["title"]))
 
     @classmethod
@@ -46,8 +49,13 @@ class FeedbackRanker:
         rating = feedback.get("rating")
         examples = []
         adjustment = 0
-        # Out-of-scope records can be labeled, but cannot teach the automatic IT gate to disappear.
-        if rating is None and "it_services" in candidate.opportunity_categories:
+        qualified = candidate.is_match
+        basis = "keyword"
+        reason = "IT keyword evidence meets the threshold." if qualified else "No qualifying IT keyword evidence yet."
+        physical_only = ("property_services" in candidate.opportunity_categories
+                         and "it_services" not in candidate.opportunity_categories)
+        # Explicit reviews can override one record, but never teach road/construction matches.
+        if rating is None and not physical_only:
             tokens = _tokens({"title": candidate.title})
             for key, label, other_tokens, title in self.examples:
                 if key == candidate.source_key:
@@ -63,6 +71,22 @@ class FeedbackRanker:
                 signed = sum((1 if example["rating"] == "high" else -1) * example["similarity"]
                              for example in examples)
                 adjustment = round(20 * signed / len(examples))
+                strong = [example for example in examples if example["similarity"] >= 0.5]
+                if strong:
+                    evidence = sum(example["similarity"] for example in strong)
+                    consensus = sum((1 if example["rating"] == "high" else -1) * example["similarity"]
+                                    for example in strong) / evidence
+                    if abs(consensus) >= 0.6:
+                        qualified = consensus > 0
+                        basis = "learned_high" if qualified else "learned_low"
+                        reason = ("Included" if qualified else "Excluded") + " by similar titles you rated."
+        if physical_only:
+            qualified, basis = False, "out_of_scope"
+            reason = "Physical-work scope stays outside automatic IT qualification."
+        if rating in {"high", "low"}:
+            qualified = rating == "high"
+            basis = "human_high" if qualified else "human_low"
+            reason = "Included by your High fit rating." if qualified else "Excluded by your Low fit rating."
         priority = 100 if rating == "high" else 0 if rating == "low" else max(
             0, min(99, candidate.priority_score + adjustment))
         return GovContractOpportunityRead.model_validate({
@@ -74,4 +98,7 @@ class FeedbackRanker:
             "feedback_adjustment": adjustment,
             "feedback_examples": examples,
             "review_priority_score": priority,
+            "qualification_match": qualified,
+            "qualification_basis": basis,
+            "qualification_reason": reason,
         })

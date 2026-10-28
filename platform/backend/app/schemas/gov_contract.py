@@ -155,6 +155,9 @@ class GovContractOpportunityRead(BaseModel):
     feedback_adjustment: int = 0
     feedback_examples: list[GovContractFitExampleRead] = Field(default_factory=list)
     review_priority_score: int = 0
+    qualification_match: bool = False
+    qualification_basis: str = "keyword"
+    qualification_reason: str = "Not yet evaluated against fit feedback."
     funnel_status: str
     funnel_submission_id: Optional[str] = None
     funnel_delivery_target: Optional[str] = None
@@ -187,6 +190,7 @@ class GovContractOpportunitySearchRead(BaseModel):
     source_context_counts: list[GovContractFacetCount] = Field(default_factory=list)
     fit_feedback_counts: dict[str, int] = Field(default_factory=dict)
     fit_feedback_enabled: bool = False
+    qualified_count: int = 0
 
 
 class GovContractImportRunRead(BaseModel):

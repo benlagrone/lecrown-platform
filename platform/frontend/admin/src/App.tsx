@@ -1813,10 +1813,14 @@ export default function App() {
             </div>
           ) : null}
         </div>
+        <p className="panel-subcopy" aria-label="Qualification decision">
+          <strong>{contract.qualification_match ? "Included in qualified leads" : "Outside qualified leads"}.</strong>{" "}
+          {contract.qualification_reason}
+        </p>
         {contract.feedback_examples?.length > 0 ? (
           <details className="fit-learning-detail">
-            <summary>Learned priority adjustment: {contract.feedback_adjustment > 0 ? "+" : ""}{contract.feedback_adjustment}</summary>
-            <p>Similar titles you rated, not a change to the automatic IT score:</p>
+            <summary>Training evidence: {contract.qualification_basis === "learned_high" ? "learned high fit" : contract.qualification_basis === "learned_low" ? "learned low fit" : "priority adjustment"} ({contract.feedback_adjustment > 0 ? "+" : ""}{contract.feedback_adjustment})</summary>
+            <p>Similar titles you rated. Strong, consistent examples change qualification; weaker examples adjust priority only. The original keyword score stays visible.</p>
             <ul>{contract.feedback_examples.map((example) => (
               <li key={example.source_key}>{example.rating === "high" ? "+" : "-"} {example.title}</li>
             ))}</ul>
@@ -3132,7 +3136,7 @@ export default function App() {
             </div>
             <div className="metric-pill">
               <strong>{loadedSourceCount}</strong>
-              <span>currently loaded</span>
+              <span>latest check completed</span>
             </div>
             <div className="metric-pill">
               <strong>{needsReviewCount}</strong>
@@ -3278,7 +3282,8 @@ export default function App() {
     const pageStart = opportunitySearch.total === 0 ? 0 : opportunitySearch.offset + 1;
     const pageEnd = Math.min(opportunitySearch.offset + displayedContracts.length, opportunitySearch.total);
     const latestLoadedContractRun = contractRuns.find((run) => (run.total_records ?? 0) > 0) ?? contractRuns[0] ?? null;
-    const loadedSourceCount = trackedSources.filter((source) => source.latest_run_status === "completed").length;
+    const loadedSourceCount = trackedSources.filter((source) => source.stored_opportunity_count > 0).length;
+    const deferredSourceCount = trackedSources.filter((source) => source.latest_run_status === "deferred").length;
     const trackedReviewSources = trackedSources.filter(
       (source) => source.latest_run_status === "manual_review" || source.latest_run_status === "cataloged",
     ).length;
@@ -3404,12 +3409,23 @@ export default function App() {
                   {label} <strong>{opportunitySearch.fit_feedback_counts?.[value] ?? 0}</strong>
                 </button>
               ))}
+              <button type="button" aria-pressed={matchesOnlyFilter}
+                onClick={() => { showAllCandidates(); setMatchesOnlyFilter(true); }}>
+                Qualified leads <strong>{opportunitySearch.qualified_count ?? 0}</strong>
+              </button>
             </div>
             <p className="panel-subcopy">
-              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. Shared workspace ratings survive rescans and adjust the review priority of similar IT titles. This is local example-based learning, not an AI model fine-tune.
+              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. High fit includes that lead; Low fit excludes it from Qualified leads. Your ratings also train qualification for similar titles. Clear rating removes that example. All leads always keeps every captured candidate, including low fits and closed notices. This is local example-based learning, not an AI model fine-tune.
               {!opportunitySearch.fit_feedback_enabled ? " Rating storage is not available." : null}
             </p>
             <p className="feedback-status" role="status" aria-live="polite">{feedbackMessage}</p>
+          </section>
+
+          <section className="qualification-toolbar" aria-label="Collection coverage">
+            <h3>Collection coverage is separate from fit</h3>
+            <p>{trackedSources.length} sources registered; {loadedSourceCount} have captured candidates. {deferredSourceCount} were deferred in the latest batch; {trackedReviewSources + trackedBlockedSources} need review or access work.</p>
+            <p className="panel-subcopy">Deferred public portals remain in the rotating, rate-limited collection queue. Manual-review portals and catalog-only resources remain visible in Sources, but are not counted as fully scanned. Fit ratings never hide sources or create CRM records.</p>
+            <button type="button" className="secondary-link" onClick={() => navigateToView("sources")}>View source coverage</button>
           </section>
 
           <div className="vendor-resource-grid">
@@ -3444,7 +3460,7 @@ export default function App() {
                   setMatchesOnlyFilter(event.target.checked);
                 }}
               />
-              <span>IT-relevant candidates only</span>
+              <span>Qualified leads only</span>
             </label>
             <label className="toggle">
               <input
@@ -3511,7 +3527,7 @@ export default function App() {
               </div>
               <div className="metric-pill">
                 <strong>{loadedSourceCount}</strong>
-                <span>sources loaded</span>
+                <span>sources with captured candidates</span>
               </div>
               <div className="metric-pill">
                 <strong>{trackedReviewSources + trackedBlockedSources}</strong>
@@ -3535,7 +3551,7 @@ export default function App() {
           )}
 
           <p className="panel-subcopy opportunity-count-explainer">
-            IT-relevant candidates require IT evidence in the actual title or scope and must meet the keyword threshold. Buyer names, RFQ labels, deadlines, and agency preferences cannot qualify unrelated work. Counts reflect the current filters, not all collected candidates. Eligibility, geography, and delivery capacity still need review.
+            Qualified leads uses your High/Low fit ratings first, then strong similar examples, then IT keyword evidence. Automatic learning cannot turn physical work into IT work. Category tabs describe scope, not your fit rating. Min priority uses the trained review priority. Eligibility, geography, and delivery capacity still need review; qualification is not a bid recommendation.
           </p>
 
           <div className="opportunity-tab-row" role="tablist" aria-label="Opportunity category tabs">
