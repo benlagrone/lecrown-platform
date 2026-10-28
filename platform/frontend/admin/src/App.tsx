@@ -41,6 +41,7 @@ import {
   retryIntakeLead,
   revokeUserInvite,
   searchGovContracts,
+  rateGovCandidate,
   storeAuthToken,
   updateGovContractAgencyPreference,
   updateGovContractKeywordRule,
@@ -714,6 +715,12 @@ export default function App() {
   const [selectedOpportunitySourceContextFilter, setSelectedOpportunitySourceContextFilter] = useState<string | null>(null);
   const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
   const [opportunityKeywordFilter, setOpportunityKeywordFilter] = useState("");
+  const [fitFeedbackFilter, setFitFeedbackFilter] = useState<"all" | "high" | "low" | "unreviewed">("all");
+  const [feedbackRevision, setFeedbackRevision] = useState(0);
+  const [savingFeedbackId, setSavingFeedbackId] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const feedbackPending = useRef(false);
+  const contractSearchSequence = useRef(0);
   const [loginUsername, setLoginUsername] = useState("admin");
   const [loginPassword, setLoginPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
@@ -732,8 +739,8 @@ export default function App() {
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [minPriorityScoreFilter, setMinPriorityScoreFilter] = useState(0);
-  const [matchesOnlyFilter, setMatchesOnlyFilter] = useState(true);
-  const [openOnlyFilter, setOpenOnlyFilter] = useState(true);
+  const [matchesOnlyFilter, setMatchesOnlyFilter] = useState(false);
+  const [openOnlyFilter, setOpenOnlyFilter] = useState(false);
   const [agencyName, setAgencyName] = useState("");
   const [agencyWeight, setAgencyWeight] = useState(DEFAULT_AGENCY_WEIGHT);
   const [editingAgencyId, setEditingAgencyId] = useState<string | null>(null);
@@ -838,6 +845,7 @@ export default function App() {
   useEffect(() => {
     setOpportunityPage(1);
   }, [
+    fitFeedbackFilter,
     matchesOnlyFilter,
     minPriorityScoreFilter,
     openOnlyFilter,
@@ -857,6 +865,8 @@ export default function App() {
     }
     void refreshContractsView();
   }, [
+    fitFeedbackFilter,
+    feedbackRevision,
     view,
     opportunitiesAuthStatus,
     matchesOnlyFilter,
@@ -973,6 +983,7 @@ export default function App() {
   }
 
   async function refreshContractsView() {
+    const sequence = ++contractSearchSequence.current;
     try {
       const currentUser = currentAdmin ?? (await getCurrentAdmin());
       setCurrentAdmin(currentUser);
@@ -996,16 +1007,58 @@ export default function App() {
         tagKind: selectedOpportunityTagFilter?.kind ?? null,
         tagValue: selectedOpportunityTagFilter?.value ?? null,
         keyword: opportunityKeywordFilter,
+        fitFeedback: fitFeedbackFilter === "all" ? null : fitFeedbackFilter,
       });
+      if (sequence !== contractSearchSequence.current) return;
       setOpportunitySearch(searchResult);
+      if (opportunityPage > 1 && searchResult.offset >= searchResult.total) {
+        setOpportunityPage(Math.max(1, Math.ceil(searchResult.total / OPPORTUNITY_PAGE_SIZE)));
+      }
       setContractRuns(runs);
       setTrackedSources(sources);
       setKeywordRules(keywords);
       setAgencyPreferences(agencyPrefs);
       setUserInvites(invites);
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      if (sequence === contractSearchSequence.current) setMessage(getErrorMessage(error));
     }
+  }
+
+  async function handleFitFeedback(contract: GovContractOpportunity, rating: "high" | "low" | null) {
+    if (feedbackPending.current) return;
+    feedbackPending.current = true;
+    setSavingFeedbackId(contract.id);
+    setFeedbackMessage("");
+    try {
+      const saved = await rateGovCandidate(contract.id, rating, contract.fit_feedback_version);
+      ++contractSearchSequence.current;
+      setOpportunitySearch((current) => ({
+        ...current,
+        items: current.items.map((item) => item.id === contract.id
+          ? { ...item, fit_feedback_rating: saved.rating, fit_feedback_version: saved.version }
+          : item),
+      }));
+      setFeedbackMessage(`${rating === null ? "Rating cleared" : `${rating === "high" ? "High" : "Low"} fit saved`}: ${contract.title}`);
+    } catch (error) {
+      setFeedbackMessage(getErrorMessage(error));
+    } finally {
+      feedbackPending.current = false;
+      setSavingFeedbackId(null);
+      setFeedbackRevision((current) => current + 1);
+    }
+  }
+
+  function showAllCandidates() {
+    setFitFeedbackFilter("all");
+    setMatchesOnlyFilter(false);
+    setOpenOnlyFilter(false);
+    setMinPriorityScoreFilter(0);
+    setOpportunityCategoryTab("all");
+    setSelectedOpportunitySourceFilter(null);
+    setSelectedOpportunitySourceContextFilter(null);
+    setSelectedOpportunityTagFilter(null);
+    setOpportunityKeywordFilter("");
+    setOpportunityPage(1);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1724,19 +1777,49 @@ export default function App() {
 
   function renderContractCard(contract: GovContractOpportunity) {
     return (
-      <article className="content-card contract-card" key={contract.id}>
+      <article className="content-card contract-card" key={contract.id} aria-label={contract.title}>
         <div className="content-meta">
           <div>
             <strong>{contract.title}</strong>
             <span>{contract.agency_name ?? contract.agency_number ?? "Unknown agency"}</span>
           </div>
           <div className="contract-score-stack">
-            <span className="fit-tag fit-tag-high">Priority {contract.priority_score}</span>
+            <span className="fit-tag fit-tag-high">Review priority {contract.review_priority_score}</span>
             <span className={`fit-tag fit-tag-${contract.fit_bucket}`}>
               {contract.fit_bucket} IT relevance - {contract.score}
             </span>
           </div>
         </div>
+
+        <div className="fit-feedback-row">
+          <strong>Your fit: {contract.fit_feedback_rating === "high" ? "High" : contract.fit_feedback_rating === "low" ? "Low" : "Unreviewed"}</strong>
+          {isAdminUser && opportunitySearch.fit_feedback_enabled ? (
+            <div className="fit-feedback-actions" aria-label="Rate this lead">
+              <button type="button" className="fit-feedback-high" aria-pressed={contract.fit_feedback_rating === "high"}
+                disabled={savingFeedbackId !== null} onClick={() => void handleFitFeedback(contract, "high")}>
+                + High fit
+              </button>
+              <button type="button" className="fit-feedback-low" aria-pressed={contract.fit_feedback_rating === "low"}
+                disabled={savingFeedbackId !== null} onClick={() => void handleFitFeedback(contract, "low")}>
+                - Low fit
+              </button>
+              {contract.fit_feedback_rating ? (
+                <button type="button" className="secondary-link" disabled={savingFeedbackId !== null}
+                  onClick={() => void handleFitFeedback(contract, null)}>Clear rating</button>
+              ) : null}
+              {savingFeedbackId === contract.id ? <span role="status">Saving...</span> : null}
+            </div>
+          ) : null}
+        </div>
+        {contract.feedback_examples?.length > 0 ? (
+          <details className="fit-learning-detail">
+            <summary>Learned priority adjustment: {contract.feedback_adjustment > 0 ? "+" : ""}{contract.feedback_adjustment}</summary>
+            <p>Similar titles you rated, not a change to the automatic IT score:</p>
+            <ul>{contract.feedback_examples.map((example) => (
+              <li key={example.source_key}>{example.rating === "high" ? "+" : "-"} {example.title}</li>
+            ))}</ul>
+          </details>
+        ) : null}
 
         <div className="contract-detail-grid">
           <span>Reference: {contract.solicitation_id}</span>
@@ -3204,7 +3287,7 @@ export default function App() {
           <div className="panel-heading contract-toolbar">
             <div>
               <p className="eyebrow">Government Work Finder</p>
-              <h2>Candidate inbox: review before creating CRM Opportunities</h2>
+              <h2>Candidate inbox: review and train lead qualification</h2>
             </div>
 
             <div className="action-row">
@@ -3303,6 +3386,26 @@ export default function App() {
             systems integration, networks, and IT support. Real estate, road work, construction, and
             facilities services are not business-fit matches. Relevance still requires human qualification.
           </p>
+
+          <section className="qualification-toolbar" aria-label="Lead qualification training">
+            <p className="eyebrow">Teach the qualifier</p>
+            <h3>Review every captured lead</h3>
+            <p>Use + for high fit and - for low fit. All leads includes nonmatches and closed notices; rating a lead never creates a CRM Opportunity.</p>
+            <div className="fit-review-filters" aria-label="Human fit filters">
+              {([['all', 'All leads'], ['high', 'High fit'], ['low', 'Low fit'], ['unreviewed', 'Unreviewed']] as const).map(([value, label]) => (
+                <button key={value} type="button"
+                  aria-pressed={fitFeedbackFilter === value && !matchesOnlyFilter && !openOnlyFilter && minPriorityScoreFilter === 0 && opportunityCategoryTab === "all" && !selectedOpportunitySourceFilter && !selectedOpportunitySourceContextFilter && !selectedOpportunityTagFilter && !opportunityKeywordFilter}
+                  onClick={() => { showAllCandidates(); setFitFeedbackFilter(value); }}>
+                  {label} <strong>{opportunitySearch.fit_feedback_counts?.[value] ?? 0}</strong>
+                </button>
+              ))}
+            </div>
+            <p className="panel-subcopy">
+              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. Shared workspace ratings survive rescans and adjust the review priority of similar IT titles. This is local example-based learning, not an AI model fine-tune.
+              {!opportunitySearch.fit_feedback_enabled ? " Rating storage is not available." : null}
+            </p>
+            <p className="feedback-status" role="status" aria-live="polite">{feedbackMessage}</p>
+          </section>
 
           <div className="vendor-resource-grid">
             {METRO_VENDOR_RESOURCES.map((resource) => (
@@ -3620,7 +3723,8 @@ export default function App() {
         </section>
 
         {isAdminUser ? (
-          <>
+          <details className="qualification-settings">
+            <summary>Advanced scoring settings: keywords and agencies</summary>
             <section className="panel">
               <div className="panel-heading contract-toolbar">
                 <div>
@@ -3733,7 +3837,7 @@ export default function App() {
               <div className="panel-heading contract-toolbar">
                 <div>
                   <p className="eyebrow">Match Keywords</p>
-                  <h2>Control what counts as a fit</h2>
+                  <h2>Tune automatic IT relevance</h2>
                 </div>
               </div>
 
@@ -3748,7 +3852,7 @@ export default function App() {
                   <input
                     value={keywordPhrase}
                     onChange={(event) => setKeywordPhrase(event.target.value)}
-                    placeholder="property management"
+                    placeholder="data analytics"
                   />
                 </label>
                 <label className="keyword-weight-field">
@@ -3832,7 +3936,7 @@ export default function App() {
                 )}
               </div>
             </section>
-          </>
+          </details>
         ) : null}
 
         {!hasVisibleContracts ? (
@@ -4765,6 +4869,9 @@ function parseOpportunityTimestamp(value: string | null | undefined): number {
 
 function sortContractsForDisplay(contracts: GovContractOpportunity[]): GovContractOpportunity[] {
   return [...contracts].sort((left, right) => {
+    if (right.review_priority_score !== left.review_priority_score) {
+      return right.review_priority_score - left.review_priority_score;
+    }
     if (right.priority_score !== left.priority_score) {
       return right.priority_score - left.priority_score;
     }

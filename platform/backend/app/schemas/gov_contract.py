@@ -23,6 +23,25 @@ class GovContractFunnelRequest(BaseModel):
     force: bool = False
 
 
+class GovContractFitFeedbackRequest(BaseModel):
+    rating: Optional[Literal["high", "low"]]
+    expected_version: int = Field(ge=0)
+
+
+class GovContractFitFeedbackRead(BaseModel):
+    rating: Optional[Literal["high", "low"]] = None
+    version: int = 0
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+
+
+class GovContractFitExampleRead(BaseModel):
+    source_key: str
+    title: str
+    rating: Literal["high", "low"]
+    similarity: float
+
+
 class GovContractCapabilitiesRead(BaseModel):
     gmail_rfq_sync_enabled: bool
     gmail_rfq_feed_label: Optional[str] = None
@@ -123,6 +142,13 @@ class GovContractOpportunityRead(BaseModel):
     source_context: Optional[str] = None
     source_context_label: Optional[str] = None
     score_breakdown: Optional[dict[str, Any]] = None
+    fit_feedback_rating: Optional[Literal["high", "low"]] = None
+    fit_feedback_version: int = 0
+    fit_feedback_at: Optional[datetime] = None
+    fit_feedback_by: Optional[str] = None
+    feedback_adjustment: int = 0
+    feedback_examples: list[GovContractFitExampleRead] = Field(default_factory=list)
+    review_priority_score: int = 0
     funnel_status: str
     funnel_submission_id: Optional[str] = None
     funnel_delivery_target: Optional[str] = None
@@ -153,6 +179,8 @@ class GovContractOpportunitySearchRead(BaseModel):
     category_counts: dict[str, int] = Field(default_factory=dict)
     source_counts: list[GovContractFacetCount] = Field(default_factory=list)
     source_context_counts: list[GovContractFacetCount] = Field(default_factory=list)
+    fit_feedback_counts: dict[str, int] = Field(default_factory=dict)
+    fit_feedback_enabled: bool = False
 
 
 class GovContractImportRunRead(BaseModel):

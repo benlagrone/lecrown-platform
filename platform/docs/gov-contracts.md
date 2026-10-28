@@ -305,6 +305,32 @@ You can still extend the starting keyword set with `GOV_CONTRACT_EXTRA_KEYWORDS`
 
 ## Score Matrix
 
+### Human Fit Feedback
+
+The candidate inbox opens with all stored leads, including nonmatches and closed
+notices. Admins can choose `+ High fit`, `- Low fit`, or `Clear rating` on each
+card and filter by human rating. These ratings are shared across the Development
+workspace, not personal preferences. Viewer accounts cannot change ratings.
+
+`PUT /contracts/{id}/fit-feedback` accepts `rating` (`high`, `low`, or `null`) and
+`expected_version`. Ratings, reviewer identity, timestamps, and revision history
+are stored under `fit_feedback` / `fit_feedback_history` in the durable candidate
+JSON. Atomic locked writes preserve them during rescans and restarts. A stale
+revision returns 409 instead of overwriting another review. Missing or unreadable
+storage fails closed. The candidate JSON download includes the review history.
+
+Ratings immediately affect review order: explicitly high-fit leads rank first,
+low-fit leads last. Unreviewed IT candidates receive a bounded priority adjustment
+from up to five similar labeled titles (at least two meaningful shared words and
+Jaccard similarity of 0.25). The UI shows the supporting examples. Clearing a
+rating removes it from training. This is deterministic local example-based
+learning, not an external AI service or model fine-tune. Original IT scores and
+match flags are unchanged, and out-of-scope candidates cannot gain an automatic
+IT match through feedback. The minimum-priority filter still uses the base score.
+
+Rating never promotes a lead or writes to EspoCRM. Explicit promotion remains a
+separate admin action. No fabricated labels are seeded.
+
 Each stored opportunity now carries a score matrix:
 
 - `Closeness`: normalized keyword-fit score

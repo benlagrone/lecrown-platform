@@ -199,6 +199,7 @@ export async function searchGovContracts(options: {
   tagKind?: string | null;
   tagValue?: string | null;
   keyword?: string | null;
+  fitFeedback?: "high" | "low" | "unreviewed" | null;
 }): Promise<GovContractOpportunitySearchResponse> {
   const query = new URLSearchParams({
     limit: String(options.limit),
@@ -223,7 +224,21 @@ export async function searchGovContracts(options: {
   if (options.keyword?.trim()) {
     query.set("keyword", options.keyword.trim());
   }
+  if (options.fitFeedback) {
+    query.set("fit_feedback", options.fitFeedback);
+  }
   return request<GovContractOpportunitySearchResponse>(`/contracts/search?${query.toString()}`);
+}
+
+export async function rateGovCandidate(
+  id: string,
+  rating: "high" | "low" | null,
+  expectedVersion: number,
+): Promise<{ rating: "high" | "low" | null; version: number }> {
+  return request(`/contracts/${id}/fit-feedback`, {
+    method: "PUT",
+    body: JSON.stringify({ rating, expected_version: expectedVersion }),
+  });
 }
 
 export async function listGovContractRuns(limit = 5): Promise<GovContractImportRun[]> {

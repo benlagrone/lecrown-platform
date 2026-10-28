@@ -20,6 +20,10 @@ class CandidateInboxError(RuntimeError):
     pass
 
 
+class FitFeedbackConflict(CandidateInboxError):
+    pass
+
+
 def configured() -> bool:
     return bool(settings.procurement_candidate_json_path.strip())
 
@@ -110,6 +114,8 @@ def capture(records: list[dict]) -> None:
                 "last_captured_at": _now(),
                 "candidate": record,
                 "promotion": previous.get("promotion", {"status": "unselected"}),
+                "fit_feedback": previous.get("fit_feedback", {"rating": None, "version": 0}),
+                "fit_feedback_history": previous.get("fit_feedback_history", []),
             }
         _save(path, data)
 
@@ -117,6 +123,26 @@ def capture(records: list[dict]) -> None:
 def snapshot() -> dict:
     with _locked() as (_, data):
         return data
+
+
+def set_fit_feedback(source_key: str, *, rating: str | None, reviewed_by: str, expected_version: int) -> dict:
+    if rating not in {"high", "low", None}:
+        raise ValueError("Fit rating must be high, low, or null")
+    with _locked() as (path, data):
+        entry = data["candidates"].get(candidate_id(source_key))
+        if entry is None:
+            raise CandidateInboxError("Candidate is not present in the JSON inbox")
+        current = entry.get("fit_feedback", {"rating": None, "version": 0})
+        if current.get("version", 0) != expected_version:
+            raise FitFeedbackConflict("This rating changed in another session. Refresh before rating it again.")
+        if current.get("rating") == rating:
+            return dict(current)
+        feedback = {"rating": rating, "version": expected_version + 1,
+                    "reviewed_by": reviewed_by, "reviewed_at": _now()}
+        entry["fit_feedback"] = feedback
+        entry.setdefault("fit_feedback_history", []).append(dict(feedback))
+        _save(path, data)
+        return dict(feedback)
 
 
 def promote(source_key: str, payload: dict) -> dict:

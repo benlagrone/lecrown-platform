@@ -4087,7 +4087,11 @@ def search_contracts(
     tag_kind: str | None = None,
     tag_value: str | None = None,
     keyword: str | None = None,
+    fit_feedback: str | None = None,
 ) -> dict[str, object]:
+    from app.services.fit_feedback import FeedbackRanker
+
+    ranker = FeedbackRanker.load()
     candidates = serialize_opportunities(
         list_contracts(
             db,
@@ -4097,6 +4101,11 @@ def search_contracts(
             min_priority_score=min_priority_score,
         )
     )
+    candidates = [ranker.apply(candidate) for candidate in candidates]
+    if fit_feedback:
+        candidates = [candidate for candidate in candidates
+                      if (candidate.fit_feedback_rating or "unreviewed") == fit_feedback]
+    candidates.sort(key=lambda candidate: candidate.review_priority_score, reverse=True)
     tab_base = _apply_serialized_search_filters(
         candidates,
         source=source,
@@ -4158,6 +4167,8 @@ def search_contracts(
                 for opportunity in context_base
             ]
         ),
+        "fit_feedback_counts": ranker.counts,
+        "fit_feedback_enabled": candidate_inbox.configured(),
     }
 
 

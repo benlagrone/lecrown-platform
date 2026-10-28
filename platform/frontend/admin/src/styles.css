@@ -12,6 +12,67 @@
   font-family: "Avenir Next", "Trebuchet MS", sans-serif;
 }
 
+.qualification-toolbar {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(47, 111, 69, 0.3);
+  border-radius: 18px;
+  background: linear-gradient(120deg, #f0f5eb, #fffaf1);
+}
+
+.qualification-toolbar h3 { margin: 0; }
+.fit-review-filters, .fit-feedback-actions, .fit-feedback-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+.fit-review-filters button {
+  gap: 0.65rem;
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+}
+.fit-review-filters button[aria-pressed="true"] {
+  background: var(--text);
+  color: #fff;
+}
+.fit-feedback-row {
+  justify-content: space-between;
+  padding: 0.8rem 0;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+.fit-feedback-actions button { min-height: 44px; }
+.fit-feedback-actions .fit-feedback-high {
+  background: #eef5ed;
+  color: #205735;
+  border: 1px solid #83a98e;
+}
+.fit-feedback-actions .fit-feedback-high[aria-pressed="true"] {
+  background: #205735;
+  color: #fff;
+}
+.fit-feedback-actions .fit-feedback-low {
+  background: #fff1eb;
+  color: #8a321d;
+  border: 1px solid #c89786;
+}
+.fit-feedback-actions .fit-feedback-low[aria-pressed="true"] {
+  background: #8a321d;
+  color: #fff;
+}
+.fit-feedback-actions button:focus-visible, .fit-review-filters button:focus-visible,
+.qualification-settings > summary:focus-visible, .fit-learning-detail > summary:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 3px;
+}
+.feedback-status { min-height: 1.4em; overflow-wrap: anywhere; }
+.fit-learning-detail { margin-bottom: 1rem; color: var(--muted); }
+.fit-learning-detail summary, .qualification-settings > summary { cursor: pointer; }
+.qualification-settings { margin: 1rem 0; }
+.qualification-settings > summary { padding: 1rem; font-weight: 600; }
+
 * {
   box-sizing: border-box;
 }

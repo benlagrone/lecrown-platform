@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 import json
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -16,6 +16,8 @@ from app.schemas.gov_contract import (
     GovContractAgencyPreferenceWrite,
     GovContractCapabilitiesRead,
     GovContractFunnelRequest,
+    GovContractFitFeedbackRequest,
+    GovContractFitFeedbackRead,
     GovContractImportRunRead,
     GovContractKeywordRuleRead,
     GovContractKeywordRuleWrite,
@@ -282,23 +284,46 @@ def search_contracts(
     tag_kind: Optional[str] = Query(default=None),
     tag_value: Optional[str] = Query(default=None),
     keyword: Optional[str] = Query(default=None),
+    fit_feedback: Optional[Literal["high", "low", "unreviewed"]] = Query(default=None),
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ) -> GovContractOpportunitySearchRead:
-    return gov_contract_service.search_contracts(
-        db,
-        limit=limit,
-        offset=offset,
-        matches_only=matches_only,
-        open_only=open_only,
-        min_priority_score=min_priority_score,
-        source=source,
-        source_context=source_context,
-        category=category,
-        tag_kind=tag_kind,
-        tag_value=tag_value,
-        keyword=keyword,
-    )
+    try:
+        return gov_contract_service.search_contracts(
+            db, limit=limit, offset=offset, matches_only=matches_only,
+            open_only=open_only, min_priority_score=min_priority_score,
+            source=source, source_context=source_context, category=category,
+            tag_kind=tag_kind, tag_value=tag_value, keyword=keyword, fit_feedback=fit_feedback,
+        )
+    except candidate_inbox.CandidateInboxError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="Fit feedback storage is unavailable") from exc
+
+
+
+@router.put("/{contract_id}/fit-feedback", response_model=GovContractFitFeedbackRead)
+def rate_candidate(
+    contract_id: str,
+    payload: GovContractFitFeedbackRequest,
+    db: Session = Depends(get_db),
+    admin: object = Depends(get_current_admin),
+) -> GovContractFitFeedbackRead:
+    candidate = gov_contract_service.get_contract_by_id(db, contract_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    if not candidate_inbox.configured():
+        raise HTTPException(status_code=503, detail="Durable fit feedback storage is not configured")
+    try:
+        candidate_inbox.capture([gov_contract_service.serialize_opportunity(candidate).model_dump(mode="json")])
+        return candidate_inbox.set_fit_feedback(
+            candidate.source_key, rating=payload.rating, expected_version=payload.expected_version,
+            reviewed_by=admin.id,
+        )
+    except candidate_inbox.FitFeedbackConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (candidate_inbox.CandidateInboxError, OSError) as exc:
+        raise HTTPException(status_code=503, detail="Could not save fit feedback; refresh before retrying") from exc
 
 
 @router.post("/{contract_id}/funnel", response_model=GovContractOpportunityRead)
