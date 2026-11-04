@@ -47,6 +47,9 @@ def metadata_lines(record: dict) -> dict[str, str]:
 def assessment(record: dict, evidence: dict, model: dict, as_of: date) -> dict:
     title = unicodedata.normalize("NFKC", record.get("name") or "").casefold()
     profile = next((p for p in model["profiles"] if re.search(p["pattern"], title)), None)
+    if profile is None:
+        scope = unicodedata.normalize("NFKC", record.get("description") or "").casefold()
+        profile = next((p for p in model["profiles"] if re.search(p["pattern"], scope)), None)
     meta = metadata_lines(record)
     observed = evidence.get(record["id"], {})
     evidence_date = observed.get("checked_at", "")[:10]
@@ -59,7 +62,10 @@ def assessment(record: dict, evidence: dict, model: dict, as_of: date) -> dict:
     raw_due = public_project.get("DateClose") if fresh else None
     raw_due = raw_due or meta.get("Due Date", "")
     due_match = re.match(r"(\d{4}-\d{2}-\d{2})", raw_due or "")
-    due_date = date.fromisoformat(due_match[1]) if due_match else None
+    try:
+        due_date = date.fromisoformat(due_match[1]) if due_match else None
+    except ValueError:
+        due_date = None
     days = (due_date - as_of).days if due_date else None
     is_forecast = "forecast" in meta.get("Status", "").casefold()
     is_rfi = bool(re.match(r"RFI\b", meta.get("Solicitation ID", ""), re.I))
@@ -95,7 +101,7 @@ def assessment(record: dict, evidence: dict, model: dict, as_of: date) -> dict:
         status, readiness = "Closed - CRM", 0
     if not profile:
         return {
-            "id": record["id"], "name": record.get("name"), "status": "Review - unmapped",
+            "id": record["id"], "name": record.get("name"), "status": status if status.startswith(("Hold", "Closed")) else "Review - unmapped",
             "win": None, "profitability": None, "potential": None, "priority": None,
             "flags": flags + ["No reviewed capability profile matches this record; do not fabricate a score."],
             "checks": ["Review the scope and extend the versioned model."], "confidence": "Low",
@@ -133,7 +139,7 @@ def rank(records: list[dict], evidence: dict, model: dict, as_of: date) -> list[
                     "Sub - qualify": 3, "Review - unmapped": 4, "Hold - deadline review": 5,
                     "Hold - not listed open": 5, "Closed - CRM": 6, "Review - outside core scope": 7}
     rows.sort(key=lambda r: (status_order[r["status"]], -(r["priority"] or 0), -(r["win"] or 0),
-                             -(r["profitability"] or 0), r["name"].casefold(), r["id"]))
+                             -(r["profitability"] or 0), (r["name"] or "").casefold(), r["id"]))
     for number, row in enumerate(rows, 1):
         row["rank"] = number
     return rows

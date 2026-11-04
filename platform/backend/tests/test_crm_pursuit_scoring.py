@@ -11,7 +11,7 @@ from pathlib import Path
 from app.services.crm_pursuit_scoring import assessment, crm_values, input_hash, rank, validate_model
 
 ROOT = Path(__file__).resolve().parents[3]
-MODEL = json.loads((ROOT / "data/crm-pursuit-model.json").read_text())
+MODEL = json.loads((ROOT / "platform/backend/app/resources/crm-pursuit-model.json").read_text())
 TODAY = date(2026, 11, 4)
 
 

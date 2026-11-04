@@ -5,7 +5,7 @@ Sextant/AI production, and no assumed software contractor labor. Prime pursuits
 precede subcontracting. New-energy project leadership and systems integration
 remain in scope; physical installation is separately scoped specialist work.
 
-The versioned rubric is `data/crm-pursuit-model.json`. This is an initial
+The versioned rubric is `platform/backend/app/resources/crm-pursuit-model.json`. This is an initial
 explainable heuristic, not a calibrated probability model or verified profit
 forecast. Buyer documents control eligibility, permitted AI usage, staffing,
 product authorizations, pricing and submission requirements.
@@ -98,8 +98,39 @@ Click Pursuit Rank ascending in the Opportunity list to see the priority queue.
 
 Snapshots and receipts are written mode 0600. They are private runtime artifacts,
 not repository content. Keep before-records and schema/layout backups for audit.
-Restoring earlier values is a separately authorized CRM operation. The scorer
-does not install an automatic job or silently rerank on its own.
+Restoring earlier values is a separately authorized CRM operation. The manual
+CLI remains available; automatic operation uses the separate worker below.
+
+## Automatic Scoring
+
+The Fortress-owned Development deployment runs `app.jobs.score_crm_opportunities`
+as a persistent, portless `pursuit-ranker` service. Every 60 seconds it reads all
+Opportunities, assesses new/edited records and repairs portfolio ranks after
+additions or deletions. Time-sensitive readiness and expiry are recalculated in
+America/Chicago even if nobody edits a record. Title matches take precedence;
+saved description scope can match the same reviewed profiles when the title does not.
+Unmapped scopes receive a rank and explicit review status, not invented scores.
+
+The model's weights, AI-first delivery assumptions, no assumed software contractor
+costs, and prime-first gates are unchanged. Amounts and expected sales close dates
+are not treated as bid deadlines or fabricated margins. Known bid dates come from
+the saved `Due Date:` metadata and fresh collector evidence. Exact portal times,
+time zones and amendments still require package review.
+
+The worker reuses complete Bonfire snapshots from the existing bounded collector
+(15-minute batches, rotating buyers). It makes no extra portal requests and cannot
+bypass rate limits. Source deadlines/status refresh when that buyer's next successful
+snapshot arrives, not necessarily in the next batch. Unsupported/stale sources remain
+flagged. Collection in progress uses only cached evidence for unchanged source URLs.
+
+Private atomic state, before-records, pending write intent, verified receipts and
+health live in `/app/data/crm-pursuit-scoring` on the existing persistent volume.
+A single-worker file lock prevents overlap. Input fingerprints exclude score fields,
+and unchanged results retain their original assessment timestamp and produce no PUTs.
+Every changed write is read back; concurrent business edits abort the pass and trigger
+a fresh snapshot, never a business-field overwrite. HTTP 429 respects Retry-After;
+failures use exponential backoff and mark worker health unhealthy. No credentials,
+accounts, layouts, stages, native sales probabilities or user fit ratings are changed.
 
 ## Validation
 

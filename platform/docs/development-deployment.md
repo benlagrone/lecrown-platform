@@ -17,7 +17,7 @@ Operational implementation is owned by Fortress Phronesis at
 
 The new Development administrator uses the explicitly supplied Development environment
 file's `ADMIN_USERNAME` and `ADMIN_PASSWORD`, not the Properties database's users.
-EspoCRM credentials are injected only into backend/collector containers.
+EspoCRM credentials are injected only into backend/collector/pursuit-ranker containers.
 
 ## Release
 
@@ -39,6 +39,18 @@ then waits 15 minutes. Unsupported sources remain visible as manual review. HTTP
 persists a cooldown and defers subsequent requests. Candidate JSON is private and
 downloadable only through the authenticated admin export; selection is the only path
 that creates an EspoCRM Opportunity. No test candidate should be promoted to live CRM.
+
+## Automatic Pursuit Ranking
+
+Before: existing records were scored only by the explicit manual CLI.
+After: a portless `pursuit-ranker` service in the same locked project checks CRM
+every 60 seconds and updates only existing scoring fields. The same AI-first,
+prime-first model applies, without assumed software contractor costs. It reuses
+the collector's complete public snapshots for deadline changes and recalculates
+date-sensitive readiness/expiry daily. No new secrets, ports, networks or volume
+are introduced; private state lives at `/app/data/crm-pursuit-scoring`.
+Deployment checks a successful CRM read/write/readback pass and worker health;
+rollback removes the worker if the prior release did not define it.
 
 ## Rollback
 
