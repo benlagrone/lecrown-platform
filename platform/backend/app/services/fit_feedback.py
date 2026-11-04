@@ -27,6 +27,9 @@ def _tokens(candidate: dict) -> frozenset[str]:
 
 class FeedbackRanker:
     def __init__(self, snapshot: dict):
+        from app.config import get_settings
+        from app.services.semantic_fit import SemanticProjection
+        self.semantic = SemanticProjection(snapshot) if get_settings().semantic_fit_enabled else None
         self.entries = {entry["candidate"]["source_key"]: entry
                         for entry in snapshot.get("candidates", {}).values()}
         self.examples = []
@@ -44,6 +47,8 @@ class FeedbackRanker:
     def apply(self, candidate: GovContractOpportunityRead) -> GovContractOpportunityRead:
         entry = self.entries.get(candidate.source_key, {})
         feedback = entry.get("fit_feedback", {})
+        if self.semantic:
+            return self.semantic.apply(candidate, feedback)
         rating = feedback.get("rating")
         keyword_categories = (candidate.keyword_opportunity_categories
                               if candidate.keyword_opportunity_categories is not None

@@ -174,6 +174,12 @@ export interface GovContractOpportunity {
   source_key: string;
   source_url: string;
   title: string;
+  description_text?: string;
+  description_status?: string;
+  description_url?: string | null;
+  semantic_score?: number | null;
+  semantic_capability?: string | null;
+  semantic_model_version?: string | null;
   solicitation_id: string;
   agency_name?: string | null;
   agency_number?: string | null;
@@ -203,7 +209,7 @@ export interface GovContractOpportunity {
   matched_keywords: string[];
   opportunity_categories: string[];
   keyword_opportunity_categories?: string[] | null;
-  category_basis?: "keyword" | "human_high";
+  category_basis?: "keyword" | "human_high" | "semantic";
   auto_tags: string[];
   source_context?: string | null;
   source_context_label?: string | null;
@@ -239,6 +245,15 @@ export interface GovContractOpportunitySearchResponse {
   fit_feedback_counts?: Record<string, number>;
   fit_feedback_enabled?: boolean;
   qualified_count?: number;
+  semantic_qualification?: {
+    enabled?: boolean;
+    current?: boolean;
+    description_count?: number;
+    candidate_count?: number;
+    training_count?: number;
+    trained_at?: string;
+    evaluation?: { ready?: boolean; precision?: number; recall?: number; automatic_positive_enabled?: boolean };
+  };
 }
 
 export interface GovContractImportRun {

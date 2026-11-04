@@ -1827,13 +1827,19 @@ export default function App() {
         ) : null}
         {contract.feedback_examples?.length > 0 ? (
           <details className="fit-learning-detail">
-            <summary>Training evidence: {contract.qualification_basis === "learned_high" ? "learned high fit" : contract.qualification_basis === "learned_low" ? "learned low fit" : "priority adjustment"} ({contract.feedback_adjustment > 0 ? "+" : ""}{contract.feedback_adjustment})</summary>
-            <p>Similar titles you rated. Strong, consistent examples change qualification; weaker examples adjust priority only. The original keyword score stays visible.</p>
+            <summary>Training evidence: {contract.qualification_basis} {contract.semantic_score != null ? `(semantic fit ${contract.semantic_score}/100)` : ""}</summary>
+            <p>Related examples you rated. Semantic assessment uses the entire captured description, your ratings, and LeCrown capability guardrails. The score is not a win probability; original keyword evidence stays visible.</p>
+            {contract.semantic_capability ? <p>Closest capability: {contract.semantic_capability.replace(/_/g, " ")}</p> : null}
             <ul>{contract.feedback_examples.map((example) => (
               <li key={example.source_key}>{example.rating === "high" ? "+" : "-"} {example.title}</li>
             ))}</ul>
           </details>
         ) : null}
+        <details className="fit-learning-detail">
+          <summary>Source description: {contract.description_status ?? "missing"}</summary>
+          {contract.description_text ? <p style={{ whiteSpace: "pre-wrap" }}>{contract.description_text}</p>
+            : <p>A full description has not been captured. Missing or blocked scope is kept visible for review, not treated as a semantic match.</p>}
+        </details>
 
         <div className="contract-detail-grid">
           <span>Reference: {contract.solicitation_id}</span>
@@ -3423,9 +3429,14 @@ export default function App() {
               </button>
             </div>
             <p className="panel-subcopy">
-              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. High fit classifies that lead as IT and adjacent and includes it in Qualified leads; Low fit trains exclusion. Your ratings also train qualification for similar titles. Clear rating removes the example and restores automatic classification. All leads always keeps every captured candidate, including low fits and closed notices. This is local example-based learning, not an AI model fine-tune.
+              {(opportunitySearch.fit_feedback_counts?.high ?? 0) + (opportunitySearch.fit_feedback_counts?.low ?? 0)} labeled examples. Your explicit High/Low ratings remain authoritative. A local neural embedding model and rating-trained classifier assess full captured descriptions against LeCrown's IT, AI, data, platform and new-energy integration capabilities. Clear rating removes the training example. Missing descriptions and uncertain scope stay in review; All leads retains everything. This is supervised semantic classification, not a language-model fine-tune.
               {!opportunitySearch.fit_feedback_enabled ? " Rating storage is not available." : null}
             </p>
+            {opportunitySearch.semantic_qualification?.enabled ? <p className="panel-subcopy" aria-label="Semantic qualification coverage">
+              Semantic model: {opportunitySearch.semantic_qualification.current ? "current" : "updating"}; {opportunitySearch.semantic_qualification.training_count ?? 0} ratings used.
+              {" "}{opportunitySearch.semantic_qualification.description_count ?? 0} of {opportunitySearch.semantic_qualification.candidate_count ?? 0} leads have substantive descriptions.
+              {" "}Public descriptions are collected in paced batches; access blocks are not bypassed.
+            </p> : null}
             <p className="feedback-status" role="status" aria-live="polite">{feedbackMessage}</p>
           </section>
 

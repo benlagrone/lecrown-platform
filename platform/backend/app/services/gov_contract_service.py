@@ -3651,7 +3651,8 @@ def _persist_source_records(
         opportunity.is_open = is_open
         opportunity.matched_keywords = matched_keywords
         opportunity.score_breakdown = score_breakdown
-        opportunity.raw_payload = record.raw_payload
+        from app.services.opportunity_descriptions import preserve_description
+        opportunity.raw_payload = preserve_description(opportunity.raw_payload, record.raw_payload, record.source_url)
         opportunity.funnel_status = opportunity.funnel_status or "discovered"
         opportunity.last_seen_at = now
 
@@ -3898,7 +3899,8 @@ def refresh_gmail_contracts(db: Session, *, limit: int | None = None) -> GovCont
             opportunity.is_open = is_open
             opportunity.matched_keywords = matched_keywords
             opportunity.score_breakdown = score_breakdown
-            opportunity.raw_payload = record.raw_payload
+            from app.services.opportunity_descriptions import preserve_description
+            opportunity.raw_payload = preserve_description(opportunity.raw_payload, record.raw_payload, record.source_url)
             opportunity.funnel_status = opportunity.funnel_status or "discovered"
             opportunity.last_seen_at = now
 
@@ -3974,8 +3976,9 @@ def list_contracts(
 
 
 def serialize_opportunity(opportunity: GovContractOpportunity) -> GovContractOpportunityRead:
+    from app.services.opportunity_descriptions import description_fields
     return GovContractOpportunityRead.model_validate(opportunity).model_copy(
-        update=_classify_opportunity(opportunity),
+        update={**_classify_opportunity(opportunity), **description_fields(opportunity)},
     )
 
 
@@ -4198,6 +4201,7 @@ def search_contracts(
         "fit_feedback_counts": ranker.counts,
         "fit_feedback_enabled": candidate_inbox.configured(),
         "qualified_count": qualified_count,
+        "semantic_qualification": ranker.semantic.summary if ranker.semantic else {},
     }
 
 

@@ -1,0 +1,20 @@
+{
+  "version": "lecrown-ai-first-capabilities-v1",
+  "delivery": "Benjamin leads architecture, project delivery, review and acceptance; Sextant/AI builds software. No assumed software contractor labor. Specialist physical installation is a separately qualified field scope.",
+  "in_scope": {
+    "software_platforms": "Custom software development, web and mobile applications, APIs, SaaS products, enterprise platforms, workflow automation and systems integration.",
+    "ai_ml": "Artificial intelligence, machine learning, generative AI, RAG, intelligent agents, document intelligence and AI-assisted business processes.",
+    "data": "Database engineering, data platforms, ETL pipelines, data migration, analytics, business intelligence, data governance and reporting dashboards.",
+    "security_cloud": "Cybersecurity engineering, identity and access management, security automation, cloud architecture, DevOps, infrastructure automation and technology consulting.",
+    "digital_content": "Electronic content and records management, enterprise search, digital accessibility, learning software, application usability and software implementation.",
+    "energy_integration": "Hydrogen and new-energy infrastructure project leadership, technical systems integration, installation-team and subcontractor coordination, commissioning and overall project delivery. Physical installation is a separately scoped specialist responsibility."
+  },
+  "out_of_scope": {
+    "civil": "Road construction, asphalt paving, concrete patching, excavation, drainage, sewer and water pipeline construction, bridge repair and civil earthwork.",
+    "property": "Real estate brokerage, property acquisition, leasing, landscaping, janitorial cleaning, grounds maintenance, window washing and building trades.",
+    "goods": "Supply and delivery of fleet vehicles, replacement machinery parts, office supplies, food, fuel, furniture, medical supplies and standalone equipment without software engineering or integration.",
+    "lobbying": "Legislative lobbying, government relations, political advocacy, bond underwriting, investment banking and legal representation.",
+    "grants": "Grant applications and capital-outlay funding requests for vehicles, meals and equipment rather than a procurement for technology services.",
+    "events": "Music performance, entertainment programming, event catering, food service, portable toilets, transport operations and staffing unrelated to technology delivery."
+  }
+}

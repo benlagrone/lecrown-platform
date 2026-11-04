@@ -52,6 +52,32 @@ are introduced; private state lives at `/app/data/crm-pursuit-scoring`.
 Deployment checks a successful CRM read/write/readback pass and worker health;
 rollback removes the worker if the prior release did not define it.
 
+## Semantic Lead Qualification
+
+Before: title-token overlap generalized High/Low-fit feedback.
+After: the portless `semantic-qualifier` worker uses local BGE-small neural
+embeddings and a supervised logistic classifier trained on the current ratings.
+Complete captured descriptions are token-chunked without truncation. A versioned
+LeCrown capability gate covers custom software/platforms, AI/ML, data, cloud/security,
+digital workflows and new-energy project leadership/integration. Roads, real estate,
+commodity supply, lobbying and grant applications cannot qualify merely by matching
+a rated title. Explicit human labels remain authoritative and are never overwritten.
+
+The worker rechecks data/ratings every cycle, using private vector caches/projections
+in `/app/data/semantic-fit`. It checks public descriptions in bounded five-record
+batches at six-second spacing under the collector's lock and shared 429 cooldown.
+Ordinary headless public navigation is a fallback when a page needs JavaScript;
+there is no login, stealth mode, proxy rotation or CAPTCHA solving. Blocked pages
+remain visible. Missing substantive descriptions and ambiguous/staffing-heavy scopes
+require review, rather than silently falling back to title qualification.
+
+Grouped out-of-fold label diagnostics choose a conservative positive threshold;
+these are not calibrated fit or win probabilities or independent acceptance evidence.
+The UI shows source descriptions, model state, training/coverage counts and related
+examples. A changed rating or source text invalidates affected stale decisions.
+This feature does not change credentials, CRM promotion rules or pursuit-score weights.
+The runtime adds no ports or secrets; the image bundles the local model and Chromium.
+
 ## Rollback
 
 Use the Fortress-owned rollback operation and its recorded release backup. Restore

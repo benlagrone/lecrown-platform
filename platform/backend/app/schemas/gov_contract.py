@@ -126,6 +126,10 @@ class GovContractOpportunityRead(BaseModel):
     source_key: str
     source_url: str
     title: str
+    description_text: str = ""
+    description_status: str = "missing"
+    description_url: Optional[str] = None
+    description_checked_at: Optional[datetime] = None
     solicitation_id: str
     agency_name: Optional[str] = None
     agency_number: Optional[str] = None
@@ -145,7 +149,7 @@ class GovContractOpportunityRead(BaseModel):
     matched_keywords: list[str] = Field(default_factory=list)
     opportunity_categories: list[str] = Field(default_factory=list)
     keyword_opportunity_categories: Optional[list[str]] = None
-    category_basis: Literal["keyword", "human_high"] = "keyword"
+    category_basis: Literal["keyword", "human_high", "semantic"] = "keyword"
     auto_tags: list[str] = Field(default_factory=list)
     source_context: Optional[str] = None
     source_context_label: Optional[str] = None
@@ -160,6 +164,9 @@ class GovContractOpportunityRead(BaseModel):
     qualification_match: bool = False
     qualification_basis: str = "keyword"
     qualification_reason: str = "Not yet evaluated against fit feedback."
+    semantic_score: Optional[int] = None
+    semantic_capability: Optional[str] = None
+    semantic_model_version: Optional[str] = None
     funnel_status: str
     funnel_submission_id: Optional[str] = None
     funnel_delivery_target: Optional[str] = None
@@ -193,6 +200,7 @@ class GovContractOpportunitySearchRead(BaseModel):
     fit_feedback_counts: dict[str, int] = Field(default_factory=dict)
     fit_feedback_enabled: bool = False
     qualified_count: int = 0
+    semantic_qualification: dict[str, Any] = Field(default_factory=dict)
 
 
 class GovContractImportRunRead(BaseModel):
