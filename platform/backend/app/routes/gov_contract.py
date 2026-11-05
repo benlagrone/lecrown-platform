@@ -287,6 +287,7 @@ def search_contracts(
     tag_value: Optional[str] = Query(default=None),
     keyword: Optional[str] = Query(default=None),
     fit_feedback: Optional[Literal["high", "low", "unreviewed"]] = Query(default=None),
+    first_seen_within_days: Optional[int] = Query(default=None, ge=1, le=3650),
     db: Session = Depends(get_db),
     _: object = Depends(get_current_user),
 ) -> GovContractOpportunitySearchRead:
@@ -296,6 +297,7 @@ def search_contracts(
             open_only=open_only, min_priority_score=min_priority_score,
             source=source, source_context=source_context, category=category,
             tag_kind=tag_kind, tag_value=tag_value, keyword=keyword, fit_feedback=fit_feedback,
+            first_seen_within_days=first_seen_within_days,
         )
     except candidate_inbox.CandidateInboxError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

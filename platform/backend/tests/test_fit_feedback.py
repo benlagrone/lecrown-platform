@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -281,6 +282,18 @@ class FitFeedbackTest(unittest.TestCase):
         unreviewed = service.search_contracts(self.db, matches_only=False, open_only=False, fit_feedback="unreviewed", offset=1, limit=1)
         self.assertEqual(2, unreviewed["total"])
         self.assertEqual(1, len(unreviewed["items"]))
+
+    def test_first_seen_within_days_filters_every_result_before_pagination(self):
+        now = datetime.now(timezone.utc)
+        self.db.get(GovContractOpportunity, "example").first_seen_at = now - timedelta(days=1)
+        self.db.get(GovContractOpportunity, "similar").first_seen_at = now - timedelta(days=8)
+        self.db.get(GovContractOpportunity, "road").first_seen_at = now - timedelta(days=2)
+        self.db.commit()
+        recent = service.search_contracts(
+            self.db, matches_only=False, open_only=False, first_seen_within_days=3,
+        )
+        self.assertEqual({"example", "road"}, {item.id for item in recent["items"]})
+        self.assertEqual(2, recent["total"])
 
     def test_rating_route_never_calls_crm_and_returns_conflict(self):
         admin = SimpleNamespace(id="admin-1")

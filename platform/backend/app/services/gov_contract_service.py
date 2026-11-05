@@ -4158,6 +4158,7 @@ def search_contracts(
     tag_value: str | None = None,
     keyword: str | None = None,
     fit_feedback: str | None = None,
+    first_seen_within_days: int | None = None,
 ) -> dict[str, object]:
     from app.services.fit_feedback import FeedbackRanker
 
@@ -4173,6 +4174,10 @@ def search_contracts(
     )
     candidates = [ranker.apply(candidate) for candidate in candidates]
     qualified_count = sum(candidate.qualification_match for candidate in candidates)
+    if first_seen_within_days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=first_seen_within_days)
+        candidates = [candidate for candidate in candidates
+                      if candidate.first_seen_at.replace(tzinfo=candidate.first_seen_at.tzinfo or timezone.utc) >= cutoff]
     candidates = [candidate for candidate in candidates
                   if (not matches_only or candidate.qualification_match)
                   and (not open_only or candidate.is_open)

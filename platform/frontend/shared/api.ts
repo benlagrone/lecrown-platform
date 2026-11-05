@@ -200,6 +200,7 @@ export async function searchGovContracts(options: {
   tagValue?: string | null;
   keyword?: string | null;
   fitFeedback?: "high" | "low" | "unreviewed" | null;
+  firstSeenWithinDays?: number | null;
 }): Promise<GovContractOpportunitySearchResponse> {
   const query = new URLSearchParams({
     limit: String(options.limit),
@@ -226,6 +227,9 @@ export async function searchGovContracts(options: {
   }
   if (options.fitFeedback) {
     query.set("fit_feedback", options.fitFeedback);
+  }
+  if (options.firstSeenWithinDays) {
+    query.set("first_seen_within_days", String(options.firstSeenWithinDays));
   }
   return request<GovContractOpportunitySearchResponse>(`/contracts/search?${query.toString()}`);
 }

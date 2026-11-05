@@ -715,6 +715,7 @@ export default function App() {
   const [selectedOpportunitySourceContextFilter, setSelectedOpportunitySourceContextFilter] = useState<string | null>(null);
   const [selectedOpportunityTagFilter, setSelectedOpportunityTagFilter] = useState<OpportunityTagFilter | null>(null);
   const [opportunityKeywordFilter, setOpportunityKeywordFilter] = useState("");
+  const [firstSeenWithinDaysFilter, setFirstSeenWithinDaysFilter] = useState("");
   const [fitFeedbackFilter, setFitFeedbackFilter] = useState<"all" | "high" | "low" | "unreviewed">("all");
   const [feedbackRevision, setFeedbackRevision] = useState(0);
   const [savingFeedbackId, setSavingFeedbackId] = useState<string | null>(null);
@@ -854,6 +855,7 @@ export default function App() {
     selectedOpportunitySourceContextFilter,
     selectedOpportunityTagFilter,
     opportunityKeywordFilter,
+    firstSeenWithinDaysFilter,
   ]);
 
   useEffect(() => {
@@ -877,6 +879,7 @@ export default function App() {
     selectedOpportunitySourceContextFilter,
     selectedOpportunityTagFilter,
     opportunityKeywordFilter,
+    firstSeenWithinDaysFilter,
     opportunityPage,
   ]);
 
@@ -1008,6 +1011,7 @@ export default function App() {
         tagValue: selectedOpportunityTagFilter?.value ?? null,
         keyword: opportunityKeywordFilter,
         fitFeedback: fitFeedbackFilter === "all" ? null : fitFeedbackFilter,
+        firstSeenWithinDays: Number(firstSeenWithinDaysFilter) || null,
       });
       if (sequence !== contractSearchSequence.current) return;
       setOpportunitySearch(searchResult);
@@ -1058,6 +1062,7 @@ export default function App() {
     setSelectedOpportunitySourceContextFilter(null);
     setSelectedOpportunityTagFilter(null);
     setOpportunityKeywordFilter("");
+    setFirstSeenWithinDaysFilter("");
     setOpportunityPage(1);
   }
 
@@ -3418,7 +3423,7 @@ export default function App() {
             <div className="fit-review-filters" aria-label="Human fit filters">
               {([['all', 'All leads'], ['high', 'High fit'], ['low', 'Low fit'], ['unreviewed', 'Unreviewed']] as const).map(([value, label]) => (
                 <button key={value} type="button"
-                  aria-pressed={fitFeedbackFilter === value && !matchesOnlyFilter && !openOnlyFilter && minPriorityScoreFilter === 0 && opportunityCategoryTab === "all" && !selectedOpportunitySourceFilter && !selectedOpportunitySourceContextFilter && !selectedOpportunityTagFilter && !opportunityKeywordFilter}
+                  aria-pressed={fitFeedbackFilter === value && !matchesOnlyFilter && !openOnlyFilter && minPriorityScoreFilter === 0 && opportunityCategoryTab === "all" && !selectedOpportunitySourceFilter && !selectedOpportunitySourceContextFilter && !selectedOpportunityTagFilter && !opportunityKeywordFilter && !firstSeenWithinDaysFilter}
                   onClick={() => { showAllCandidates(); setFitFeedbackFilter(value); }}>
                   {label} <strong>{opportunitySearch.fit_feedback_counts?.[value] ?? 0}</strong>
                 </button>
@@ -3505,6 +3510,32 @@ export default function App() {
                 }}
               />
             </label>
+            <label className="priority-filter-field">
+              <span>New within days</span>
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={firstSeenWithinDaysFilter}
+                onChange={(event) => {
+                  setOpportunityPage(1);
+                  setFirstSeenWithinDaysFilter(event.target.value);
+                }}
+                placeholder="Any"
+              />
+            </label>
+            {firstSeenWithinDaysFilter ? (
+              <button
+                type="button"
+                className="secondary-link tag-filter-clear-button"
+                onClick={() => {
+                  setOpportunityPage(1);
+                  setFirstSeenWithinDaysFilter("");
+                }}
+              >
+                Clear new filter
+              </button>
+            ) : null}
             <label className="keyword-search-field">
               <span>Keyword filter</span>
               <input
