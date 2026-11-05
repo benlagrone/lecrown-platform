@@ -23,6 +23,8 @@ from app.schemas.gov_contract import (
     GovContractKeywordRuleWrite,
     GovContractOpportunityRead,
     GovContractOpportunitySearchRead,
+    GovContractPublicDescriptionBatch,
+    GovContractPublicDescriptionReceipt,
     GovContractPromotionRequest,
     GovContractRefreshRequest,
     GovContractTrackedSourceRead,
@@ -324,6 +326,20 @@ def rate_candidate(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (candidate_inbox.CandidateInboxError, OSError) as exc:
         raise HTTPException(status_code=503, detail="Could not save fit feedback; refresh before retrying") from exc
+
+
+@router.post("/descriptions/public-browser", response_model=GovContractPublicDescriptionReceipt)
+def capture_public_browser_descriptions(
+    payload: GovContractPublicDescriptionBatch,
+    db: Session = Depends(get_db),
+    _: object = Depends(get_current_admin),
+) -> GovContractPublicDescriptionReceipt:
+    try:
+        return gov_contract_service.capture_public_browser_descriptions(db, payload.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except candidate_inbox.CandidateInboxError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{contract_id}/funnel", response_model=GovContractOpportunityRead)

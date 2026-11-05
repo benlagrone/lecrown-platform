@@ -14,8 +14,22 @@ from app.services.crm_pursuit_sync import write_private
 from app.services.opportunity_descriptions import content_hash
 
 MODEL = "BAAI/bge-small-en-v1.5"
-VERSION = "lecrown-semantic-fit-v1"
+VERSION = "lecrown-semantic-fit-v2"
+EMBEDDING_CACHE_VERSION = "lecrown-semantic-fit-v1"
 CAPABILITIES = Path(__file__).resolve().parents[1] / "resources/lecrown-capabilities.json"
+
+CAPABILITY_EVIDENCE = {
+    "software_platforms": re.compile(r"\bsoftware\b|\bSaaS\b|\bplatform\b|\bAPI(?:s)?\b|\bwebsite\b|\bweb application\b|\bmobile application\b|\binformation system\b|\bERP\b|\bCRM\b|\bEHR\b|\bRMIS\b|\binteroperability\b|\bworkflow automation\b", re.I),
+    "ai_ml": re.compile(r"artificial intelligence|\bAI\b|machine learning|generative AI|\bRAG\b|intelligent agents|computer vision|predictive analytics", re.I),
+    "data": re.compile(r"\bdatabase\b|data platform|data analytics|business intelligence|data migration|\bETL\b|data integration|data governance|reporting dashboard|geospatial data|\bGIS\b|data sharing|archiv\w* .{0,80}\bdata\b", re.I),
+    "security_cloud": re.compile(r"cybersecurity|cloud computing|identity and access|security automation|network architecture|network infrastructure|\bDevOps\b|zero trust|access control software", re.I),
+    "digital_content": re.compile(r"electronic content management|electronic records management|digital accessibility|learning software|document management|website redesign|content platform|digital engagement|software implementation", re.I),
+    "energy_integration": re.compile(r"hydrogen|fuel cell|EV charging|electric vehicle charging|renewable energy|solar energy|wind energy|battery storage|grid edge|microgrid|decarbonization|clean energy|advanced metering", re.I),
+}
+ENERGY_DELIVERY = re.compile(r"systems? integration|commissioning|installation|implementation|analytics|technical design|project delivery", re.I)
+INFORMATIONAL_NOTICE = re.compile(r"\bRFI\b|sources sought|market research only|request for information", re.I)
+RESELLER_NOTICE = re.compile(r"\b(?:purchase|supply|deliver)\b.{0,80}\b(?:hardware|equipment|licenses|subscriptions)\b|\bsoftware licenses and subscriptions\b", re.I)
+STRONG_TECH_EVIDENCE = re.compile(r"website redesign|software (?:solution|implementation|development)|\binformation system\b|electronic health record|archiv\w* .{0,80}\bdata\b|digital engagement.{0,40}platform", re.I)
 
 
 def state_dir():
@@ -65,7 +79,7 @@ class Encoder:
         import numpy as np
         vectors = []
         for text in texts:
-            key = hashlib.sha256((VERSION + MODEL + self.artifact_hash + text).encode()).hexdigest()
+            key = hashlib.sha256((EMBEDDING_CACHE_VERSION + MODEL + self.artifact_hash + text).encode()).hexdigest()
             row = self.cache.execute("SELECT vector FROM embeddings WHERE hash=?", (key,)).fetchone()
             if row:
                 vector = np.array(json.loads(row[0]))
@@ -134,19 +148,26 @@ def build_projection(records, snapshot, encoder):
     output = {}
     for i, row in enumerate(records):
         affinities = prototypes @ vectors[i]
-        good = int(np.argmax(affinities[:len(allowed)]))
         bad = int(np.argmax(affinities[len(allowed):])) + len(allowed)
-        margin = float(affinities[good] - affinities[bad])
-        scope_ok = margin >= .015 and float(affinities[good]) >= .38
         description = row.get("description_text") or ""
+        eligible = [j for j, name in enumerate(allowed) if CAPABILITY_EVIDENCE[name].search(description)
+                    and (name != "energy_integration" or ENERGY_DELIVERY.search(description))]
+        good = max(eligible, key=lambda j: affinities[j]) if eligible else int(np.argmax(affinities[:len(allowed)]))
+        margin = float(affinities[good] - affinities[bad])
+        scope_ok = bool(eligible) and float(affinities[good]) >= .38 and (
+            margin >= .015 or margin >= -.02 and bool(STRONG_TECH_EVIDENCE.search(description)))
         available = len(description.split()) >= 12 and description.casefold().strip() != row["title"].casefold().strip()
         staffing = bool(re.search(r"24\s*/\s*7|24x7|staff augmentation|dedicated on.site staff|full.time equivalents", description, re.I))
         qualified, basis = False, "semantic_review"
         reason = "Semantic evidence is inconclusive; review the full scope."
         if not available:
             basis, reason = "needs_description", "A substantive source description is missing; title-only records are not automatically qualified."
+        elif INFORMATIONAL_NOTICE.search(row["title"][:120]) or INFORMATIONAL_NOTICE.search(description[:160]):
+            basis, reason = "informational_review", "This is a request for information or sources sought, not yet a prime bid. Review for positioning."
+        elif RESELLER_NOTICE.search(description[:500]):
+            basis, reason = "reseller_review", "The public scope appears to request products or licenses; review whether LeCrown can deliver services as prime."
         elif not scope_ok:
-            basis, reason = "semantic_out_of_scope", "Full scope is not sufficiently aligned with LeCrown's IT/AI/data or new-energy integration capabilities."
+            basis, reason = "semantic_out_of_scope", "The full description lacks corroborated IT/AI/data or new-energy systems delivery scope."
         elif staffing:
             basis, reason = "delivery_review", "Review mandatory staffing/continuous coverage against founder-led, AI-built delivery before qualifying."
         elif classifier and probabilities[i] >= evaluation["high_threshold"]:

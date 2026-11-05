@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import datetime
 from bs4 import BeautifulSoup
 
 TEXT_KEYS = ("description", "project_description", "statement_of_work", "StatementOfWork", "scope_of_work", "summary_description", "body")
@@ -14,21 +15,32 @@ def plain(value):
     return BeautifulSoup(value, "html.parser").get_text(" ", strip=True) if "<" in value else value.strip()
 
 
+def title_only(text, title):
+    words = re.findall(r"[a-z0-9]+", (title or "").casefold())
+    scope = re.findall(r"[a-z0-9]+", text.casefold())
+    return bool(scope) and any(words[index:index + len(scope)] == scope for index in range(len(words) - len(scope) + 1))
+
+
 def description_fields(record):
     raw = record.raw_payload or {}
     captured = raw.get("qualification_description") or {}
     pieces = []
     for value in [captured.get("text"), *[raw.get(key) for key in TEXT_KEYS]]:
         text = plain(value)
-        if text and text.casefold() != (record.title or "").strip().casefold() and text not in pieces:
+        if text and not title_only(text, record.title) and text not in pieces:
             pieces.append(text)
     text = "\n\n".join(pieces)
     status = "available" if len(text.split()) >= 12 else "brief" if text else captured.get("status", "missing")
     if not text and status == "available":
         status = "title_only"
+    checked = captured.get("checked_at")
+    try:
+        checked_at = datetime.fromisoformat(checked) if checked else None
+    except (TypeError, ValueError):
+        checked_at = None
     return {"description_text": text, "description_status": status,
             "description_url": captured.get("url") or record.source_url,
-            "description_checked_at": captured.get("checked_at")}
+            "description_checked_at": checked_at}
 
 
 def content_hash(candidate):

@@ -2,14 +2,20 @@ import copy
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.schemas.gov_contract import GovContractOpportunityRead
+from app.core.database import Base
+from app.models.gov_contract import GovContractOpportunity
+from app.schemas.gov_contract import GovContractOpportunityRead, GovContractPublicDescription
+from app.services import candidate_inbox, gov_contract_service
 from app.services.crm_pursuit_sync import write_private
 from app.services.opportunity_descriptions import content_hash, description_fields, parse_bonfire_description, preserve_description, public_bonfire_url
 from app.services.semantic_fit import CAPABILITIES, SemanticProjection, VERSION, build_projection, chunks, label_hash
@@ -35,6 +41,40 @@ class DescriptionTest(unittest.TestCase):
         result = description_fields(SimpleNamespace(title="Project", source_url="https://buyer.example", raw_payload={"description": "Project"}))
         self.assertEqual("", result["description_text"])
         self.assertEqual("missing", result["description_status"])
+        prefixed = description_fields(SimpleNamespace(title="RFP - Integrated Law Enforcement Data Platform", source_url="https://buyer.example",
+                                                     raw_payload={"description": "Integrated Law Enforcement Data Platform"}))
+        self.assertEqual("", prefixed["description_text"])
+
+    def test_browser_capture_preserves_rating_history_and_rejects_unknown_urls(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(candidate_inbox.settings, "procurement_candidate_json_path", str(Path(directory) / "candidates.json")):
+            engine = create_engine("sqlite:///:memory:")
+            Base.metadata.create_all(engine)
+            url = "https://buyer.bonfirehub.com/opportunities/123"
+            now = datetime.now(timezone.utc)
+            with Session(engine) as db:
+                row = GovContractOpportunity(id="one", source="bonfire", source_key="one", source_url=url,
+                    title="RFP - Childcare Software", solicitation_id="123", score=0, priority_score=0,
+                    fit_bucket="none", is_match=False, is_open=True, matched_keywords=[], score_breakdown={},
+                    raw_payload={}, funnel_status="discovered", first_seen_at=now, last_seen_at=now)
+                db.add(row)
+                db.commit()
+                candidate_inbox.capture([gov_contract_service.serialize_opportunity(row).model_dump(mode="json")])
+                candidate_inbox.set_fit_feedback("one", rating="high", reviewed_by="admin", expected_version=0)
+                scope = "Provide a secure cloud-hosted childcare management platform with data integration and user workflows."
+                receipt = gov_contract_service.capture_public_browser_descriptions(db, [GovContractPublicDescription(source_url=url, text=scope)])
+                self.assertEqual(1, receipt.updated)
+                self.assertEqual(1, receipt.substantive)
+                self.assertEqual(scope, gov_contract_service.serialize_opportunity(row).description_text)
+                self.assertEqual("public_browser", row.raw_payload["qualification_description"]["method"])
+                self.assertEqual(1, len(candidate_inbox.snapshot()["candidates"][candidate_inbox.candidate_id("one")]["fit_feedback_history"]))
+                self.assertEqual(0, gov_contract_service.capture_public_browser_descriptions(db, [GovContractPublicDescription(source_url=url, text=scope)]).updated)
+                with self.assertRaises(ValueError):
+                    gov_contract_service.capture_public_browser_descriptions(db, [GovContractPublicDescription(
+                        source_url="https://buyer.bonfirehub.com/opportunities/999", text=scope)])
+                with self.assertRaises(ValueError):
+                    gov_contract_service.capture_public_browser_descriptions(db, [GovContractPublicDescription(
+                        source_url="https://buyer.bonfirehub.com.evil.test/opportunities/123", text=scope)])
+            engine.dispose()
 
     def test_public_html_parser_does_not_use_menus_or_document_takers(self):
         html = '<div id="opportunityMetaSection">Project: Project<br>Project Description: <p>Full scope.</p></div><div>Other unrelated text</div>'
@@ -153,6 +193,29 @@ class ProjectionTest(unittest.TestCase):
         self.assertTrue(projection["records"]["unreviewed"]["qualified"])
         self.assertEqual("semantic_out_of_scope", projection["records"]["road"]["basis"])
         self.assertEqual("needs_description", projection["records"]["missing"]["basis"])
+
+    def test_domain_evidence_and_notice_type_prevent_spurious_auto_matches(self):
+        capabilities = json.loads(CAPABILITIES.read_text())
+        allowed = set(capabilities["in_scope"].values())
+        class Encoder:
+            def encode(self, texts):
+                return np.array([[1., 0.] if text in allowed or "IT_WORK" in text else [-1., 0.] for text in texts])
+        rows = [candidate(f"good-{chr(97 + i)}") for i in range(25)]
+        rows += [{**candidate(f"bad-{chr(97 + i)}"), "title": f"ROAD_WORK bad-{chr(97 + i)}",
+                  "description_text": "Supply asphalt and pave a highway with heavy machinery and concrete construction."} for i in range(25)]
+        snapshot = {"candidates": {row["source_key"]: {"candidate": row, "fit_feedback": {
+            "rating": "high" if i < 25 else "low", "version": 1}} for i, row in enumerate(rows)}}
+        rows.extend([
+            candidate("software", "Implement a secure SaaS software platform with data integration and reporting workflows for public agencies."),
+            candidate("generic", "Engage a consultant to map current business processes and identify opportunities to improve efficiency and effectiveness."),
+            candidate("rfi", "This Request for Information seeks software platform vendors for market research only."),
+            candidate("reseller", "Purchase computer hardware equipment and software licenses for existing systems across every agency office and facility."),
+        ])
+        projection = build_projection(rows, snapshot, Encoder())["records"]
+        self.assertTrue(projection["software"]["qualified"])
+        self.assertEqual("semantic_out_of_scope", projection["generic"]["basis"])
+        self.assertEqual("informational_review", projection["rfi"]["basis"])
+        self.assertEqual("reseller_review", projection["reseller"]["basis"])
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ from app.services import candidate_inbox
 from app.services.crm_pursuit_sync import retry_seconds, write_private
 from app.services.gov_contract_service import serialize_opportunity
 from app.services.opportunity_descriptions import description_fields, parse_bonfire_description, public_bonfire_url
-from app.services.semantic_fit import CAPABILITIES, Encoder, build_projection, label_hash, state_dir
+from app.services.semantic_fit import CAPABILITIES, VERSION, Encoder, build_projection, label_hash, state_dir
 
 
 class DescriptionRateLimit(RuntimeError):
@@ -71,6 +71,8 @@ def enrich_descriptions(db, snapshot, limit=10, browser=None):
         if not public_bonfire_url(row.source_url):
             continue
         previous = (row.raw_payload or {}).get("qualification_description", {})
+        if previous.get("method") == "public_browser" and previous.get("text"):
+            continue
         checked = previous.get("checked_at")
         if checked and now - datetime.fromisoformat(checked) < timedelta(days=1):
             continue
@@ -140,7 +142,7 @@ def run_once(encoder, enrich=True, browser=None):
         records = [serialize_opportunity(row).model_dump(mode="json") for row in db.scalars(select(GovContractOpportunity))]
     candidate_inbox.capture(records)
     snapshot = candidate_inbox.snapshot()
-    fingerprint = __import__("hashlib").sha256(json.dumps({"labels": label_hash(snapshot), "model": encoder.artifact_hash, "capabilities": CAPABILITIES.read_text(), "records": [
+    fingerprint = __import__("hashlib").sha256(json.dumps({"policy": VERSION, "labels": label_hash(snapshot), "model": encoder.artifact_hash, "capabilities": CAPABILITIES.read_text(), "records": [
         [r["source_key"], r["title"], r["description_text"]] for r in sorted(records, key=lambda r: r["source_key"])]}, sort_keys=True).encode()).hexdigest()
     path = state_dir() / "projection.json"
     previous = json.loads(path.read_text()) if path.exists() else {}

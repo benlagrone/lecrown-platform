@@ -25,7 +25,7 @@ from app.models.gov_contract import (
     GovContractOpportunity,
     GovContractTrackedSource,
 )
-from app.schemas.gov_contract import GovContractOpportunityRead
+from app.schemas.gov_contract import GovContractOpportunityRead, GovContractPublicDescription, GovContractPublicDescriptionReceipt
 from app.schemas.intake import IntakeLeadCreate
 from app.services import intake_service, espocrm_service, procurement_source_catalog, candidate_inbox
 from app.utils.helpers import new_uuid
@@ -3984,6 +3984,50 @@ def serialize_opportunity(opportunity: GovContractOpportunity) -> GovContractOpp
 
 def serialize_opportunities(opportunities: list[GovContractOpportunity]) -> list[GovContractOpportunityRead]:
     return [serialize_opportunity(opportunity) for opportunity in opportunities]
+
+
+def capture_public_browser_descriptions(
+    db: Session, items: list[GovContractPublicDescription],
+) -> GovContractPublicDescriptionReceipt:
+    from app.services.opportunity_descriptions import description_fields, plain, public_bonfire_url
+
+    urls = [item.source_url for item in items]
+    if len(urls) != len(set(urls)) or not all(public_bonfire_url(url) for url in urls):
+        raise ValueError("Use distinct public Bonfire opportunity URLs only")
+    rows = list(db.scalars(select(GovContractOpportunity).where(GovContractOpportunity.source_url.in_(urls))))
+    by_url: dict[str, list[GovContractOpportunity]] = {}
+    for row in rows:
+        by_url.setdefault(row.source_url, []).append(row)
+    if any(url not in by_url for url in urls):
+        raise ValueError("Every description URL must match an existing candidate")
+
+    now = datetime.now(timezone.utc).isoformat()
+    changed = []
+    substantive = 0
+    with candidate_inbox.collection_lock():
+        for item in items:
+            scope = plain(item.text)
+            if not scope:
+                raise ValueError("Public description cannot be empty")
+            for row in by_url[item.source_url]:
+                previous = (row.raw_payload or {}).get("qualification_description") or {}
+                if previous.get("text") == scope:
+                    continue
+                history = list((row.raw_payload or {}).get("qualification_description_history") or [])
+                if previous.get("text"):
+                    history.append(previous)
+                row.raw_payload = {**(row.raw_payload or {}),
+                                   "qualification_description": {"url": item.source_url, "text": scope, "status": "available",
+                                                                 "checked_at": now, "last_success_at": now, "method": "public_browser"},
+                                   "qualification_description_history": history[-10:]}
+                changed.append(row)
+                substantive += description_fields(row)["description_status"] == "available"
+        db.commit()
+        if changed:
+            candidate_inbox.capture([serialize_opportunity(row).model_dump(mode="json") for row in changed])
+    return GovContractPublicDescriptionReceipt(
+        updated=len(changed), substantive=substantive, brief_or_title_only=len(changed) - substantive,
+    )
 
 
 def _normalized_filter_value(value: str | None) -> str:

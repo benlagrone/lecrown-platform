@@ -71,6 +71,22 @@ there is no login, stealth mode, proxy rotation or CAPTCHA solving. Blocked page
 remain visible. Missing substantive descriptions and ambiguous/staffing-heavy scopes
 require review, rather than silently falling back to title qualification.
 
+Where a public portal serves a normal browser but blocks the server-side worker,
+an administrator can submit up to 100 observed public Bonfire descriptions to
+`POST /contracts/descriptions/public-browser` as `{ "items": [{ "source_url":
+"https://buyer.bonfirehub.com/opportunities/123", "text": "..." }] }`. Each URL
+must exactly match an existing candidate; the endpoint cannot fetch private pages
+or create CRM records. It records browser provenance, preserves previous scope in
+bounded history, and retains fit ratings and promotion receipts. The worker skips
+these successful captures and rebuilds qualification on the next cycle. Public
+pages that provide only a title remain unqualified, and this browser-assisted path
+is not a claim of autonomous coverage for every registered source.
+
+The v2 capability gate requires corroborating delivery evidence in the full
+description as well as the trained semantic score. Informational RFIs and
+resale-only notices stay review items, not prime-bid matches. Human ratings still
+override this automated decision for their own records.
+
 Grouped out-of-fold label diagnostics choose a conservative positive threshold;
 these are not calibrated fit or win probabilities or independent acceptance evidence.
 The UI shows source descriptions, model state, training/coverage counts and related

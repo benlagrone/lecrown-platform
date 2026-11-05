@@ -28,6 +28,21 @@ class GovContractFitFeedbackRequest(BaseModel):
     expected_version: int = Field(ge=0)
 
 
+class GovContractPublicDescription(BaseModel):
+    source_url: str = Field(min_length=1, max_length=500)
+    text: str = Field(min_length=1, max_length=50000)
+
+
+class GovContractPublicDescriptionBatch(BaseModel):
+    items: list[GovContractPublicDescription] = Field(min_length=1, max_length=100)
+
+
+class GovContractPublicDescriptionReceipt(BaseModel):
+    updated: int
+    substantive: int
+    brief_or_title_only: int
+
+
 class GovContractFitFeedbackRead(BaseModel):
     rating: Optional[Literal["high", "low"]] = None
     version: int = 0
