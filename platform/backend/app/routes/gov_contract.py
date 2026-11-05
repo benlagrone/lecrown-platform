@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
+import hmac
 import json
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -33,6 +35,17 @@ from app.services import gov_contract_service, candidate_inbox
 
 router = APIRouter()
 settings = get_settings()
+
+
+def require_procurement_scheduler_key(
+    x_procurement_scheduler_key: str | None = Header(default=None),
+) -> None:
+    secret = settings.secret_key
+    if not secret or secret == "change-me-in-production":
+        raise HTTPException(status_code=503, detail="Scheduler unavailable")
+    expected = hmac.new(secret.encode(), b"lecrown-procurement-scheduler-v1", hashlib.sha256).hexdigest()
+    if not x_procurement_scheduler_key or not hmac.compare_digest(x_procurement_scheduler_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid scheduler key")
 
 
 @router.get("/capabilities", response_model=GovContractCapabilitiesRead)
@@ -234,6 +247,23 @@ def refresh_tracked_sources(
         return gov_contract_service.refresh_tracked_procurement_sources(db)
     except gov_contract_service.GovContractSourceError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/scheduled-refresh")
+def scheduled_refresh(
+    _: None = Depends(require_procurement_scheduler_key),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    try:
+        runs = gov_contract_service.refresh_tracked_procurement_sources(db)
+    except gov_contract_service.GovContractSourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "sources": len(runs),
+        "completed": sum(run.status == "completed" for run in runs),
+        "blocked": sum(run.status == "blocked" for run in runs),
+        "records": sum(run.total_records for run in runs),
+    }
 
 
 @router.post("/refresh-all", response_model=list[GovContractImportRunRead])
