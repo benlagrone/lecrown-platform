@@ -76,6 +76,54 @@ class DescriptionTest(unittest.TestCase):
                         source_url="https://buyer.bonfirehub.com.evil.test/opportunities/123", text=scope)])
             engine.dispose()
 
+    def test_semantic_high_auto_promotion_is_idempotent_and_never_promotes_human_labels(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(candidate_inbox.settings, "procurement_candidate_json_path", str(Path(directory) / "candidates.json")), \
+             patch.object(get_settings(), "semantic_fit_enabled", True), \
+             patch.object(get_settings(), "semantic_auto_promote_enabled", True), \
+             patch.object(get_settings(), "semantic_fit_state_dir", str(Path(directory) / "semantic")), \
+             patch.object(gov_contract_service.espocrm_service, "is_configured", return_value=True):
+            engine = create_engine("sqlite:///:memory:")
+            Base.metadata.create_all(engine)
+            now = datetime.now(timezone.utc)
+            with Session(engine) as db:
+                eligible = GovContractOpportunity(id="eligible", source="bonfire", source_key="eligible",
+                    source_url="https://buyer.bonfirehub.com/opportunities/123", title="Secure workflow platform",
+                    solicitation_id="123", score=0, priority_score=0, fit_bucket="none", is_match=False, is_open=True,
+                    matched_keywords=[], score_breakdown={}, raw_payload={"qualification_description": {"text": "Build a secure software platform with data integration and governed workflows for public services."}},
+                    funnel_status="discovered", first_seen_at=now, last_seen_at=now)
+                labeled = GovContractOpportunity(id="labeled", source="bonfire", source_key="labeled",
+                    source_url="https://buyer.bonfirehub.com/opportunities/124", title="Explicitly rated lead",
+                    solicitation_id="124", score=0, priority_score=0, fit_bucket="none", is_match=False, is_open=True,
+                    matched_keywords=[], score_breakdown={}, raw_payload={"qualification_description": {"text": "Build a secure software platform with data integration and governed workflows for public services."}},
+                    funnel_status="discovered", first_seen_at=now, last_seen_at=now)
+                db.add_all([eligible, labeled])
+                db.commit()
+                candidate_inbox.capture([gov_contract_service.serialize_opportunity(item).model_dump(mode="json") for item in [eligible, labeled]])
+                candidate_inbox.set_fit_feedback("labeled", rating="high", reviewed_by="admin", expected_version=0)
+                snapshot = candidate_inbox.snapshot()
+                projection_dir = Path(directory) / "semantic"
+                projection_dir.mkdir()
+                records = {
+                    item.source_key: {"content_hash": content_hash(gov_contract_service.serialize_opportunity(item).model_dump()),
+                                      "qualified": True, "basis": "semantic_high", "reason": "Semantic scope fit",
+                                      "score": 92, "capability": "software_platforms", "examples": []}
+                    for item in [eligible, labeled]
+                }
+                write_private(projection_dir / "projection.json", {"version": VERSION, "label_hash": label_hash(snapshot), "records": records})
+                receipt = {"crm_record_id": "crm-eligible", "verified_at": "2026-11-05T00:00:00Z"}
+                with patch.object(candidate_inbox, "promote", return_value=receipt) as promote:
+                    result = gov_contract_service.auto_promote_semantic_qualified(db, snapshot)
+                self.assertEqual(1, result["promoted"])
+                self.assertEqual(1, promote.call_count)
+                self.assertEqual("eligible", promote.call_args.args[0])
+                self.assertIn("semantic_high", promote.call_args.args[1]["description"])
+                self.assertEqual("delivered", eligible.funnel_delivery_status)
+                self.assertIsNone(labeled.funnel_delivery_status)
+                result = gov_contract_service.auto_promote_semantic_qualified(db, snapshot)
+                self.assertEqual(0, result["promoted"])
+            engine.dispose()
+
     def test_public_html_parser_does_not_use_menus_or_document_takers(self):
         html = '<div id="opportunityMetaSection">Project: Project<br>Project Description: <p>Full scope.</p></div><div>Other unrelated text</div>'
         self.assertEqual("Full scope.", parse_bonfire_description(html))

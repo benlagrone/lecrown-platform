@@ -4815,6 +4815,72 @@ def promote_candidate_to_crm(db: Session, contract_id: str, request) -> GovContr
     return contract
 
 
+def auto_promote_semantic_qualified(db: Session, snapshot: dict) -> dict:
+    """Promote current, unreviewed semantic High fits through the verified inbox path."""
+    from app.services.fit_feedback import FeedbackRanker
+
+    if not get_settings().semantic_auto_promote_enabled:
+        return {"status": "disabled", "checked": 0, "promoted": 0, "skipped": 0, "failed": 0}
+    if not candidate_inbox.configured():
+        raise candidate_inbox.CandidateInboxError("Durable candidate inbox is not configured")
+    if not espocrm_service.is_configured():
+        raise GovContractSourceError("EspoCRM is not configured for semantic promotion")
+
+    feedback_by_key = {
+        entry["candidate"]["source_key"]: entry.get("fit_feedback", {})
+        for entry in snapshot.get("candidates", {}).values()
+    }
+    # Evaluate the exact snapshot that supplied the rating guards above.
+    ranker = FeedbackRanker(snapshot)
+    result = {"status": "ok", "checked": 0, "promoted": 0, "skipped": 0, "failed": 0, "errors": []}
+    rows = list(db.scalars(select(GovContractOpportunity).where(GovContractOpportunity.is_open.is_(True))).all())
+    for contract in rows:
+        feedback = feedback_by_key.get(contract.source_key, {})
+        if feedback.get("rating") is not None or contract.funnel_delivery_status == "delivered":
+            result["skipped"] += 1
+            continue
+        candidate = ranker.apply(serialize_opportunity(contract))
+        result["checked"] += 1
+        if candidate.qualification_basis != "semantic_high":
+            result["skipped"] += 1
+            continue
+        description = _build_contract_description(contract, notes=(
+            "Automatically promoted after full-description semantic qualification. "
+            "No explicit High/Low rating has been supplied."
+        ))
+        payload = {
+            "name": contract.title[:255],
+            "stage": "Prospecting",
+            "amount": None,
+            "closeDate": None,
+            "description": (
+                f"{description}\n"
+                f"Qualification basis: semantic_high. Semantic fit score: {candidate.semantic_score}/100 "
+                "(ranking signal, not win probability).\n"
+                "Estimated USD value: unknown; to be qualified.\n"
+                "Expected close date: unknown; to be qualified."
+            ),
+        }
+        try:
+            receipt = candidate_inbox.promote(contract.source_key, payload)
+        except (candidate_inbox.CandidateInboxError, espocrm_service.EspoCRMError) as exc:
+            result["failed"] += 1
+            result["errors"].append({"source_key": contract.source_key, "error_type": type(exc).__name__})
+            continue
+        contract.funnel_status = "promoted"
+        contract.funnel_delivery_target = "espocrm_opportunity"
+        contract.funnel_delivery_status = "delivered"
+        contract.funnel_record_id = receipt["crm_record_id"]
+        contract.funnel_payload = receipt.get("payload", payload)
+        contract.funnel_response = {"id": receipt["crm_record_id"], "entity_type": "Opportunity", "verified_at": receipt["verified_at"]}
+        contract.funneled_at = datetime.now(timezone.utc)
+        db.add(contract)
+        db.commit()
+        result["promoted"] += 1
+    capture_candidate_inbox(db)
+    return result
+
+
 def funnel_contract_to_crm(
     db: Session,
     contract_id: str,

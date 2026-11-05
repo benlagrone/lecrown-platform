@@ -90,6 +90,8 @@ class Settings:
     procurement_candidate_json_path: str = os.getenv("PROCUREMENT_CANDIDATE_JSON_PATH", "")
     semantic_fit_enabled: bool = _env_bool("SEMANTIC_FIT_ENABLED")
     semantic_fit_state_dir: str = os.getenv("SEMANTIC_FIT_STATE_DIR", "/app/data/semantic-fit")
+    semantic_auto_promote_enabled: bool = _env_bool("SEMANTIC_AUTO_PROMOTE_ENABLED")
+    semantic_promotion_state_dir: str = os.getenv("SEMANTIC_PROMOTION_STATE_DIR", "/app/data/semantic-promotion")
     gov_contract_portal_batch_size: int = int(os.getenv("GOV_CONTRACT_PORTAL_BATCH_SIZE", "10"))
     gov_contract_portal_interval_seconds: float = float(os.getenv("GOV_CONTRACT_PORTAL_INTERVAL_SECONDS", "6"))
     espocrm_timeout_seconds: int = int(os.getenv("ESPOCRM_TIMEOUT_SECONDS", "15"))
