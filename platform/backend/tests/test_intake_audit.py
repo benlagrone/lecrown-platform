@@ -3,8 +3,10 @@ import sys
 import unittest
 from pathlib import Path
 
-# Load the actual schema module
-spec = importlib.util.spec_from_file_location('intake_schema', 'platform/backend/app/schemas/intake.py')
+# Resolve from this file so discovery from platform/backend and the repo root
+# both load the same schema. A process-relative path doubles that prefix.
+schema_path = Path(__file__).resolve().parents[1] / "app" / "schemas" / "intake.py"
+spec = importlib.util.spec_from_file_location('intake_schema', schema_path)
 intake_module = importlib.util.module_from_spec(spec)
 sys.modules['intake_schema'] = intake_module
 spec.loader.exec_module(intake_module)
