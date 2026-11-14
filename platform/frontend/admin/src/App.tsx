@@ -990,14 +990,6 @@ export default function App() {
     try {
       const currentUser = currentAdmin ?? (await getCurrentAdmin());
       setCurrentAdmin(currentUser);
-      const [sources, runs, keywords, agencyPrefs, invites] =
-        await Promise.all([
-          listGovContractTrackedSources(),
-          listGovContractRuns(25),
-          listGovContractKeywordRules(),
-          listGovContractAgencyPreferences(),
-          currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
-        ]);
       const searchResult = await searchGovContracts({
         limit: OPPORTUNITY_PAGE_SIZE,
         offset: (opportunityPage - 1) * OPPORTUNITY_PAGE_SIZE,
@@ -1018,11 +1010,27 @@ export default function App() {
       if (opportunityPage > 1 && searchResult.offset >= searchResult.total) {
         setOpportunityPage(Math.max(1, Math.ceil(searchResult.total / OPPORTUNITY_PAGE_SIZE)));
       }
-      setContractRuns(runs);
-      setTrackedSources(sources);
-      setKeywordRules(keywords);
-      setAgencyPreferences(agencyPrefs);
-      setUserInvites(invites);
+      const [sources, runs, keywords, agencyPrefs, invites] = await Promise.allSettled([
+        listGovContractTrackedSources(),
+        listGovContractRuns(25),
+        listGovContractKeywordRules(),
+        listGovContractAgencyPreferences(),
+        currentUser.is_admin ? listUserInvites() : Promise.resolve([]),
+      ]);
+      const failedPanels: string[] = [];
+      if (sources.status === "fulfilled") setTrackedSources(sources.value);
+      else failedPanels.push("source coverage");
+      if (runs.status === "fulfilled") setContractRuns(runs.value);
+      else failedPanels.push("refresh history");
+      if (keywords.status === "fulfilled") setKeywordRules(keywords.value);
+      else failedPanels.push("keyword settings");
+      if (agencyPrefs.status === "fulfilled") setAgencyPreferences(agencyPrefs.value);
+      else failedPanels.push("agency settings");
+      if (invites.status === "fulfilled") setUserInvites(invites.value);
+      else failedPanels.push("invitation settings");
+      if (failedPanels.length > 0) {
+        setMessage(`Opportunities loaded, but ${failedPanels.join(", ")} could not be refreshed.`);
+      }
     } catch (error) {
       if (sequence === contractSearchSequence.current) setMessage(getErrorMessage(error));
     }
